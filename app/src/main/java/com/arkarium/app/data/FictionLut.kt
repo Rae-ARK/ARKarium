@@ -56,12 +56,45 @@ object FictionLut {
     @Volatile
     private var cachedDisplay: List<Pair<String, String>>? = null
 
-    private fun normalize(name: String): String =
-        name.trim().lowercase().replace(Regex("\\s+"), " ")
+    // Smart-quote / smart-apostrophe variants that autocorrect commonly substitutes for
+    // their plain ASCII equivalents - folded before comparison so a curly apostrophe
+    // from a phone keyboard doesn't produce a spurious "not found" (see
+    // docs/NEXT_FIXES.md #3). NFKD alone doesn't touch these: Unicode decomposes
+    // accented letters into base+combining-mark pairs, but a curly quote has no such
+    // decomposition - it's simply a different codepoint from its straight-quote cousin.
+    private val quoteVariants = mapOf(
+        '\u2018' to '\'', '\u2019' to '\'', '\u201B' to '\'', '\u2032' to '\'',
+        '\u201C' to '"', '\u201D' to '"', '\u201F' to '"', '\u2033' to '"'
+    )
+
+    // Punctuation stripped before comparison - commas/colons/periods are exactly the
+    // kind of thing a user typing a title from memory is likely to drop or misplace
+    // (see docs/NEXT_FIXES.md #3's "Summoned By Mistake..." example). Deliberately not
+    // stripping apostrophes/hyphens: those are usually load-bearing within a word
+    // ("Mistake I Decided" vs "Mistake, I Decided" reads the same without the comma,
+    // but "Rae ARK's" vs "Rae ARKs" doesn't).
+    private val strippablePunctuation = Regex("[,:.;!?]")
+
+    // Normalizes a name for comparison: trim, lowercase, fold smart quotes to their
+    // ASCII equivalents, NFKD-normalize (so visually-identical accented characters
+    // typed via different input methods compare equal), strip commas/colons/periods/
+    // semicolons/exclamation/question marks, then collapse whitespace. Still exact
+    // matching after all of that - no fuzzy/edit-distance matching (see the code
+    // comment on `lookup` below for why that's the right call while the LUT stays
+    // small) - this just widens what counts as "the same string" to cover the most
+    // common ways real typing/autocorrect differs from the canonical title, rather
+    // than making near-misses silently resolve to a possibly-wrong fiction.
+    private fun normalize(name: String): String {
+        val quotesFolded = name.map { quoteVariants[it] ?: it }.joinToString("")
+        val decomposed = java.text.Normalizer.normalize(quotesFolded, java.text.Normalizer.Form.NFKD)
+        val punctuationStripped = strippablePunctuation.replace(decomposed, "")
+        return punctuationStripped.trim().lowercase().replace(Regex("\\s+"), " ")
+    }
 
     // Returns the slug for a user-typed fiction name, or null if there's no match.
-    // Matching is exact after normalization (case-insensitive, whitespace-collapsed)
-    // - no fuzzy matching, so a typo just means "not found" rather than silently
+    // Matching is exact after normalization (case-insensitive, whitespace-collapsed,
+    // punctuation/smart-quote/Unicode-form insensitive - see normalize() above) - no
+    // fuzzy matching, so a typo just means "not found" rather than silently
     // resolving to the wrong fiction.
     fun lookup(context: Context, name: String): String? =
         loadTable(context)[normalize(name)]

@@ -42,6 +42,21 @@ class ManifestParseException(message: String) : IOException(message)
 // file worth silently dropping and continuing past.
 class UnsafePathException(path: String) : IOException("Unsafe path in manifest: $path")
 
+// Thrown specifically when a relay 404s on a novel's manifest.json - distinguished from
+// a generic IOException so callers can tell "this source doesn't exist anymore" apart
+// from a transient network blip (see docs/NEXT_FIXES.md #2). Never thrown for a 404 on
+// an individual file download - only the manifest fetch itself, since that's the one
+// request whose absence means "this fiction isn't served here anymore" rather than "one
+// file is temporarily unreachable."
+class SourceGoneException(baseUrl: String) : IOException("No manifest found at $baseUrl - this source may no longer be available")
+
+// Thrown by SyncManager.sync() when a previously-synced novel's on-disk folder can't be
+// found by either id (findNovelFolder) or its deterministic slug name, and the caller
+// hasn't explicitly opted into recreating it (see docs/NEXT_FIXES.md #2). Distinguishes
+// "the user (or something else) removed this folder" from every other sync failure, so
+// a caller can ask before silently redownloading the whole fiction.
+class MissingLocalFolderException(val novelId: String) : IOException("Local folder for novel $novelId is missing")
+
 object SyncPaths {
     // Rejects absolute paths, empty/"."/".." segments, and backslashes before a
     // manifest path is ever used to create a file or directory. A manifest is
@@ -79,7 +94,10 @@ fun relayBaseUrlForSlug(slug: String): String = "$RELAY_HOST$slug/"
 // GoogleBooksMetadataProvider - no new HTTP client dependency for one GET-only use case.
 class SyncClient {
     suspend fun fetchManifest(baseUrl: String): Manifest = withContext(Dispatchers.IO) {
-        parseManifest(fetchText(joinUrl(baseUrl, "manifest.json")))
+        // manifestBaseUrl is threaded through so a 404 here specifically (as opposed to
+        // a 404 on an individual file download below) surfaces as SourceGoneException -
+        // see docs/NEXT_FIXES.md #2.
+        parseManifest(fetchText(joinUrl(baseUrl, "manifest.json"), manifestBaseUrl = baseUrl))
     }
 
     suspend fun downloadFile(baseUrl: String, relativePath: String): ByteArray = withContext(Dispatchers.IO) {
@@ -99,10 +117,10 @@ class SyncClient {
         return base + encodedPath
     }
 
-    private fun fetchText(url: String): String {
+    private fun fetchText(url: String, manifestBaseUrl: String? = null): String {
         val connection = openConnection(url)
         try {
-            checkOk(connection)
+            checkOk(connection, manifestBaseUrl)
             return connection.inputStream.bufferedReader().use { it.readText() }
         } finally {
             connection.disconnect()
@@ -127,7 +145,13 @@ class SyncClient {
         return connection
     }
 
-    private fun checkOk(connection: HttpURLConnection) {
+    // manifestBaseUrl is only ever passed by fetchManifest - a 404 on any other request
+    // (an individual file download) stays a plain IOException, since a missing file
+    // isn't evidence the whole source is gone (see SourceGoneException's doc comment).
+    private fun checkOk(connection: HttpURLConnection, manifestBaseUrl: String? = null) {
+        if (connection.responseCode == 404 && manifestBaseUrl != null) {
+            throw SourceGoneException(manifestBaseUrl)
+        }
         if (connection.responseCode !in 200..299) {
             throw IOException("HTTP ${connection.responseCode} for ${connection.url}")
         }
@@ -230,10 +254,17 @@ class SyncManager(private val context: Context, private val client: SyncClient =
     // docs/SYNC_MVP.md "Future considerations" #5, this is the cheap-skip the schema's
     // sync_source_version column exists to enable. Otherwise downloads new/changed
     // files and deletes local files the new manifest no longer lists.
+    // `allowRecreateMissingFolder` defaults to false: if the novel's folder can't be
+    // found by either its derived id (findNovelFolder) or its deterministic slug name,
+    // this throws MissingLocalFolderException rather than silently recreating it and
+    // redownloading everything - see docs/NEXT_FIXES.md #2. The caller (MainActivity)
+    // only ever passes true once the user has explicitly confirmed they want that
+    // (the "Sync again" resolution action), never from an automatic/background check.
     suspend fun sync(
         novel: NovelEntity,
         libraryRoot: DocumentFile,
         knownFiles: List<SyncedFileEntity>,
+        allowRecreateMissingFolder: Boolean = false,
         onProgress: suspend (message: String) -> Unit = {}
     ): SyncOutcome = withContext(Dispatchers.IO) {
         val baseUrl = novel.syncSourceUrl
@@ -247,9 +278,21 @@ class SyncManager(private val context: Context, private val client: SyncClient =
             return@withContext SyncOutcome(newVersion = manifest.version, files = knownFiles, changed = false)
         }
 
+        // findNovelFolder first (re-derives the folder from novel.id, the normal case),
+        // then fall back to the deterministic slug name via findFile - mirroring
+        // downloadInitial's own findFile-before-createDirectory pattern (see
+        // docs/NEXT_FIXES.md #1) so a folder that already exists under that slug name
+        // (e.g. left over from an interrupted previous sync) is reused instead of
+        // colliding with a same-named duplicate. Only creates a brand-new folder, and
+        // only when the caller has explicitly allowed it, once both lookups miss.
         val folder = findNovelFolder(libraryRoot, novel.id)
-            ?: libraryRoot.createDirectory(slugForUrl(baseUrl))
-            ?: throw IOException("Could not find or recreate this fiction's folder")
+            ?: libraryRoot.findFile(slugForUrl(baseUrl))
+            ?: if (allowRecreateMissingFolder) {
+                libraryRoot.createDirectory(slugForUrl(baseUrl))
+                    ?: throw IOException("Could not find or recreate this fiction's folder")
+            } else {
+                throw MissingLocalFolderException(novel.id)
+            }
 
         val records = downloadManifestFiles(baseUrl, manifest, folder, libraryRoot, existing = knownFiles, onProgress)
 

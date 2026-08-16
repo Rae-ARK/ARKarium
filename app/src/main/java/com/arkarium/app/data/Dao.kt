@@ -72,6 +72,28 @@ interface NovelDao {
         WHERE id = :novelId
     """)
     suspend fun updateSyncState(novelId: String, sourceUrl: String, sourceVersion: Int, syncedAt: Long)
+
+    // See docs/NEXT_FIXES.md #2 / Entities.kt SyncStatus. Set to MISSING_LOCALLY when a
+    // synced novel's on-disk folder is discovered gone by a scan, or to SOURCE_GONE when
+    // its relay 404s on manifest.json - either way this deliberately never deletes the
+    // row itself (see startScan's stale-removal in MainActivity.kt).
+    @Query("UPDATE novels SET sync_status = :status WHERE id = :novelId")
+    suspend fun updateSyncStatus(novelId: String, status: String)
+
+    // "Unlink" resolution for a SOURCE_GONE novel (see docs/NEXT_FIXES.md #2): drops the
+    // sync relationship entirely and reverts this novel to a plain local one. Local
+    // content is untouched - only the sync bookkeeping columns are cleared. Caller is
+    // still responsible for clearing this novel's SyncedFileEntity rows if desired;
+    // leaving them behind is harmless (they just become inert once sync_source_url is
+    // null, since nothing reads them for a non-synced novel).
+    @Query("""
+        UPDATE novels SET
+            sync_source_url = NULL,
+            sync_source_version = NULL,
+            sync_status = 'ACTIVE'
+        WHERE id = :novelId
+    """)
+    suspend fun unlinkSyncSource(novelId: String)
 }
 
 @Dao

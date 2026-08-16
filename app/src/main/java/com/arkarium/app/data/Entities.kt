@@ -44,8 +44,21 @@ data class NovelEntity(
     // used to skip a full re-diff when a sync check finds nothing changed.
     @ColumnInfo(name = "sync_source_url") val syncSourceUrl: String? = null,
     @ColumnInfo(name = "sync_source_version") val syncSourceVersion: Int? = null,
-    @ColumnInfo(name = "last_synced_at") val lastSyncedAt: Long? = null
+    @ColumnInfo(name = "last_synced_at") val lastSyncedAt: Long? = null,
+    // Only meaningful when syncSourceUrl != null (see docs/NEXT_FIXES.md #2). ACTIVE =
+    // normal state. MISSING_LOCALLY = this novel's on-disk folder disappeared out from
+    // under a synced novel (user deleted it, SAF re-permission minted a new tree, etc)
+    // - the row is deliberately kept rather than cascade-deleted so the user can choose
+    // to re-sync or remove it, instead of the scanner silently doing either for them.
+    // SOURCE_GONE = the relay 404s on this novel's manifest.json - local content stays
+    // readable (offline-first), but there's nothing left to sync against. Never set for
+    // a purely-local (syncSourceUrl == null) novel.
+    @ColumnInfo(name = "sync_status") val syncStatus: String = SyncStatus.ACTIVE.name
 )
+
+enum class SyncStatus {
+    ACTIVE, MISSING_LOCALLY, SOURCE_GONE
+}
 
 // One row per authors/<id>.json file at the library root (see
 // ScannerImpl.scanAuthorsFolder). `id` is the filename by default, or the json's own

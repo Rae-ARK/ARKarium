@@ -130,3 +130,54 @@ fun SyncProgressDialog(
         }
     )
 }
+
+// Shown when a "Check for updates" pass hits something that shouldn't be resolved
+// silently in either direction (see docs/NEXT_FIXES.md #2 and
+// MainActivity.SyncResolutionState): either this novel's local folder is gone, or its
+// relay no longer serves it. Which buttons are offered depends on `isMissingLocally` -
+// "Sync again" / "Remove from library" for a missing folder (there's still a live
+// source to re-fetch from, or the user can confirm the removal that used to happen to
+// them automatically), just "Unlink" for a gone source (nothing left to sync against,
+// but local content keeps working either way).
+@Composable
+fun SyncResolutionDialog(
+    novelTitle: String,
+    isMissingLocally: Boolean,
+    onSyncAgain: () -> Unit,
+    onRemoveFromLibrary: () -> Unit,
+    onUnlink: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isMissingLocally) "\"$novelTitle\" is missing" else "\"$novelTitle\" is no longer available") },
+        text = {
+            Text(
+                if (isMissingLocally) {
+                    "This fiction's folder was removed from your library. You can sync " +
+                        "it again to re-download it, or remove it from ARKarium entirely."
+                } else {
+                    "This fiction is no longer being served by the relay it was synced " +
+                        "from - the source may have been taken down. What's already " +
+                        "downloaded will keep working, but you won't get further " +
+                        "updates unless you unlink it and add it again later."
+                },
+                style = MaterialTheme.typography.bodyMedium
+            )
+        },
+        confirmButton = {
+            if (isMissingLocally) {
+                TextButton(onClick = onSyncAgain) { Text("Sync again") }
+            } else {
+                TextButton(onClick = onUnlink) { Text("Unlink") }
+            }
+        },
+        dismissButton = {
+            if (isMissingLocally) {
+                TextButton(onClick = onRemoveFromLibrary) { Text("Remove from library") }
+            } else {
+                TextButton(onClick = onDismiss) { Text("Not now") }
+            }
+        }
+    )
+}

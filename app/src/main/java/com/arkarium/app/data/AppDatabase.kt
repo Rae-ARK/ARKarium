@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ReadingProgressEntity::class,
         SyncedFileEntity::class
     ],
-    version = 9
+    version = 10
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun novelDao(): NovelDao
@@ -196,11 +196,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v9 to v10: adds sync_status to novels (see docs/NEXT_FIXES.md
+        // #2 - "no graceful handling when a synced novel's folder disappears"). Backfills
+        // to 'ACTIVE' for every existing row, synced or not; the column is simply unused
+        // for a purely-local novel (syncSourceUrl == null).
+        val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE novels ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'ACTIVE'")
+            }
+        }
+
         fun create(context: Context): AppDatabase = Room.databaseBuilder(
             context.applicationContext,
             AppDatabase::class.java,
             "arkarium.db"
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
             .fallbackToDestructiveMigration()
             .build()
     }
