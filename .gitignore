@@ -1,0 +1,15 @@
+.gradle/
+build/
+.idea/
+*.iml
+.DS_Store
+local.properties
+*.patch
+
+# Signing material - the actual keystore must never be committed. CI decodes
+# it from the ARKSTER_RELEASE_KEYSTORE_BASE64 secret at build time instead;
+# see .github/workflows/release.yml. If you keep a local copy for manual
+# `assembleRelease` builds, it belongs outside the repo or ignored here.
+*.keystore
+*.jks
+release.keystore.b64

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Matches the new AR mark's black canvas (assets/app-icon-source.png) so the
+         adaptive icon's background layer is indistinguishable from the mark's own
+         background rather than clashing with it. -->
+    <color name="ic_launcher_background">#000000</color>
+</resources>
