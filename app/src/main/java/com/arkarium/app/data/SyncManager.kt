@@ -77,9 +77,17 @@ class SyncClient {
         fetchBytes(joinUrl(baseUrl, relativePath))
     }
 
+    // Manifest paths are real folder/file names (novel titles, arc names) - they
+    // routinely contain spaces, commas, and other characters that are legal in a
+    // filename but not in a URL path unescaped. Percent-encode each segment
+    // individually (never the "/" separators themselves) rather than encoding the
+    // path as a whole, which would also escape the slashes and break routing.
     private fun joinUrl(baseUrl: String, path: String): String {
         val base = if (baseUrl.endsWith("/")) baseUrl else "$baseUrl/"
-        return base + path
+        val encodedPath = path.split("/").joinToString("/") { segment ->
+            java.net.URLEncoder.encode(segment, "UTF-8").replace("+", "%20")
+        }
+        return base + encodedPath
     }
 
     private fun fetchText(url: String): String {
