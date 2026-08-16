@@ -25,4 +25,11 @@ Early development.
 
 ## License
 
-See [LICENSE](LICENSE).
+Copyright © 2026 Rae-ARK. All rights reserved.
+
+This software and its source code are proprietary.
+
+No permission is granted to copy, modify, distribute,
+sublicense, or use this software or its source code,
+in whole or in part, without prior written permission
+from the copyright holder.
