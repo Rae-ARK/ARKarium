@@ -56,14 +56,14 @@ Reader
 
 Planned clients:
 
-- **Android:** successor/rebrand of ARKarium
+- **Android:** successor/rebrand of ARKster
 - **Desktop:** ARKium-derived client
 - **iOS:** possible future client
-- **Web:** optional discovery / complementary experience, not necessarily the primary reading experience
+- **Web:** optional discovery / complementary experience, not necessarily the primary reading experience. but there is a separate repo which handles Horizon ARK Studio.
 
 The clients should consume the same underlying content/distribution format.
 
-The UI/UX can be inspired by successful web-novel readers such as Royal Road, while the implementation, branding, assets, and overall product identity become ARKarium's own.
+The UI/UX can be inspired by successful web-novel readers such as Royal Road, while the implementation, branding, assets, and overall product identity become ARKarium's own adapted from ARKster.
 
 ---
 
@@ -300,9 +300,9 @@ Not in a giant always-on backend.
 
 # Existing project relationship
 
-ARKarium is conceptually related to the existing Horizon ARK projects.
+ARKarium is conceptually related to the existing Rae ARK's projects.
 
-## ARKarium
+## ARKster
 
 Existing Android reader project.
 
@@ -329,23 +329,6 @@ Potential future role:
 
 If a proprietary/commercial edition is ever desired, copyright ownership and third-party dependency licensing must be audited carefully. A separate license from the relevant copyright holders may be necessary.
 
-## ARKlight
-
-Python-first static-site/compiler project.
-
-**Not currently production-ready.**
-
-Potential future role:
-
-- authoring/build pipeline
-- conversion of structured author content into static distributable assets
-- generation of manifests and metadata
-- eventual production publishing tool
-
-ARKlight should not be treated as a required dependency of the distribution protocol until it is mature enough.
-
----
-
 # Licensing philosophy
 
 The application implementation may ultimately be proprietary if the necessary rights are obtained.
@@ -357,9 +340,8 @@ Important distinction:
 - Distribution infrastructure can have its own license.
 - Client software has its own license.
 - External dependencies retain their own licenses.
-- GPLv3 code cannot simply be relicensed by a downstream fork without the necessary copyright rights.
 
-If a project is derived from GPLv3 code, determine the licensing boundary before commercial distribution.
+Therefore ARKarium and Rae ARK's other projects have different licenses suited for their purposes.
 
 ---
 
