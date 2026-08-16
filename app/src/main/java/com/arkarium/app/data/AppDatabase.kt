@@ -1,4 +1,4 @@
-package com.arkster.app.data
+package com.arkarium.app.data
 
 import android.content.Context
 import androidx.room.Database
@@ -173,7 +173,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun create(context: Context): AppDatabase = Room.databaseBuilder(
             context.applicationContext,
             AppDatabase::class.java,
-            "arkster.db"
+            "arkarium.db"
         ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
             .fallbackToDestructiveMigration()
             .build()

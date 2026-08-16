@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "ARKster"
+rootProject.name = "ARKarium"
 include(":app")

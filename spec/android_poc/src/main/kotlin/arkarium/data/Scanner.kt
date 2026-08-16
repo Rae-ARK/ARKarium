@@ -1,4 +1,4 @@
-package arkster.data
+package arkarium.data
 
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow

@@ -1,4 +1,4 @@
-package com.arkster.app.ui
+package com.arkarium.app.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -19,8 +19,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import com.arkster.app.BuildConfig
-import com.arkster.app.data.Theme
+import com.arkarium.app.BuildConfig
+import com.arkarium.app.data.Theme
 
 // A single tappable "goes to its own page" settings row - used for Privacy
 // Policy / Terms & Conditions, both of which just navigate to a
@@ -99,7 +99,7 @@ fun SettingsScreen(
             // version. This is the only place in the running app's normal UI that
             // shows it; the crash screens in MainActivity read the same field.
             Text(
-                "ARKster v${BuildConfig.VERSION_NAME}",
+                "ARKarium v${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
             )

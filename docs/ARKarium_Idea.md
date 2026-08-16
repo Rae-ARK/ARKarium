@@ -56,7 +56,7 @@ Reader
 
 Planned clients:
 
-- **Android:** successor/rebrand of ARKster
+- **Android:** successor/rebrand of ARKarium
 - **Desktop:** ARKium-derived client
 - **iOS:** possible future client
 - **Web:** optional discovery / complementary experience, not necessarily the primary reading experience
@@ -298,7 +298,7 @@ Not in a giant always-on backend.
 
 ARKarium is conceptually related to the existing Horizon ARK projects.
 
-## ARKster
+## ARKarium
 
 Existing Android reader project.
 

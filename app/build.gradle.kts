@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "com.arkster.app"
+    namespace = "com.arkarium.app"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.arkster.app"
+        applicationId = "com.arkarium.app"
         minSdk = 24
         targetSdk = 34
         // Single source of truth for the app's version, anywhere it needs to be shown.
@@ -36,10 +36,10 @@ android {
     // assembleRelease. Locally, export the same four vars yourself if you want a
     // signed release build; if they're absent, `release` silently falls back to
     // AGP's default (unsigned) release build type instead of failing the build.
-    val releaseStoreFile = System.getenv("ARKSTER_RELEASE_STORE_FILE")
-    val releaseStorePassword = System.getenv("ARKSTER_RELEASE_STORE_PASSWORD")
-    val releaseKeyAlias = System.getenv("ARKSTER_RELEASE_KEY_ALIAS")
-    val releaseKeyPassword = System.getenv("ARKSTER_RELEASE_KEY_PASSWORD")
+    val releaseStoreFile = System.getenv("ARKARIUM_RELEASE_STORE_FILE")
+    val releaseStorePassword = System.getenv("ARKARIUM_RELEASE_STORE_PASSWORD")
+    val releaseKeyAlias = System.getenv("ARKARIUM_RELEASE_KEY_ALIAS")
+    val releaseKeyPassword = System.getenv("ARKARIUM_RELEASE_KEY_PASSWORD")
     val hasReleaseSigning = listOf(
         releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword
     ).all { !it.isNullOrBlank() }
@@ -95,7 +95,7 @@ android {
         val variant = this
         outputs.all {
             val output = this as com.android.build.gradle.api.ApkVariantOutput
-            output.outputFileName = "ARKster-${variant.versionName}-${variant.name}.apk"
+            output.outputFileName = "ARKarium-${variant.versionName}-${variant.name}.apk"
         }
     }
 }

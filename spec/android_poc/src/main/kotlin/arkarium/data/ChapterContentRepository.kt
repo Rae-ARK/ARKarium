@@ -1,4 +1,4 @@
-package arkster.data
+package arkarium.data
 
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

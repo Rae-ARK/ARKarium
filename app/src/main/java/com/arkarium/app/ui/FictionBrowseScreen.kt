@@ -1,4 +1,4 @@
-package com.arkster.app.ui
+package com.arkarium.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,7 +48,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.arkster.app.data.NovelEntity
+import com.arkarium.app.data.NovelEntity
 
 enum class SortBy {
     RECENTLY_UPDATED,

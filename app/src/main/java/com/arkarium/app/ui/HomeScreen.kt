@@ -1,4 +1,4 @@
-package com.arkster.app.ui
+package com.arkarium.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -48,7 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arkster.app.data.NovelEntity
+import com.arkarium.app.data.NovelEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,7 +89,7 @@ fun HomeScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // Top bar
         TopAppBar(
-            title = { Text("ARKster") },
+            title = { Text("ARKarium") },
             actions = {
                 IconButton(onClick = onSelectFolderClick) {
                     Icon(Icons.Default.CreateNewFolder, contentDescription = "Select library folder")

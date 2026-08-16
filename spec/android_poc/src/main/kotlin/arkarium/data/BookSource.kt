@@ -1,4 +1,4 @@
-package arkster.data
+package arkarium.data
 
 /**
  * Normalized model consumed by UI/ViewModel layers.

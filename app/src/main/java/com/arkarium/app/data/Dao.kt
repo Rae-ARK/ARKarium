@@ -1,4 +1,4 @@
-package com.arkster.app.data
+package com.arkarium.app.data
 
 import androidx.room.Dao
 import androidx.room.Insert

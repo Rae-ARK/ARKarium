@@ -1,4 +1,4 @@
-package com.arkster.app.ui
+package com.arkarium.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,9 +53,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.arkster.app.data.ArcEntity
-import com.arkster.app.data.ChapterEntity
-import com.arkster.app.data.NovelEntity
+import com.arkarium.app.data.ArcEntity
+import com.arkarium.app.data.ChapterEntity
+import com.arkarium.app.data.NovelEntity
 
 private val PAGE_SIZE_OPTIONS = listOf(10, 20, 50, 100)
 

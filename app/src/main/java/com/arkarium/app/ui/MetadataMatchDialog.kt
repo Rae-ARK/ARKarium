@@ -1,4 +1,4 @@
-package com.arkster.app.ui
+package com.arkarium.app.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -23,7 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.arkster.app.data.NovelMetadataCandidate
+import com.arkarium.app.data.NovelMetadataCandidate
 
 // Shown after the user taps "Fetch info" on a novel. Deliberately requires an explicit
 // tap to confirm a match rather than auto-applying the top result - title-only search

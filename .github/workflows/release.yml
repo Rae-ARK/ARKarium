@@ -18,7 +18,7 @@ jobs:
     # presence check has to be computed here and read back via `env.` below,
     # not via `secrets.` directly in the step's `if:`.
     env:
-      HAS_RELEASE_KEYSTORE: ${{ secrets.ARKSTER_KEYSTORE_BASE64 != '' }}
+      HAS_RELEASE_KEYSTORE: ${{ secrets.ARKARIUM_KEYSTORE_BASE64 != '' }}
 
     steps:
     - uses: actions/checkout@v4
@@ -43,16 +43,16 @@ jobs:
       run: chmod +x ./gradlew
 
     # app/build.gradle.kts's signingConfigs block reads exactly these four
-    # ARKSTER_RELEASE_* env vars and silently falls back to an UNSIGNED release
+    # ARKARIUM_RELEASE_* env vars and silently falls back to an UNSIGNED release
     # build if any are missing - so this step has to actually produce a real
     # file on disk at the path it exports, not just reference a secret name.
     # Add these secrets under Settings -> Secrets and variables -> Actions:
-    #   ARKSTER_KEYSTORE_BASE64        (base64 of your .jks/.keystore file -
+    #   ARKARIUM_KEYSTORE_BASE64        (base64 of your .jks/.keystore file -
     #                                   `base64 -w0 your.keystore`)
-    #   ARKSTER_RELEASE_STORE_PASSWORD
-    #   ARKSTER_RELEASE_KEY_ALIAS
-    #   ARKSTER_RELEASE_KEY_PASSWORD
-    # If ARKSTER_KEYSTORE_BASE64 isn't set, this step is skipped entirely and
+    #   ARKARIUM_RELEASE_STORE_PASSWORD
+    #   ARKARIUM_RELEASE_KEY_ALIAS
+    #   ARKARIUM_RELEASE_KEY_PASSWORD
+    # If ARKARIUM_KEYSTORE_BASE64 isn't set, this step is skipped entirely and
     # the build below proceeds unsigned (same fallback build.gradle.kts already
     # documents for a local build with no env vars exported) rather than
     # failing outright - useful for verifying the release build type compiles
@@ -60,22 +60,22 @@ jobs:
     - name: Decode signing keystore
       if: ${{ env.HAS_RELEASE_KEYSTORE == 'true' }}
       env:
-        ARKSTER_KEYSTORE_BASE64: ${{ secrets.ARKSTER_KEYSTORE_BASE64 }}
+        ARKARIUM_KEYSTORE_BASE64: ${{ secrets.ARKARIUM_KEYSTORE_BASE64 }}
       run: |
-        echo "$ARKSTER_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
-        echo "ARKSTER_RELEASE_STORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+        echo "$ARKARIUM_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+        echo "ARKARIUM_RELEASE_STORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
 
     - name: Build signed release APK
       env:
-        ARKSTER_RELEASE_STORE_PASSWORD: ${{ secrets.ARKSTER_RELEASE_STORE_PASSWORD }}
-        ARKSTER_RELEASE_KEY_ALIAS: ${{ secrets.ARKSTER_RELEASE_KEY_ALIAS }}
-        ARKSTER_RELEASE_KEY_PASSWORD: ${{ secrets.ARKSTER_RELEASE_KEY_PASSWORD }}
+        ARKARIUM_RELEASE_STORE_PASSWORD: ${{ secrets.ARKARIUM_RELEASE_STORE_PASSWORD }}
+        ARKARIUM_RELEASE_KEY_ALIAS: ${{ secrets.ARKARIUM_RELEASE_KEY_ALIAS }}
+        ARKARIUM_RELEASE_KEY_PASSWORD: ${{ secrets.ARKARIUM_RELEASE_KEY_PASSWORD }}
       run: ./gradlew assembleRelease --stacktrace 2>&1 | tee release-build-output.log
 
     - name: Upload release APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: arkster-release-apk
+        name: arkarium-release-apk
         path: app/build/outputs/apk/release/*.apk
         retention-days: 90
 

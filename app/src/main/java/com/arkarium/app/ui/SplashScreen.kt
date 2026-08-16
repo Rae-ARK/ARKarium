@@ -1,4 +1,4 @@
-package com.arkster.app.ui
+package com.arkarium.app.ui
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arkster.app.R
+import com.arkarium.app.R
 import kotlinx.coroutines.delay
 
 // How long the splash stays on screen before handing off to the real app. Long
@@ -86,7 +86,7 @@ fun SplashScreen(onFinished: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                "ARKster",
+                "ARKarium",
                 color = SplashForeground,
                 fontSize = 30.sp,
                 fontWeight = FontWeight.Bold,

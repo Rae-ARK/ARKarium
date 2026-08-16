@@ -1,7 +1,7 @@
-ARKster Android app
+ARKarium Android app
 ======================================
 
-This is the Android Compose implementation of ARKster. Current version: see
+This is the Android Compose implementation of ARKarium. Current version: see
 `app/build.gradle.kts`'s `versionName` (the single source of truth - the running
 app reads this back via `BuildConfig.VERSION_NAME` and shows it in Settings and
 on the crash screens, so it's never hand-typed a second time in code).

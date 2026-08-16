@@ -1,4 +1,4 @@
-package com.arkster.app.ui
+package com.arkarium.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -42,13 +42,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.arkster.app.data.AuthorEntity
-import com.arkster.app.data.NovelEntity
+import com.arkarium.app.data.AuthorEntity
+import com.arkarium.app.data.NovelEntity
 import org.json.JSONObject
 
 // Royal Road's profile page also has Follow/Block buttons and a live "Activity" feed
 // (new chapter posted, review left, etc). Both are deliberately omitted here rather
-// than kept as inert styling: ARKster is offline and account-free (see README), so
+// than kept as inert styling: ARKarium is offline and account-free (see README), so
 // there is no real follow relationship to act on, and an "Activity" card would have
 // nothing genuine to show without inventing data - see the Stage 2 kickoff decision
 // referenced in AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md.

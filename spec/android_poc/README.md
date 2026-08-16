@@ -1,4 +1,4 @@
-ARKster Android POC
+ARKarium Android POC
 ===================
 
 This folder contains Kotlin pseudocode and notes for a v0.1 proof-of-concept scanner and reader foundation:

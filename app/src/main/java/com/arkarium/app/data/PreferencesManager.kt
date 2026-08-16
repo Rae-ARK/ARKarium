@@ -1,4 +1,4 @@
-package com.arkster.app.data
+package com.arkarium.app.data
 
 import android.content.Context
 import androidx.datastore.preferences.core.edit
@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import java.io.IOException
 
-val Context.dataStore by preferencesDataStore(name = "arkster_prefs")
+val Context.dataStore by preferencesDataStore(name = "arkarium_prefs")
 
 enum class Theme {
     LIGHT, DARK, WARM_PAPER

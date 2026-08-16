@@ -1,4 +1,4 @@
-package com.arkster.app.ui
+package com.arkarium.app.ui
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.arkster.app.BuildConfig
+import com.arkarium.app.BuildConfig
 
 // Generic renderer for a static legal document (Privacy Policy, Terms &
 // Conditions) - same TopAppBar-with-back pattern the rest of the app's detail
@@ -49,7 +49,7 @@ fun LegalDocumentScreen(
                 // calendar date, so this can't silently go stale relative to the app
                 // version it's actually describing.
                 Text(
-                    "As of ARKster v${BuildConfig.VERSION_NAME}",
+                    "As of ARKarium v${BuildConfig.VERSION_NAME}",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                     modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)

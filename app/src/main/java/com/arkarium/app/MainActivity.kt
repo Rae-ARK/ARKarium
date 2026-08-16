@@ -1,11 +1,11 @@
-package com.arkster.app
+package com.arkarium.app
 
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import com.arkster.app.BuildConfig
+import com.arkarium.app.BuildConfig
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
@@ -29,31 +29,31 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
-import com.arkster.app.ui.ChapterEditorScreen
-import com.arkster.app.ui.AuthorPageScreen
-import com.arkster.app.ui.HomeScreen
-import com.arkster.app.ui.LegalContent
-import com.arkster.app.ui.LegalDocumentScreen
-import com.arkster.app.ui.MetadataSearchDialog
-import com.arkster.app.ui.NovelDetailScreen
-import com.arkster.app.ui.ReaderScreen
-import com.arkster.app.ui.SettingsScreen
-import com.arkster.app.ui.SplashScreen
-import com.arkster.app.ui.FictionBrowseScreen
-import com.arkster.app.data.AppDatabase
-import com.arkster.app.data.ArcEntity
-import com.arkster.app.data.AuthorEntity
-import com.arkster.app.data.ChapterOverrideEntity
-import com.arkster.app.data.GoogleBooksMetadataProvider
-import com.arkster.app.data.NovelMetadataCandidate
-import com.arkster.app.data.ReadingProgressEntity
-import com.arkster.app.data.ScannerImpl
-import com.arkster.app.data.NovelEntity
-import com.arkster.app.data.ChapterEntity
-import com.arkster.app.data.PreferencesManager
-import com.arkster.app.data.Theme
-import com.arkster.app.data.NovelStatus
-import com.arkster.app.data.TextChapterContentRepository
+import com.arkarium.app.ui.ChapterEditorScreen
+import com.arkarium.app.ui.AuthorPageScreen
+import com.arkarium.app.ui.HomeScreen
+import com.arkarium.app.ui.LegalContent
+import com.arkarium.app.ui.LegalDocumentScreen
+import com.arkarium.app.ui.MetadataSearchDialog
+import com.arkarium.app.ui.NovelDetailScreen
+import com.arkarium.app.ui.ReaderScreen
+import com.arkarium.app.ui.SettingsScreen
+import com.arkarium.app.ui.SplashScreen
+import com.arkarium.app.ui.FictionBrowseScreen
+import com.arkarium.app.data.AppDatabase
+import com.arkarium.app.data.ArcEntity
+import com.arkarium.app.data.AuthorEntity
+import com.arkarium.app.data.ChapterOverrideEntity
+import com.arkarium.app.data.GoogleBooksMetadataProvider
+import com.arkarium.app.data.NovelMetadataCandidate
+import com.arkarium.app.data.ReadingProgressEntity
+import com.arkarium.app.data.ScannerImpl
+import com.arkarium.app.data.NovelEntity
+import com.arkarium.app.data.ChapterEntity
+import com.arkarium.app.data.PreferencesManager
+import com.arkarium.app.data.Theme
+import com.arkarium.app.data.NovelStatus
+import com.arkarium.app.data.TextChapterContentRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -441,7 +441,7 @@ class MainActivity : ComponentActivity() {
                     // worth having on a crash report screen specifically, since "what
                     // version were they on" is the first thing a bug report needs.
                     Text(
-                        "ARKster v${BuildConfig.VERSION_NAME}",
+                        "ARKarium v${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.padding(top = 4.dp)
                     )
@@ -457,14 +457,14 @@ class MainActivity : ComponentActivity() {
 
     private fun renderCrashScreen(e: Throwable) {
         renderCrashScreen(
-            "ARKster failed to start",
+            "ARKarium failed to start",
             (e::class.java.name + ": " + e.message) + "\n\n" +
                 e.stackTrace.take(30).joinToString("\n") { "  at $it" }
         )
     }
 
     companion object {
-        private const val CRASH_PREFS = "arkster_crash_info"
+        private const val CRASH_PREFS = "arkarium_crash_info"
         private const val CRASH_KEY = "last_crash"
     }
 
@@ -487,7 +487,7 @@ class MainActivity : ComponentActivity() {
                 getSharedPreferences(CRASH_PREFS, MODE_PRIVATE).edit()
                     .putString(
                         CRASH_KEY,
-                        "ARKster v${BuildConfig.VERSION_NAME}\n\n" +
+                        "ARKarium v${BuildConfig.VERSION_NAME}\n\n" +
                             (throwable::class.java.name + ": " + throwable.message) + "\n\n" +
                             throwable.stackTrace.take(30).joinToString("\n") { "  at $it" }
                     )
@@ -505,7 +505,7 @@ class MainActivity : ComponentActivity() {
         val lastCrash = crashPrefs.getString(CRASH_KEY, null)
         if (lastCrash != null) {
             crashPrefs.edit().remove(CRASH_KEY).apply()
-            renderCrashScreen("ARKster crashed last time it opened", lastCrash)
+            renderCrashScreen("ARKarium crashed last time it opened", lastCrash)
             return
         }
 
