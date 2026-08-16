@@ -1,6 +1,7 @@
 package com.arkarium.app.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -22,6 +23,10 @@ class PreferencesManager(private val context: Context) {
         private val LIBRARY_URI_KEY = stringPreferencesKey("library_uri")
         private val THEME_KEY = stringPreferencesKey("theme")
         private val DEFAULT_PAGE_SIZE_KEY = intPreferencesKey("default_page_size")
+        // Opt-in flag for pointing the scanner at a user-picked SAF folder instead of the
+        // app's own private storage. Defaults to false (off) so a fresh install has a
+        // working library with zero permission prompts - see MainActivity.resolveLibraryRoot.
+        private val USE_CUSTOM_FOLDER_KEY = booleanPreferencesKey("use_custom_folder")
     }
 
     // libraryUri.collect() and theme.collect() run unattended in MainActivity.onCreate,
@@ -52,9 +57,19 @@ class PreferencesManager(private val context: Context) {
         prefs[DEFAULT_PAGE_SIZE_KEY] ?: 10
     }
 
+    val useCustomFolder: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[USE_CUSTOM_FOLDER_KEY] ?: false
+    }
+
     suspend fun setLibraryUri(uri: String) {
         context.dataStore.edit { prefs ->
             prefs[LIBRARY_URI_KEY] = uri
+        }
+    }
+
+    suspend fun setUseCustomFolder(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[USE_CUSTOM_FOLDER_KEY] = enabled
         }
     }
 

@@ -65,10 +65,18 @@ enum class StatusFilter {
 @Composable
 fun FictionBrowseScreen(
     novels: List<NovelEntity>,
+    // Seeds the search field from Home's search bar (see MainActivity's
+    // Screen.FictionBrowse). remember(initialQuery) rather than a bare remember {} so a
+    // fresh query from Home always takes effect: this composable's instance is torn down
+    // and rebuilt on every Home -> Browse navigation (it lives under a `when` on
+    // currentScreen), so in practice a bare remember {} would already re-seed correctly
+    // too - keying on initialQuery here is defensive documentation of that requirement,
+    // not a fix for an observed bug.
+    initialQuery: String = "",
     onNovelSelected: (NovelEntity) -> Unit = {},
     onBack: () -> Unit = {}
 ) {
-    val searchQuery = remember { mutableStateOf("") }
+    val searchQuery = remember(initialQuery) { mutableStateOf(initialQuery) }
     val selectedSort = remember { mutableStateOf(SortBy.RECENTLY_UPDATED) }
     val selectedStatus = remember { mutableStateOf(StatusFilter.ALL) }
     val showSortSheet = remember { mutableStateOf(false) }

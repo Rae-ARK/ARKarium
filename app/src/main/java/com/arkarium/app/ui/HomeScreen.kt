@@ -294,7 +294,8 @@ fun EmptyLibraryPrompt(onSelectFolderClick: () -> Unit = {}) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "Select a folder containing your novel subfolders to get started.",
+                "Drop novel folders into ARKarium's storage folder, or turn on " +
+                    "\"Use custom folder\" in Settings to pick one yourself.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -304,7 +305,7 @@ fun EmptyLibraryPrompt(onSelectFolderClick: () -> Unit = {}) {
                 modifier = Modifier.padding(top = 8.dp)
             ) {
                 Icon(Icons.Default.CreateNewFolder, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Select library folder", modifier = Modifier.padding(start = 8.dp))
+                Text("Open Settings", modifier = Modifier.padding(start = 8.dp))
             }
         }
     }

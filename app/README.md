@@ -35,7 +35,7 @@ How to build and run
 
 Known limitations
 - EPUB/PDF support not yet implemented (see `docs/EPUB_SUPPORT.md`).
-- No in-app search across the whole library (only within a single novel's chapter list).
+- Library-wide search matches title/author only; it doesn't search chapter contents.
 
 Architecture notes
 - `PreferencesManager` handles persistent preference storage (DataStore).

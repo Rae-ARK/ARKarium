@@ -1,7 +1,6 @@
 package com.arkarium.app.data
 
 import android.content.Context
-import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -9,7 +8,9 @@ import org.json.JSONObject
 import java.util.UUID
 
 /**
- * Scanner implementation for FolderSource-like behavior using SAF DocumentFile.
+ * Scanner implementation for FolderSource-like behavior, built on the DocumentFile API.
+ * Works against either a SAF tree (user-picked custom folder) or a plain-file-backed
+ * DocumentFile (default app-private storage) - see scanRoot's `root` parameter.
  * Enumerates immediate children, creates novel entries, parses chapters, and detects arcs.
  * Supports incremental rescan via fingerprinting.
  */
@@ -63,7 +64,12 @@ class ScannerImpl(private val context: Context) {
     }
 
     suspend fun scanRoot(
-        treeUri: Uri,
+        // Root of the library. Either a SAF tree (DocumentFile.fromTreeUri, when the user
+        // has opted into a custom folder in Settings) or a plain-file-backed DocumentFile
+        // (DocumentFile.fromFile, the default app-private storage folder) - both expose
+        // the identical DocumentFile API, so nothing below this line needs to know or
+        // care which kind of root it was handed. See MainActivity.resolveLibraryRoot.
+        root: DocumentFile,
         // Hands back the DocumentFile for the novel's own folder alongside the entity,
         // so callers (e.g. to then scan its chapters/arcs) don't need to re-list the
         // root and search for it by name again - that was previously redone once per
@@ -95,10 +101,6 @@ class ScannerImpl(private val context: Context) {
         // clearing app data. Fail soft instead: surface it as a status message and stop
         // the scan for this call, rather than propagating and taking the whole app down.
         try {
-            val root = DocumentFile.fromTreeUri(context, treeUri) ?: run {
-                onProgress(0, 0, "Library folder is no longer accessible")
-                return@withContext
-            }
             if (!root.canRead()) {
                 onProgress(0, 0, "Library folder permission was revoked")
                 return@withContext
@@ -130,7 +132,13 @@ class ScannerImpl(private val context: Context) {
                 if (child.isDirectory) {
                     try {
                         val title = child.name ?: "Unknown"
-                        val id = UUID.nameUUIDFromBytes((treeUri.toString() + ":" + child.uri.toString()).toByteArray()).toString()
+                        // root.uri works out to a stable per-source namespace either way:
+                        // a content:// tree URI for SAF, or a file:// URI (Uri.fromFile)
+                        // for the default app-storage DocumentFile.fromFile root - so
+                        // switching between the two in Settings naturally mints fresh
+                        // novel IDs for the newly active source rather than colliding
+                        // with IDs from whichever source was active before.
+                        val id = UUID.nameUUIDFromBytes((root.uri.toString() + ":" + child.uri.toString()).toByteArray()).toString()
                         val coverUri = findCoverUri(child)
                         // Optional per-novel metadata.json in the novel's own folder, next to
                         // cover.* and the chapter/arc folders - see readLocalMetadata() for the

@@ -28,6 +28,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
+import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.lifecycleScope
 import com.arkarium.app.ui.ChapterEditorScreen
 import com.arkarium.app.ui.AuthorPageScreen
@@ -55,6 +56,7 @@ import com.arkarium.app.data.Theme
 import com.arkarium.app.data.NovelStatus
 import com.arkarium.app.data.TextChapterContentRepository
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -69,7 +71,12 @@ sealed class Screen {
     // card) instead of always landing back on Home.
     data class Author(val authorId: String, val from: Screen) : Screen()
     object Settings : Screen()
-    object FictionBrowse : Screen()
+    // initialQuery seeds FictionBrowseScreen's own search field - see Home's onSearch
+    // below. Previously this was `object FictionBrowse`, so the text typed into Home's
+    // search bar had nowhere to go and was silently discarded on navigation; the browse
+    // screen always opened with an empty query even though its own title/author filter
+    // already worked fine once you retyped it there.
+    data class FictionBrowse(val initialQuery: String = "") : Screen()
     object PrivacyPolicy : Screen()
     object TermsAndConditions : Screen()
 }
@@ -150,13 +157,41 @@ class MainActivity : ComponentActivity() {
         uri?.let { selectedUri ->
             contentResolver.takePersistableUriPermission(selectedUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             lifecycleScope.launch {
+                // Picking a folder here only ever happens once "Use custom folder" is on
+                // (see SettingsScreen) - persisting it true here too is just defensive:
+                // it keeps this the single source of truth for "which folder did the user
+                // pick" even if some future caller ever launches pickFolder before the
+                // toggle has been flipped.
+                prefsManager.setUseCustomFolder(true)
                 prefsManager.setLibraryUri(selectedUri.toString())
-                startScan(selectedUri)
+                // Switching to a newly-picked folder mints entirely different novel IDs
+                // (see ScannerImpl's id hash, keyed off root.uri) - clear first so the
+                // reconciliation in startScan's onScanCompleted doesn't have to wait for a
+                // second scan pass to drop the old source's now-stale novels.
+                novels.clear()
+                startScan(DocumentFile.fromTreeUri(this@MainActivity, selectedUri) ?: return@launch)
             }
         }
     }
 
-    private suspend fun startScan(treeUri: Uri) {
+    // Resolves whichever DocumentFile root the scanner should currently read from.
+    // - Custom folder OFF (the default): the app's own private external-storage folder,
+    //   e.g. Android/data/com.arkarium.app/files - readable/writable with zero permission
+    //   prompts on every Android version, so a fresh install has a working library the
+    //   moment novel folders are dropped in there, no SAF picker interaction required.
+    // - Custom folder ON: the SAF tree the user picked in Settings, or null if they've
+    //   turned the toggle on but haven't picked a folder yet (caller should leave the
+    //   library empty and let EmptyLibraryPrompt/Settings prompt them to pick one).
+    private fun resolveLibraryRoot(useCustomFolder: Boolean, savedUri: String?): DocumentFile? {
+        if (useCustomFolder) {
+            val uri = savedUri?.let { Uri.parse(it) } ?: return null
+            return DocumentFile.fromTreeUri(this, uri)
+        }
+        val defaultDir = (getExternalFilesDir(null) ?: filesDir).also { it.mkdirs() }
+        return DocumentFile.fromFile(defaultDir)
+    }
+
+    private suspend fun startScan(root: DocumentFile) {
         // startScan runs unattended on every app launch once a library folder has been
         // picked once (see the libraryUri.collect below), with no user interaction in
         // between. ScannerImpl already fails soft on SAF errors (revoked permissions,
@@ -171,7 +206,7 @@ class MainActivity : ComponentActivity() {
         // seenChapterIds/seenArcIds already make for a single skipped item.
         val seenNovelIds = mutableSetOf<String>()
         try {
-            scanner.scanRoot(treeUri,
+            scanner.scanRoot(root,
                 onDiscovered = { scanned, novelFolder ->
                     try {
                         // scanRoot builds a fresh NovelEntity every scan - pageSize and
@@ -527,23 +562,28 @@ class MainActivity : ComponentActivity() {
             return
         }
 
-        // Restore saved library URI and auto-scan. This runs unattended on every launch
-        // once a library has been picked once, before the user has touched anything -
+        // Auto-scan on every cold launch, before the user has touched anything.
+        // Custom folder OFF (the default): always resolves to the app's private storage
+        // folder, so this runs and populates the library with zero user interaction ever
+        // required. Custom folder ON: resolves to the saved SAF tree, or null if the
+        // toggle is on but nothing's been picked yet - in which case this deliberately
+        // does nothing and leaves EmptyLibraryPrompt/Settings to prompt for a folder.
         // startScan() already fails soft internally, but this outer catch is the last
-        // line of defense so that literally nothing thrown on this path (a malformed
-        // saved URI via Uri.parse, an unexpected DB error, etc) can crash the app on
-        // startup. An uncaught exception here previously did exactly that.
+        // line of defense so that literally nothing thrown on this path (an unexpected DB
+        // error, a revoked SAF grant surfacing oddly, etc) can crash the app on startup.
+        // An uncaught exception here previously did exactly that.
         lifecycleScope.launch {
-            prefsManager.libraryUri.collect { uri ->
-                if (uri != null && novels.isEmpty()) {
-                    try {
-                        startScan(Uri.parse(uri))
-                    } catch (e: Exception) {
-                        scanProgress.value = null
-                        scanMessage.value = "Couldn't load your library: ${e.message}"
+            combine(prefsManager.useCustomFolder, prefsManager.libraryUri) { useCustom, uri -> useCustom to uri }
+                .collect { (useCustom, uri) ->
+                    if (novels.isEmpty()) {
+                        try {
+                            resolveLibraryRoot(useCustom, uri)?.let { startScan(it) }
+                        } catch (e: Exception) {
+                            scanProgress.value = null
+                            scanMessage.value = "Couldn't load your library: ${e.message}"
+                        }
                     }
                 }
-            }
         }
 
         // Watch theme preference
@@ -636,6 +676,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize()
                 ) {
                     val savedUri = prefsManager.libraryUri.collectAsState(initial = null)
+                    val useCustomFolder = prefsManager.useCustomFolder.collectAsState(initial = false)
 
                     when (currentScreen.value) {
                         is Screen.Home -> {
@@ -673,20 +714,27 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                onBrowseClick = { currentScreen.value = Screen.FictionBrowse },
+                                onBrowseClick = { currentScreen.value = Screen.FictionBrowse() },
                                 onSettingsClick = { currentScreen.value = Screen.Settings },
                                 onSearch = { query ->
                                     if (query.isNotEmpty()) {
-                                        currentScreen.value = Screen.FictionBrowse
+                                        currentScreen.value = Screen.FictionBrowse(initialQuery = query)
                                     }
                                 },
-                                onSelectFolderClick = { pickFolder.launch(null) }
+                                // The library now works out of the box against the app's
+                                // default private storage folder (see resolveLibraryRoot),
+                                // so this no longer needs to be a first-run dead-end fix -
+                                // it just routes to Settings, the single place "Use custom
+                                // folder" and the SAF picker now live.
+                                onSelectFolderClick = { currentScreen.value = Screen.Settings }
                             )
                         }
 
                         is Screen.FictionBrowse -> {
+                            val browse = currentScreen.value as Screen.FictionBrowse
                             FictionBrowseScreen(
                                 novels = novels,
+                                initialQuery = browse.initialQuery,
                                 onNovelSelected = { novel ->
                                     lifecycleScope.launch {
                                         loadNovelDetails(novel)
@@ -837,29 +885,48 @@ class MainActivity : ComponentActivity() {
                         is Screen.Settings -> {
                             SettingsScreen(
                                 currentTheme = currentTheme.value,
-                                hasLibrary = savedUri.value != null,
+                                useCustomFolder = useCustomFolder.value,
+                                hasCustomFolderSelected = savedUri.value != null,
                                 onThemeSelected = { theme ->
                                     lifecycleScope.launch {
                                         prefsManager.setTheme(theme)
                                     }
                                 },
+                                onUseCustomFolderToggle = { enabled ->
+                                    lifecycleScope.launch {
+                                        prefsManager.setUseCustomFolder(enabled)
+                                        // Switching sources mints different novel IDs (see
+                                        // ScannerImpl's id hash, keyed off root.uri) - clear
+                                        // first so the old source's novels don't linger
+                                        // alongside the new source's until the next scan's
+                                        // reconciliation pass catches up.
+                                        novels.clear()
+                                        // Turning custom folder ON with nothing picked yet
+                                        // resolves to null here by design - leave the
+                                        // library empty and let the "Select Folder" button
+                                        // below (or EmptyLibraryPrompt on Home) start the
+                                        // picker instead of scanning anything.
+                                        resolveLibraryRoot(enabled, savedUri.value)?.let { startScan(it) }
+                                    }
+                                },
+                                onSelectFolderClick = { pickFolder.launch(null) },
                                 onRescan = {
-                                    val currentUri = savedUri.value
-                                    if (currentUri != null) {
-                                        lifecycleScope.launch {
-                                            // No novels.clear() here - see bugs.md Bug 4.
-                                            // startScan's onScanCompleted now reconciles
-                                            // stale novels against the DB once the scan
-                                            // actually finishes, instead of blanking the
-                                            // visible library up front and hoping the scan
-                                            // fully repopulates it.
-                                            startScan(Uri.parse(currentUri))
+                                    lifecycleScope.launch {
+                                        // No novels.clear() here - see bugs.md Bug 4.
+                                        // startScan's onScanCompleted now reconciles
+                                        // stale novels against the DB once the scan
+                                        // actually finishes, instead of blanking the
+                                        // visible library up front and hoping the scan
+                                        // fully repopulates it.
+                                        val root = resolveLibraryRoot(useCustomFolder.value, savedUri.value)
+                                        if (root != null) {
+                                            startScan(root)
+                                        } else {
+                                            // Custom folder is on but nothing's been picked
+                                            // yet - "Rescan" would otherwise silently do
+                                            // nothing here. Send the user to the picker.
+                                            pickFolder.launch(null)
                                         }
-                                    } else {
-                                        // No library selected yet - "Rescan" would previously
-                                        // silently do nothing here. Send the user to the
-                                        // picker instead.
-                                        pickFolder.launch(null)
                                     }
                                 },
                                 onPrivacyPolicy = { currentScreen.value = Screen.PrivacyPolicy },
