@@ -59,7 +59,7 @@ object FictionLut {
     // Smart-quote / smart-apostrophe variants that autocorrect commonly substitutes for
     // their plain ASCII equivalents - folded before comparison so a curly apostrophe
     // from a phone keyboard doesn't produce a spurious "not found" (see
-    // docs/NEXT_FIXES.md #3). NFKD alone doesn't touch these: Unicode decomposes
+    // docs/arkarium/NEXT_FIXES.md #3). NFKD alone doesn't touch these: Unicode decomposes
     // accented letters into base+combining-mark pairs, but a curly quote has no such
     // decomposition - it's simply a different codepoint from its straight-quote cousin.
     private val quoteVariants = mapOf(
@@ -69,7 +69,7 @@ object FictionLut {
 
     // Punctuation stripped before comparison - commas/colons/periods are exactly the
     // kind of thing a user typing a title from memory is likely to drop or misplace
-    // (see docs/NEXT_FIXES.md #3's "Summoned By Mistake..." example). Deliberately not
+    // (see docs/arkarium/NEXT_FIXES.md #3's "Summoned By Mistake..." example). Deliberately not
     // stripping apostrophes/hyphens: those are usually load-bearing within a word
     // ("Mistake I Decided" vs "Mistake, I Decided" reads the same without the comma,
     // but "Rae ARK's" vs "Rae ARKs" doesn't).
@@ -101,7 +101,7 @@ object FictionLut {
 
     // Every (display name, slug) pair in the LUT - i.e. every fiction ARKarium's relay
     // currently serves. The relay only ever hosts Rae ARK's own fictions (see
-    // docs/SYNC_MVP.md and tools/gen_fiction_lut.py), so this doubles as "all of Rae
+    // docs/arkarium/SYNC_MVP.md and tools/gen_fiction_lut.py), so this doubles as "all of Rae
     // ARK's novels" for the home screen's empty-library "Sync all Rae ARK's novels"
     // action - there's no separate per-author filter because there's only one author.
     fun allEntries(context: Context): List<Pair<String, String>> {

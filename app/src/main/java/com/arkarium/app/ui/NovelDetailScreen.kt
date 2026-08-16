@@ -80,7 +80,7 @@ fun NovelDetailScreen(
     // Non-null only offered to the caller when novel.syncSourceUrl is set - a purely
     // local novel (the common case) has nothing to check for updates against, so the
     // action is left off the app bar entirely rather than shown disabled (see
-    // docs/SYNC_MVP.md, Stage 3).
+    // docs/arkarium/SYNC_MVP.md, Stage 3).
     onSyncClick: (() -> Unit)? = null
 ) {
     val selectedTabIndex = remember { mutableIntStateOf(0) }

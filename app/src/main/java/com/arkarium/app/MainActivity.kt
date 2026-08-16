@@ -98,7 +98,7 @@ sealed class MetadataSearchState {
     data class Error(val novel: NovelEntity, val message: String) : MetadataSearchState()
 }
 
-// Drives the "Add fiction" dialog from the home screen icon (see docs/SYNC_MVP.md,
+// Drives the "Add fiction" dialog from the home screen icon (see docs/arkarium/SYNC_MVP.md,
 // Stage 3, and the later move to single-origin name lookup via FictionLut). Hidden =
 // dialog not shown at all; EnteringName = dialog shown with an empty field and nothing
 // in flight yet.
@@ -109,7 +109,7 @@ sealed class AddFictionState {
     data class Error(val message: String) : AddFictionState()
 }
 
-// Drives "Sync all Rae ARK's novels" (see docs/SYNC_MVP.md, Stage 3, and
+// Drives "Sync all Rae ARK's novels" (see docs/arkarium/SYNC_MVP.md, Stage 3, and
 // EmptyLibraryPrompt in HomeScreen.kt). Idle = dialog hidden. Reuses SyncProgressDialog
 // (originally built for one novel's "check for updates" pass) by treating the whole
 // batch as a single progress stream - it's the same shape (loading -> done/error), just
@@ -122,7 +122,7 @@ sealed class SyncAllState {
 }
 
 // Drives the "Check for updates" progress dialog from NovelDetailScreen (see
-// docs/SYNC_MVP.md, Stage 3). Idle = dialog hidden.
+// docs/arkarium/SYNC_MVP.md, Stage 3). Idle = dialog hidden.
 sealed class SyncCheckState {
     object Idle : SyncCheckState()
     data class InProgress(val novel: NovelEntity, val message: String) : SyncCheckState()
@@ -130,7 +130,7 @@ sealed class SyncCheckState {
     data class Error(val novel: NovelEntity, val message: String) : SyncCheckState()
 }
 
-// See docs/NEXT_FIXES.md #2. Drives SyncResolutionDialog, shown when checkForUpdates
+// See docs/arkarium/NEXT_FIXES.md #2. Drives SyncResolutionDialog, shown when checkForUpdates
 // hits a situation that shouldn't be resolved silently in either direction: the
 // synced novel's local folder is gone (MISSING_LOCALLY - resolved by resyncing or
 // removing the novel) or the relay no longer serves it (SOURCE_GONE - resolved by
@@ -254,7 +254,7 @@ class MainActivity : ComponentActivity() {
     // readingStatus, remote-metadata fields once a "Fetch info" lookup has run) -
     // see the long comment this was pulled out of below for the full field-by-field
     // rationale. Shared by startScan's onDiscovered and scanSingleSyncedNovel (see
-    // docs/NEXT_FIXES.md #4) so both a full-library rescan and a scoped single-novel
+    // docs/arkarium/NEXT_FIXES.md #4) so both a full-library rescan and a scoped single-novel
     // sync scan apply the exact same merge rules.
     private fun mergeNovelForRescan(scanned: NovelEntity, existing: NovelEntity?): NovelEntity {
         if (existing == null) return scanned
@@ -288,7 +288,7 @@ class MainActivity : ComponentActivity() {
         // outright, the same way `coverUri` already does by simply not appearing in it.
     }
 
-    // Scoped counterpart to startScan (see docs/NEXT_FIXES.md #4): runs the exact same
+    // Scoped counterpart to startScan (see docs/arkarium/NEXT_FIXES.md #4): runs the exact same
     // discover -> merge -> upsert -> scanChaptersForNovel sequence startScan's
     // onDiscovered callback runs per-novel, but for exactly one already-known folder,
     // via ScannerImpl.scanSingleNovel instead of a full scanRoot() pass. Used by
@@ -353,7 +353,7 @@ class MainActivity : ComponentActivity() {
                         // actually run for this novel - would let a rescan clobber that
                         // curated remote data with an empty/stale local metadata.json. See
                         // mergeNovelForRescan above for the full field-by-field rationale
-                        // (shared with scanSingleSyncedNovel, docs/NEXT_FIXES.md #4).
+                        // (shared with scanSingleSyncedNovel, docs/arkarium/NEXT_FIXES.md #4).
                         val existing = db.novelDao().findById(scanned.id)
                         val novel = mergeNovelForRescan(scanned, existing)
                         db.novelDao().upsert(novel)
@@ -400,7 +400,7 @@ class MainActivity : ComponentActivity() {
                     // see ScannerImpl.scanRoot), means the UI only ever loses a novel
                     // when this scan actually confirmed its folder is gone.
                     //
-                    // See docs/NEXT_FIXES.md #2: a synced novel (syncSourceUrl != null)
+                    // See docs/arkarium/NEXT_FIXES.md #2: a synced novel (syncSourceUrl != null)
                     // whose folder disappeared used to hit this same cascade-delete as a
                     // purely-local novel, silently dropping the whole novel - reading
                     // history, overrides, everything - the moment its folder went missing
@@ -583,7 +583,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Kicks off "Add fiction" end to end (see docs/SYNC_MVP.md §4/Stage 3, and the
+    // Kicks off "Add fiction" end to end (see docs/arkarium/SYNC_MVP.md §4/Stage 3, and the
     // later move to single-origin name lookup): resolves the typed name to a slug via
     // FictionLut, builds the one relay's URL for it, downloads every file the relay's
     // manifest.json lists into a fresh folder under the active library root, then runs
@@ -638,7 +638,7 @@ class MainActivity : ComponentActivity() {
     // addFictionByName above - this is just that same flow run in a loop with one
     // shared progress dialog instead of one dialog per fiction.
     //
-    // Two differences from the original version (see docs/NEXT_FIXES.md #4 and #2):
+    // Two differences from the original version (see docs/arkarium/NEXT_FIXES.md #4 and #2):
     //
     // - Each iteration now calls scanSingleSyncedNovel (scoped to just the one
     //   just-downloaded folder) instead of a full startScan() pass. The old version's
@@ -684,7 +684,7 @@ class MainActivity : ComponentActivity() {
                         val novelId = UUID.nameUUIDFromBytes(
                             (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
                         ).toString()
-                        // Scoped scan of just this fiction's folder (see docs/NEXT_FIXES.md
+                        // Scoped scan of just this fiction's folder (see docs/arkarium/NEXT_FIXES.md
                         // #4) - shows up in the library as soon as it's done, same as
                         // before, without re-scanning every other already-synced novel.
                         scanSingleSyncedNovel(libraryRoot, folder) { message ->
@@ -721,18 +721,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Re-syncs an already-added fiction against its relay (see docs/SYNC_MVP.md, Stage
+    // Re-syncs an already-added fiction against its relay (see docs/arkarium/SYNC_MVP.md, Stage
     // 3). SyncManager.sync's SyncOutcome.files is documented as the complete new file
     // set, not a delta (see SyncManager.kt) - so on a real change this replaces
     // SyncedFileEntity wholesale rather than patching it, and only re-runs startScan
     // when something actually changed, so an "already up to date" check stays a single
-    // manifest fetch instead of paying for a full rescan every time (docs/SYNC_MVP.md
+    // manifest fetch instead of paying for a full rescan every time (docs/arkarium/SYNC_MVP.md
     // "Future considerations" #5).
     // `allowRecreateMissingFolder` is only ever true when the user has explicitly
     // confirmed it via the sync-resolution dialog (see syncResolutionState below) -
     // an automatic/background-triggered call always leaves it false, so a missing
     // local folder surfaces as a NeedsResolution prompt instead of a silent
-    // redownload (see docs/NEXT_FIXES.md #2 and SyncManager.sync's own doc comment).
+    // redownload (see docs/arkarium/NEXT_FIXES.md #2 and SyncManager.sync's own doc comment).
     private fun checkForUpdates(
         novel: NovelEntity,
         libraryRoot: DocumentFile,
@@ -773,7 +773,7 @@ class MainActivity : ComponentActivity() {
                     if (outcome.changed) "Updated to the latest version." else "Already up to date."
                 )
             } catch (e: MissingLocalFolderException) {
-                // See docs/NEXT_FIXES.md #2: don't silently redownload and don't silently
+                // See docs/arkarium/NEXT_FIXES.md #2: don't silently redownload and don't silently
                 // drop the novel either - ask the user via syncResolutionState.
                 db.novelDao().updateSyncStatus(novel.id, SyncStatus.MISSING_LOCALLY.name)
                 val updated = db.novelDao().findById(novel.id)
@@ -788,7 +788,7 @@ class MainActivity : ComponentActivity() {
                     updated ?: novel, SyncResolutionReason.MISSING_LOCALLY
                 )
             } catch (e: SourceGoneException) {
-                // See docs/NEXT_FIXES.md #2: distinguishable from a generic network
+                // See docs/arkarium/NEXT_FIXES.md #2: distinguishable from a generic network
                 // failure so the prompt can say what's actually true - the source is
                 // gone, not just unreachable right now. Local content stays readable.
                 db.novelDao().updateSyncStatus(novel.id, SyncStatus.SOURCE_GONE.name)
@@ -811,7 +811,7 @@ class MainActivity : ComponentActivity() {
 
     // Resolution actions offered from SyncResolutionDialog once checkForUpdates hits a
     // MissingLocalFolderException or SourceGoneException (see above and
-    // docs/NEXT_FIXES.md #2). All three are explicit, user-triggered choices - none of
+    // docs/arkarium/NEXT_FIXES.md #2). All three are explicit, user-triggered choices - none of
     // them ever fire automatically.
 
     // "Sync again": the user has confirmed they want the folder recreated and the
@@ -1414,7 +1414,7 @@ class MainActivity : ComponentActivity() {
                 }
 
                 // "Add fiction" (home screen icon) and "Check for updates"
-                // (NovelDetailScreen) - see docs/SYNC_MVP.md, Stage 3, and the later
+                // (NovelDetailScreen) - see docs/arkarium/SYNC_MVP.md, Stage 3, and the later
                 // move to single-origin name lookup via FictionLut.
                 when (val state = addFictionState.value) {
                     AddFictionState.Hidden -> {}
@@ -1529,7 +1529,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // See docs/NEXT_FIXES.md #2 - offered whenever checkForUpdates hits a
+                // See docs/arkarium/NEXT_FIXES.md #2 - offered whenever checkForUpdates hits a
                 // missing-local-folder or source-gone situation, in place of silently
                 // resolving either one.
                 when (val state = syncResolutionState.value) {

@@ -161,7 +161,7 @@ The protocol should remain simple regardless of implementation.
 
 # Manifests and synchronization
 
-> See `docs/SYNC_MVP.md` for the cut-down, currently-being-built version of
+> See `docs/arkarium/SYNC_MVP.md` for the cut-down, currently-being-built version of
 > this: single-origin only, no relay chain, no auth — just manifest fetch,
 > hash diff, and reusing the existing folder scanner.
 
