@@ -65,7 +65,6 @@ fun SettingsScreen(
     onUseCustomFolderToggle: (Boolean) -> Unit,
     onSelectFolderClick: () -> Unit,
     onRescan: () -> Unit,
-    onAddFromUrlClick: () -> Unit,
     onPrivacyPolicy: () -> Unit,
     onTermsAndConditions: () -> Unit,
     onBack: () -> Unit
@@ -136,27 +135,6 @@ fun SettingsScreen(
                     .padding(top = 12.dp)
             ) {
                 Text("Rescan Library")
-            }
-
-            Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
-
-            // Direct author-to-reader sync (see docs/SYNC_MVP.md) - a separate section
-            // from Library above since it adds a novel to whichever source is active
-            // rather than choosing the source itself.
-            Text("Sync", modifier = Modifier.padding(bottom = 8.dp))
-            Text(
-                "Add a fiction that's kept up to date from a relay, instead of a " +
-                    "folder you manage yourself.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
-            Button(
-                onClick = onAddFromUrlClick,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-            ) {
-                Text("Add fiction from URL")
             }
 
             Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))

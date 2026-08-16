@@ -65,6 +65,15 @@ object SyncPaths {
 fun sha256Hex(bytes: ByteArray): String =
     MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
+// ARKarium only ever syncs from this one relay now - "Add fiction from URL" (any
+// origin) has been replaced by "Add fiction by name" (this origin only, slug looked
+// up via FictionLut). A per-fiction base URL is still `"$RELAY_HOST$slug/"`; the rest
+// of SyncManager doesn't care where a baseUrl came from, so this is the only place
+// that needed to change to make the whole client single-origin.
+const val RELAY_HOST = "https://novels.horizonarkstudio.workers.dev/"
+
+fun relayBaseUrlForSlug(slug: String): String = "$RELAY_HOST$slug/"
+
 // Talks to a relay: fetches and parses manifest.json, downloads individual files.
 // Plain HttpURLConnection on Dispatchers.IO, same convention as
 // GoogleBooksMetadataProvider - no new HTTP client dependency for one GET-only use case.
@@ -212,7 +221,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
             ?: libraryRoot.createDirectory(slug)
             ?: throw IOException("Could not create a folder for this fiction")
 
-        val records = downloadManifestFiles(baseUrl, manifest, folder, existing = emptyList(), onProgress)
+        val records = downloadManifestFiles(baseUrl, manifest, folder, libraryRoot, existing = emptyList(), onProgress)
         slug to SyncOutcome(newVersion = manifest.version, files = records, changed = true)
     }
 
@@ -242,7 +251,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
             ?: libraryRoot.createDirectory(slugForUrl(baseUrl))
             ?: throw IOException("Could not find or recreate this fiction's folder")
 
-        val records = downloadManifestFiles(baseUrl, manifest, folder, existing = knownFiles, onProgress)
+        val records = downloadManifestFiles(baseUrl, manifest, folder, libraryRoot, existing = knownFiles, onProgress)
 
         // Delete local files the new manifest no longer lists (docs/SYNC_MVP.md
         // "Future considerations" #1) - only ever files previously tracked in
@@ -253,7 +262,14 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         val removed = knownFiles.filterNot { it.relativePath in newPaths }
         for (stale in removed) {
             onProgress("Removing ${stale.relativePath}...")
-            deleteRelativePath(folder, stale.relativePath)
+            // authors/... entries were written under libraryRoot itself (see
+            // downloadManifestFiles below), not under this novel's own folder - route
+            // the deletion to whichever root actually holds the file.
+            if (stale.relativePath.startsWith("authors/")) {
+                deleteRelativePath(libraryRoot, stale.relativePath)
+            } else {
+                deleteRelativePath(folder, stale.relativePath)
+            }
         }
 
         SyncOutcome(newVersion = manifest.version, files = records, changed = true)
@@ -272,6 +288,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         baseUrl: String,
         manifest: Manifest,
         folder: DocumentFile,
+        libraryRoot: DocumentFile,
         existing: List<SyncedFileEntity>,
         onProgress: suspend (message: String) -> Unit
     ): List<SyncedFileEntity> {
@@ -289,7 +306,16 @@ class SyncManager(private val context: Context, private val client: SyncClient =
             if (actualHash != entry.sha256) {
                 throw IOException("Hash mismatch for ${entry.relativePath} - download corrupted or manifest is stale")
             }
-            writeRelativePath(folder, entry.relativePath, bytes)
+            // ScannerImpl.findAuthorsFolder only ever looks for "authors" as a direct
+            // child of the library root, not inside a per-novel folder - so an
+            // "authors/..." manifest entry has to land at libraryRoot/authors/... to
+            // ever be picked up as a real author profile, not folder/authors/....
+            // Everything else stays scoped to this novel's own folder, same as before.
+            if (entry.relativePath.startsWith("authors/")) {
+                writeRelativePath(libraryRoot, entry.relativePath, bytes)
+            } else {
+                writeRelativePath(folder, entry.relativePath, bytes)
+            }
             records.add(
                 SyncedFileEntity(
                     novelId = "",  // filled in by the caller once the real novel id is known

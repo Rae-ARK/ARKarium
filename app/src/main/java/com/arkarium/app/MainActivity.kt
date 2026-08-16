@@ -35,7 +35,7 @@ import com.arkarium.app.ui.AuthorPageScreen
 import com.arkarium.app.ui.HomeScreen
 import com.arkarium.app.ui.LegalContent
 import com.arkarium.app.ui.LegalDocumentScreen
-import com.arkarium.app.ui.AddFictionFromUrlDialog
+import com.arkarium.app.ui.AddFictionByNameDialog
 import com.arkarium.app.ui.MetadataSearchDialog
 import com.arkarium.app.ui.NovelDetailScreen
 import com.arkarium.app.ui.ReaderScreen
@@ -55,6 +55,8 @@ import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.SyncManager
+import com.arkarium.app.data.FictionLut
+import com.arkarium.app.data.relayBaseUrlForSlug
 import com.arkarium.app.data.Theme
 import com.arkarium.app.data.NovelStatus
 import com.arkarium.app.data.TextChapterContentRepository
@@ -92,14 +94,27 @@ sealed class MetadataSearchState {
     data class Error(val novel: NovelEntity, val message: String) : MetadataSearchState()
 }
 
-// Drives the "Add fiction from URL" dialog from Settings (see docs/SYNC_MVP.md, Stage
-// 3). Hidden = dialog not shown at all; EnteringUrl = dialog shown with an empty field
-// and nothing in flight yet.
-sealed class AddFromUrlState {
-    object Hidden : AddFromUrlState()
-    object EnteringUrl : AddFromUrlState()
-    data class InProgress(val message: String) : AddFromUrlState()
-    data class Error(val message: String) : AddFromUrlState()
+// Drives the "Add fiction" dialog from the home screen icon (see docs/SYNC_MVP.md,
+// Stage 3, and the later move to single-origin name lookup via FictionLut). Hidden =
+// dialog not shown at all; EnteringName = dialog shown with an empty field and nothing
+// in flight yet.
+sealed class AddFictionState {
+    object Hidden : AddFictionState()
+    object EnteringName : AddFictionState()
+    data class InProgress(val message: String) : AddFictionState()
+    data class Error(val message: String) : AddFictionState()
+}
+
+// Drives "Sync all Rae ARK's novels" (see docs/SYNC_MVP.md, Stage 3, and
+// EmptyLibraryPrompt in HomeScreen.kt). Idle = dialog hidden. Reuses SyncProgressDialog
+// (originally built for one novel's "check for updates" pass) by treating the whole
+// batch as a single progress stream - it's the same shape (loading -> done/error), just
+// with a "1/5: ..." style message instead of a single file's.
+sealed class SyncAllState {
+    object Idle : SyncAllState()
+    data class InProgress(val message: String) : SyncAllState()
+    data class Done(val message: String) : SyncAllState()
+    data class Error(val message: String) : SyncAllState()
 }
 
 // Drives the "Check for updates" progress dialog from NovelDetailScreen (see
@@ -167,7 +182,8 @@ class MainActivity : ComponentActivity() {
     private val scanProgress = mutableStateOf<Pair<Int, Int>?>(null)  // (current, total) or null if not scanning
     private val scanMessage = mutableStateOf("")
     private val metadataSearchState = mutableStateOf<MetadataSearchState>(MetadataSearchState.Idle)
-    private val addFromUrlState = mutableStateOf<AddFromUrlState>(AddFromUrlState.Hidden)
+    private val addFictionState = mutableStateOf<AddFictionState>(AddFictionState.Hidden)
+    private val syncAllState = mutableStateOf<SyncAllState>(SyncAllState.Idle)
     private val syncCheckState = mutableStateOf<SyncCheckState>(SyncCheckState.Idle)
     private lateinit var db: AppDatabase
     private lateinit var scanner: ScannerImpl
@@ -483,28 +499,36 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Kicks off "Add fiction from URL" end to end (see docs/SYNC_MVP.md §4/Stage 3):
-    // downloads every file the relay's manifest.json lists into a fresh folder under
-    // the active library root, then runs the exact same startScan() pass every other
-    // novel goes through so the new folder is discovered the normal way - no separate
-    // "remote novel" render path. The folder's eventual novel id isn't known until that
-    // scan assigns it, so this recomputes ScannerImpl's own id formula
+    // Kicks off "Add fiction" end to end (see docs/SYNC_MVP.md §4/Stage 3, and the
+    // later move to single-origin name lookup): resolves the typed name to a slug via
+    // FictionLut, builds the one relay's URL for it, downloads every file the relay's
+    // manifest.json lists into a fresh folder under the active library root, then runs
+    // the exact same startScan() pass every other novel goes through so the new folder
+    // is discovered the normal way - no separate "remote novel" render path. The
+    // folder's eventual novel id isn't known until that scan assigns it, so this
+    // recomputes ScannerImpl's own id formula
     // (UUID.nameUUIDFromBytes(root.uri + ":" + folder.uri)) rather than guessing, and
     // only attaches the sync bookkeeping (SyncedFileEntity rows, NovelDao.updateSyncState)
     // once the scan has actually run and that id is confirmed to exist.
-    private fun addFictionFromUrl(url: String, libraryRoot: DocumentFile) {
-        addFromUrlState.value = AddFromUrlState.InProgress("Fetching manifest...")
+    private fun addFictionByName(name: String, libraryRoot: DocumentFile) {
+        val slug = FictionLut.lookup(this, name)
+        if (slug == null) {
+            addFictionState.value = AddFictionState.Error("Couldn't find a fiction called \"$name\".")
+            return
+        }
+        val url = relayBaseUrlForSlug(slug)
+        addFictionState.value = AddFictionState.InProgress("Fetching manifest...")
         lifecycleScope.launch {
             try {
-                val (slug, outcome) = syncManager.downloadInitial(url, libraryRoot) { message ->
+                val (folderSlug, outcome) = syncManager.downloadInitial(url, libraryRoot) { message ->
                     withContext(Dispatchers.Main) {
-                        addFromUrlState.value = AddFromUrlState.InProgress(message)
+                        addFictionState.value = AddFictionState.InProgress(message)
                     }
                 }
                 withContext(Dispatchers.Main) {
-                    addFromUrlState.value = AddFromUrlState.InProgress("Adding to your library...")
+                    addFictionState.value = AddFictionState.InProgress("Adding to your library...")
                 }
-                val folder = libraryRoot.findFile(slug)
+                val folder = libraryRoot.findFile(folderSlug)
                     ?: throw java.io.IOException("The downloaded fiction folder went missing before it could be scanned")
                 val novelId = UUID.nameUUIDFromBytes(
                     (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
@@ -517,9 +541,62 @@ class MainActivity : ComponentActivity() {
                     val idx = novels.indexOfFirst { it.id == updated.id }
                     if (idx >= 0) novels[idx] = updated
                 }
-                addFromUrlState.value = AddFromUrlState.Hidden
+                addFictionState.value = AddFictionState.Hidden
             } catch (e: Exception) {
-                addFromUrlState.value = AddFromUrlState.Error("Couldn't add this fiction: ${e.message}")
+                addFictionState.value = AddFictionState.Error("Couldn't add this fiction: ${e.message}")
+            }
+        }
+    }
+
+    // "Sync all Rae ARK's novels" (EmptyLibraryPrompt's primary first-run action, see
+    // HomeScreen.kt). Downloads every fiction FictionLut.allEntries lists, one after
+    // another, reusing exactly the same per-fiction download/scan/persist steps as
+    // addFictionByName above - this is just that same flow run in a loop with one
+    // shared progress dialog instead of one dialog per fiction. A single fiction
+    // failing partway through is reported and stops the batch rather than silently
+    // skipping ahead, so a real relay problem (not just "already added") is never
+    // masked by finishing everything else.
+    private fun syncAllRaeArkNovels(libraryRoot: DocumentFile) {
+        val entries = FictionLut.allEntries(this)
+        if (entries.isEmpty()) {
+            syncAllState.value = SyncAllState.Error("No fictions are listed to sync.")
+            return
+        }
+        syncAllState.value = SyncAllState.InProgress("Starting...")
+        lifecycleScope.launch {
+            try {
+                entries.forEachIndexed { index, (displayName, slug) ->
+                    val url = relayBaseUrlForSlug(slug)
+                    withContext(Dispatchers.Main) {
+                        syncAllState.value =
+                            SyncAllState.InProgress("${index + 1}/${entries.size}: Fetching \"$displayName\"...")
+                    }
+                    val (folderSlug, outcome) = syncManager.downloadInitial(url, libraryRoot) { message ->
+                        withContext(Dispatchers.Main) {
+                            syncAllState.value =
+                                SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message")
+                        }
+                    }
+                    val folder = libraryRoot.findFile(folderSlug)
+                        ?: throw java.io.IOException("\"$displayName\" went missing before it could be scanned")
+                    val novelId = UUID.nameUUIDFromBytes(
+                        (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
+                    ).toString()
+                    // Scan once per fiction (rather than once at the very end) so each
+                    // one shows up in the library as soon as it's done, instead of the
+                    // whole list appearing to hang until the last download finishes.
+                    startScan(libraryRoot)
+                    db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
+                    db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis())
+                    val updated = db.novelDao().findById(novelId)
+                    if (updated != null) {
+                        val idx = novels.indexOfFirst { it.id == updated.id }
+                        if (idx >= 0) novels[idx] = updated
+                    }
+                }
+                syncAllState.value = SyncAllState.Done("Synced ${entries.size} novel(s).")
+            } catch (e: Exception) {
+                syncAllState.value = SyncAllState.Error("Sync stopped: ${e.message}")
             }
         }
     }
@@ -841,7 +918,17 @@ class MainActivity : ComponentActivity() {
                                 // so this no longer needs to be a first-run dead-end fix -
                                 // it just routes to Settings, the single place "Use custom
                                 // folder" and the SAF picker now live.
-                                onSelectFolderClick = { currentScreen.value = Screen.Settings }
+                                onSelectFolderClick = { currentScreen.value = Screen.Settings },
+                                onAddFictionClick = { addFictionState.value = AddFictionState.EnteringName },
+                                onSyncAllClick = {
+                                    val root = resolveLibraryRoot(useCustomFolder.value, savedUri.value)
+                                    if (root != null) {
+                                        syncAllRaeArkNovels(root)
+                                    } else {
+                                        syncAllState.value =
+                                            SyncAllState.Error("No library folder is set up yet - pick one in Settings first.")
+                                    }
+                                }
                             )
                         }
 
@@ -1051,7 +1138,6 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                onAddFromUrlClick = { addFromUrlState.value = AddFromUrlState.EnteringUrl },
                                 onPrivacyPolicy = { currentScreen.value = Screen.PrivacyPolicy },
                                 onTermsAndConditions = { currentScreen.value = Screen.TermsAndConditions },
                                 onBack = { currentScreen.value = Screen.Home }
@@ -1111,29 +1197,30 @@ class MainActivity : ComponentActivity() {
                     is MetadataSearchState.Idle -> {}
                 }
 
-                // "Add fiction from URL" (Settings) and "Check for updates"
-                // (NovelDetailScreen) - see docs/SYNC_MVP.md, Stage 3.
-                when (val state = addFromUrlState.value) {
-                    AddFromUrlState.Hidden -> {}
-                    AddFromUrlState.EnteringUrl -> {
-                        AddFictionFromUrlDialog(
+                // "Add fiction" (home screen icon) and "Check for updates"
+                // (NovelDetailScreen) - see docs/SYNC_MVP.md, Stage 3, and the later
+                // move to single-origin name lookup via FictionLut.
+                when (val state = addFictionState.value) {
+                    AddFictionState.Hidden -> {}
+                    AddFictionState.EnteringName -> {
+                        AddFictionByNameDialog(
                             isLoading = false,
                             progressMessage = "",
                             errorMessage = null,
-                            onConfirm = { url ->
+                            onConfirm = { name ->
                                 val root = resolveLibraryRoot(useCustomFolder.value, savedUri.value)
                                 if (root != null) {
-                                    addFictionFromUrl(url, root)
+                                    addFictionByName(name, root)
                                 } else {
-                                    addFromUrlState.value =
-                                        AddFromUrlState.Error("No library folder is set up yet - pick one in Settings first.")
+                                    addFictionState.value =
+                                        AddFictionState.Error("No library folder is set up yet - pick one in Settings first.")
                                 }
                             },
-                            onDismiss = { addFromUrlState.value = AddFromUrlState.Hidden }
+                            onDismiss = { addFictionState.value = AddFictionState.Hidden }
                         )
                     }
-                    is AddFromUrlState.InProgress -> {
-                        AddFictionFromUrlDialog(
+                    is AddFictionState.InProgress -> {
+                        AddFictionByNameDialog(
                             isLoading = true,
                             progressMessage = state.message,
                             errorMessage = null,
@@ -1141,21 +1228,56 @@ class MainActivity : ComponentActivity() {
                             onDismiss = {}
                         )
                     }
-                    is AddFromUrlState.Error -> {
-                        AddFictionFromUrlDialog(
+                    is AddFictionState.Error -> {
+                        AddFictionByNameDialog(
                             isLoading = false,
                             progressMessage = "",
                             errorMessage = state.message,
-                            onConfirm = { url ->
+                            onConfirm = { name ->
                                 val root = resolveLibraryRoot(useCustomFolder.value, savedUri.value)
                                 if (root != null) {
-                                    addFictionFromUrl(url, root)
+                                    addFictionByName(name, root)
                                 } else {
-                                    addFromUrlState.value =
-                                        AddFromUrlState.Error("No library folder is set up yet - pick one in Settings first.")
+                                    addFictionState.value =
+                                        AddFictionState.Error("No library folder is set up yet - pick one in Settings first.")
                                 }
                             },
-                            onDismiss = { addFromUrlState.value = AddFromUrlState.Hidden }
+                            onDismiss = { addFictionState.value = AddFictionState.Hidden }
+                        )
+                    }
+                }
+
+                // "Sync all Rae ARK's novels" (EmptyLibraryPrompt's primary first-run
+                // action, see HomeScreen.kt / syncAllRaeArkNovels above). Reuses
+                // SyncProgressDialog, same as the per-novel "Check for updates" dialog
+                // below - just with "Rae ARK's novels" standing in for a single title.
+                when (val state = syncAllState.value) {
+                    SyncAllState.Idle -> {}
+                    is SyncAllState.InProgress -> {
+                        SyncProgressDialog(
+                            novelTitle = "Rae ARK's novels",
+                            isLoading = true,
+                            message = state.message,
+                            errorMessage = null,
+                            onDismiss = {}
+                        )
+                    }
+                    is SyncAllState.Done -> {
+                        SyncProgressDialog(
+                            novelTitle = "Rae ARK's novels",
+                            isLoading = false,
+                            message = state.message,
+                            errorMessage = null,
+                            onDismiss = { syncAllState.value = SyncAllState.Idle }
+                        )
+                    }
+                    is SyncAllState.Error -> {
+                        SyncProgressDialog(
+                            novelTitle = "Rae ARK's novels",
+                            isLoading = false,
+                            message = "",
+                            errorMessage = state.message,
+                            onDismiss = { syncAllState.value = SyncAllState.Idle }
                         )
                     }
                 }

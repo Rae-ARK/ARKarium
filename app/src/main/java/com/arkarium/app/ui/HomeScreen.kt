@@ -22,7 +22,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
 import coil.compose.AsyncImage
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -66,7 +66,20 @@ fun HomeScreen(
     // reachable via "back" from NovelDetail/Reader - which themselves require novels to
     // already exist. New installs had no way in. This callback gives Home a direct entry
     // point to the picker so that dead end can't happen again.
-    onSelectFolderClick: () -> Unit = {}
+    // Still only reachable from EmptyLibraryPrompt now (see below) - the top bar's own
+    // folder icon was repurposed for onAddFictionClick, so this param stays but isn't
+    // wired to the top bar anymore.
+    onSelectFolderClick: () -> Unit = {},
+    // Opens the "Add fiction by name" dialog (see SyncDialogs.kt
+    // AddFictionByNameDialog). Lives on the top bar next to Settings - previously that
+    // spot was a shortcut to the folder picker (now settings-only, and still reachable
+    // via EmptyLibraryPrompt on a truly empty library).
+    onAddFictionClick: () -> Unit = {},
+    // Primary action on the empty-library first-run screen: syncs every fiction
+    // FictionLut knows about in one go (see FictionLut.allEntries / MainActivity's
+    // syncAllRaeArkNovels). Distinct from onAddFictionClick, which adds exactly one
+    // fiction by typed name.
+    onSyncAllClick: () -> Unit = {}
 ) {
     val searchQuery = remember { mutableStateOf("") }
     // Snapshot `novels` (a SnapshotStateList) into a plain List before using it as a
@@ -91,8 +104,8 @@ fun HomeScreen(
         TopAppBar(
             title = { Text("ARKarium") },
             actions = {
-                IconButton(onClick = onSelectFolderClick) {
-                    Icon(Icons.Default.CreateNewFolder, contentDescription = "Select library folder")
+                IconButton(onClick = onAddFictionClick) {
+                    Icon(Icons.Default.LibraryAdd, contentDescription = "Add fiction")
                 }
                 IconButton(onClick = onSettingsClick) {
                     Icon(Icons.Default.Settings, contentDescription = "Settings")
@@ -115,7 +128,7 @@ fun HomeScreen(
             // `SlotTableKt.key`/`Composer.endRoot` - exactly the crash this app hit on
             // first launch (empty library = novels.isEmpty() = true). Wrapping the rest of
             // the content in `else` instead avoids the early return entirely.
-            EmptyLibraryPrompt(onSelectFolderClick = onSelectFolderClick)
+            EmptyLibraryPrompt(onSelectFolderClick = onSelectFolderClick, onSyncAllClick = onSyncAllClick)
         } else {
         LazyColumn(
             modifier = Modifier
@@ -276,7 +289,10 @@ fun HomeScreen(
 }
 
 @Composable
-fun EmptyLibraryPrompt(onSelectFolderClick: () -> Unit = {}) {
+fun EmptyLibraryPrompt(
+    onSelectFolderClick: () -> Unit = {},
+    onSyncAllClick: () -> Unit = {}
+) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -294,18 +310,25 @@ fun EmptyLibraryPrompt(onSelectFolderClick: () -> Unit = {}) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "Drop novel folders into ARKarium's storage folder, or turn on " +
-                    "\"Use custom folder\" in Settings to pick one yourself.",
+                "Get started with Rae ARK's fictions, synced straight from the relay.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
             Button(
-                onClick = onSelectFolderClick,
+                onClick = onSyncAllClick,
                 modifier = Modifier.padding(top = 8.dp)
             ) {
-                Icon(Icons.Default.CreateNewFolder, contentDescription = null, modifier = Modifier.size(18.dp))
-                Text("Open Settings", modifier = Modifier.padding(start = 8.dp))
+                Icon(Icons.Default.LibraryAdd, contentDescription = null, modifier = Modifier.size(18.dp))
+                Text("Sync all Rae ARK's novels", modifier = Modifier.padding(start = 8.dp))
+            }
+            // Secondary, deliberately less prominent than the sync button above - but
+            // still present, since this is the only guaranteed entry point into the SAF
+            // folder picker on a fresh install for anyone managing their own local
+            // folder instead of syncing (see the comment on HomeScreen's
+            // onSelectFolderClick param).
+            androidx.compose.material3.TextButton(onClick = onSelectFolderClick) {
+                Text("or set up your own folder in Settings")
             }
         }
     }

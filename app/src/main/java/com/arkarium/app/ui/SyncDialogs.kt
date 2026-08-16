@@ -20,35 +20,41 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-// Shown from Settings' "Add fiction from URL" action (see docs/SYNC_MVP.md §5/Stage 3).
-// The URL field stays visible and editable through every state (including Error, so the
-// user can just fix a typo and retry without reopening the dialog) - only isLoading gates
-// whether it and the buttons are interactive. Mirrors MetadataSearchDialog's
-// state-driven-but-single-composable shape in MetadataMatchDialog.kt.
+// Shown from the home screen's "add fiction" icon (see docs/SYNC_MVP.md §5/Stage 3,
+// and the later change to single-origin-by-name lookup). The name field stays visible
+// and editable through every state (including Error, so the user can just fix a typo
+// and retry without reopening the dialog) - only isLoading gates whether it and the
+// buttons are interactive. Mirrors MetadataSearchDialog's state-driven-but-single-
+// composable shape in MetadataMatchDialog.kt.
+//
+// Note there's no URL field anymore - ARKarium only ever syncs from its own relay now
+// (see FictionLut.kt / SyncManager.RELAY_HOST). What the caller passes to onConfirm is
+// the raw typed name; resolving it to a slug (and handling a no-match) happens in
+// MainActivity, not here - this dialog doesn't know anything about the lookup table.
 @Composable
-fun AddFictionFromUrlDialog(
+fun AddFictionByNameDialog(
     isLoading: Boolean,
     progressMessage: String,
     errorMessage: String?,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var url by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
     AlertDialog(
         onDismissRequest = { if (!isLoading) onDismiss() },
-        title = { Text("Add fiction from URL") },
+        title = { Text("Add fiction") },
         text = {
             Column {
                 Text(
-                    "Paste the base URL of a relay hosting a fiction's manifest.json. " +
-                        "ARKarium will download its files into your library.",
+                    "Type a fiction's name and ARKarium will pull it from the relay " +
+                        "and keep it up to date.",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(bottom = 12.dp)
                 )
                 OutlinedTextField(
-                    value = url,
-                    onValueChange = { url = it },
-                    label = { Text("Relay URL") },
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("Fiction name") },
                     singleLine = true,
                     enabled = !isLoading,
                     modifier = Modifier.fillMaxWidth()
@@ -77,7 +83,7 @@ fun AddFictionFromUrlDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onConfirm(url.trim()) }, enabled = !isLoading && url.isNotBlank()) {
+            TextButton(onClick = { onConfirm(name.trim()) }, enabled = !isLoading && name.isNotBlank()) {
                 Text("Add")
             }
         },
@@ -89,7 +95,7 @@ fun AddFictionFromUrlDialog(
 
 // Shown from NovelDetailScreen's "Check for updates" action, only ever offered once a
 // novel already has a syncSourceUrl (see NovelDetailScreen.kt). Unlike
-// AddFictionFromUrlDialog there's no input here - it's pure progress/result reporting for
+// AddFictionByNameDialog there's no input here - it's pure progress/result reporting for
 // a sync pass already in flight or finished.
 @Composable
 fun SyncProgressDialog(
