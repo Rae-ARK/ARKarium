@@ -100,7 +100,18 @@ fun SettingsScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.padding(end = 12.dp)) {
+                // weight(1f) is load-bearing here, not cosmetic: an unweighted Column in a
+                // Row is measured with loose (unbounded) width, so this description text -
+                // long enough to need wrapping - never actually wraps against the space
+                // left for it. It just claims however much width it wants and pushes the
+                // Switch out past the screen edge instead of sitting next to it. Weighting
+                // the Column forces it to share the Row with the Switch and wrap within
+                // its share, which is what makes the Switch reliably visible/tappable.
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
                     Text("Use custom folder")
                     Text(
                         if (useCustomFolder) {

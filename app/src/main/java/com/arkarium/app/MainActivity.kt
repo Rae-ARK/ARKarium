@@ -604,7 +604,11 @@ class MainActivity : ComponentActivity() {
         addFictionState.value = AddFictionState.InProgress("Fetching manifest...")
         lifecycleScope.launch {
             try {
-                val (folderSlug, outcome) = syncManager.downloadInitial(url, libraryRoot) { message ->
+                // `name` (the user-typed fiction name that resolved to this slug) becomes
+                // the actual on-disk folder name - see SyncManager.downloadInitial's doc
+                // comment on why that's now safe to do (folder identity for sync no
+                // longer comes from this name once the novel exists).
+                val (folderName, outcome) = syncManager.downloadInitial(url, libraryRoot, name) { message ->
                     withContext(Dispatchers.Main) {
                         addFictionState.value = AddFictionState.InProgress(message)
                     }
@@ -612,14 +616,14 @@ class MainActivity : ComponentActivity() {
                 withContext(Dispatchers.Main) {
                     addFictionState.value = AddFictionState.InProgress("Adding to your library...")
                 }
-                val folder = libraryRoot.findFile(folderSlug)
+                val folder = libraryRoot.findFile(folderName)
                     ?: throw java.io.IOException("The downloaded fiction folder went missing before it could be scanned")
                 val novelId = UUID.nameUUIDFromBytes(
                     (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
                 ).toString()
                 startScan(libraryRoot)
                 db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
-                db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis())
+                db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis(), folderName)
                 val updated = db.novelDao().findById(novelId)
                 if (updated != null) {
                     val idx = novels.indexOfFirst { it.id == updated.id }
@@ -673,13 +677,15 @@ class MainActivity : ComponentActivity() {
                             SyncAllState.InProgress("${index + 1}/${entries.size}: Fetching \"$displayName\"...")
                     }
                     try {
-                        val (folderSlug, outcome) = syncManager.downloadInitial(url, libraryRoot) { message ->
+                        // `displayName` (from FictionLut.allEntries) becomes the actual
+                        // on-disk folder name, same as addFictionByName above.
+                        val (folderName, outcome) = syncManager.downloadInitial(url, libraryRoot, displayName) { message ->
                             withContext(Dispatchers.Main) {
                                 syncAllState.value =
                                     SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message")
                             }
                         }
-                        val folder = libraryRoot.findFile(folderSlug)
+                        val folder = libraryRoot.findFile(folderName)
                             ?: throw java.io.IOException("\"$displayName\" went missing before it could be scanned")
                         val novelId = UUID.nameUUIDFromBytes(
                             (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
@@ -694,7 +700,7 @@ class MainActivity : ComponentActivity() {
                             }
                         }
                         db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
-                        db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis())
+                        db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis(), folderName)
                         val updated = db.novelDao().findById(novelId)
                         if (updated != null) {
                             withContext(Dispatchers.Main) {
@@ -752,7 +758,14 @@ class MainActivity : ComponentActivity() {
                 if (outcome.changed) {
                     db.syncedFileDao().deleteForNovel(novel.id)
                     db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novel.id) })
-                    db.novelDao().updateSyncState(novel.id, sourceUrl, outcome.newVersion, System.currentTimeMillis())
+                    // outcome.folderName is always set on this branch (see SyncManager.sync -
+                    // it's only ever null on the early "already up to date" return, which
+                    // can't be true here since outcome.changed is true). The fallback chain
+                    // is just defense-in-depth against DocumentFile.name's nullable type.
+                    db.novelDao().updateSyncState(
+                        novel.id, sourceUrl, outcome.newVersion, System.currentTimeMillis(),
+                        outcome.folderName ?: novel.syncFolderName ?: SyncManager.slugForUrl(sourceUrl)
+                    )
                     // This resync succeeded, so whatever made the novel MISSING_LOCALLY
                     // (or that this call is a deliberate resolution retry for) no longer
                     // applies - clear it back to ACTIVE rather than leaving a stale status.

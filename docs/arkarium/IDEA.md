@@ -2,7 +2,7 @@
 
 > **Working name:** ARKarium  
 > **Status:** Idea / architecture notes  
-> **Purpose:** Preserve the idea before humanity inevitably invents twelve other distractions.
+> **Purpose:** Preserve the idea before i inevitably invents twelve other distractions.
 
 ## Core idea
 
