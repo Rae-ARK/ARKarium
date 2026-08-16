@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -75,7 +76,12 @@ fun NovelDetailScreen(
     onResizePages: (Int) -> Unit = {},
     onEditClick: () -> Unit = {},
     onFetchInfoClick: () -> Unit = {},
-    onAuthorClick: () -> Unit = {}
+    onAuthorClick: () -> Unit = {},
+    // Non-null only offered to the caller when novel.syncSourceUrl is set - a purely
+    // local novel (the common case) has nothing to check for updates against, so the
+    // action is left off the app bar entirely rather than shown disabled (see
+    // docs/SYNC_MVP.md, Stage 3).
+    onSyncClick: (() -> Unit)? = null
 ) {
     val selectedTabIndex = remember { mutableIntStateOf(0) }
     // Seeded from the novel's persisted page_size so the preference survives navigation
@@ -130,6 +136,11 @@ fun NovelDetailScreen(
                 }
             },
             actions = {
+                if (onSyncClick != null) {
+                    IconButton(onClick = onSyncClick) {
+                        Icon(Icons.Default.Sync, contentDescription = "Check for updates")
+                    }
+                }
                 IconButton(onClick = onFetchInfoClick) {
                     Icon(Icons.Default.Info, contentDescription = "Fetch info")
                 }

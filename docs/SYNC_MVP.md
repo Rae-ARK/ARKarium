@@ -1,11 +1,32 @@
 # Sync MVP — manifest + hash diff + static host
 
-> **Status:** Design doc, no implementation yet (Stage 0).
+> **Status:** Stages 1–3 implemented. Stage 4+ (multi-relay fallback, auth,
+> background sync, TTS metadata) remains design-only — see "Deliberately
+> punted" below.
 > **Relationship to `docs/ARKarium_Idea.md`:** this is the load-bearing subset of
 > that doc's "Static relay architecture" and "Manifests and synchronization"
 > sections, cut down to what's needed for a first working version. Multi-relay
 > fallback chains, auth/paid content, and semantic TTS metadata are explicitly
 > out of scope here — see "Deliberately punted" below.
+
+## Implementation status
+
+- **Stage 1 (schema)** — `SyncedFileEntity` table, `sync_source_url` /
+  `sync_source_version` / `last_synced_at` columns on `NovelEntity`,
+  migration 8→9, `SyncedFileDao`, `NovelDao.updateSyncState`. See §5.
+- **Stage 2 (sync engine)** — `SyncManager.kt`: `SyncClient` (manifest
+  fetch/parse), `SyncPaths.sanitize` (path-traversal guard, Consideration #2),
+  `SyncManager.downloadInitial` / `.sync` (hash diff, verified download,
+  stale-file deletion, Considerations #1 and #4). Never touches Room directly.
+- **Stage 3 (UI wiring)** — "Add fiction from URL" (Settings → prompts for a
+  relay base URL → `SyncManager.downloadInitial` → the same `startScan` pass
+  every other novel goes through → sync bookkeeping attached once the scan
+  assigns the folder a real novel id) and "Check for updates" (a per-novel
+  action on `NovelDetailScreen`, shown only once a novel has a
+  `syncSourceUrl` → `SyncManager.sync` → wholesale `SyncedFileEntity`
+  replacement → rescan only if something actually changed). Both are plain
+  manual, foreground actions — no background/scheduled sync yet (see
+  "Deliberately punted").
 
 ## Why cut it down
 
