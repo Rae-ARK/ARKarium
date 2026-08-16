@@ -45,6 +45,16 @@ data class NovelEntity(
     @ColumnInfo(name = "sync_source_url") val syncSourceUrl: String? = null,
     @ColumnInfo(name = "sync_source_version") val syncSourceVersion: Int? = null,
     @ColumnInfo(name = "last_synced_at") val lastSyncedAt: Long? = null,
+    // The exact on-disk folder name this synced novel's content actually lives in
+    // (e.g. "Summoned By Mistake"), persisted once at first successful sync and
+    // reused as the sole lookup key for every later one. This exists specifically so
+    // the folder can be named after the fiction itself (readable when browsing the
+    // library folder) without that name also having to double as sync's own identity
+    // key - see SyncManager.sync's folder-relocation comment and
+    // docs/arkarium/NEXT_FIXES.md #5. Null for a purely local novel (syncSourceUrl ==
+    // null, this is simply never set) and, transiently, for a novel synced by a
+    // pre-MIGRATION_10_11 build until its next successful sync backfills it.
+    @ColumnInfo(name = "sync_folder_name") val syncFolderName: String? = null,
     // Only meaningful when syncSourceUrl != null (see docs/arkarium/NEXT_FIXES.md #2). ACTIVE =
     // normal state. MISSING_LOCALLY = this novel's on-disk folder disappeared out from
     // under a synced novel (user deleted it, SAF re-permission minted a new tree, etc)

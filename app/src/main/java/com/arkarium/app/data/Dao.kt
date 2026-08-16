@@ -64,14 +64,21 @@ interface NovelDao {
     // docs/arkarium/SYNC_MVP.md §4), and again after every subsequent successful re-sync. A
     // plain UPDATE, same rationale as updateMetadata above - this patches an
     // already-existing row rather than upserting a partial entity.
+    //
+    // `folderName` is the exact on-disk folder name this sync pass actually resolved
+    // and wrote into (see SyncManager.sync/downloadInitial and Entities.kt's doc
+    // comment on sync_folder_name) - written on every successful sync, not just the
+    // first, so a pre-MIGRATION_10_11 row (folder name still null) opportunistically
+    // backfills it the next time it syncs rather than staying null forever.
     @Query("""
         UPDATE novels SET
             sync_source_url = :sourceUrl,
             sync_source_version = :sourceVersion,
-            last_synced_at = :syncedAt
+            last_synced_at = :syncedAt,
+            sync_folder_name = :folderName
         WHERE id = :novelId
     """)
-    suspend fun updateSyncState(novelId: String, sourceUrl: String, sourceVersion: Int, syncedAt: Long)
+    suspend fun updateSyncState(novelId: String, sourceUrl: String, sourceVersion: Int, syncedAt: Long, folderName: String)
 
     // See docs/arkarium/NEXT_FIXES.md #2 / Entities.kt SyncStatus. Set to MISSING_LOCALLY when a
     // synced novel's on-disk folder is discovered gone by a scan, or to SOURCE_GONE when

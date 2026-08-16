@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ReadingProgressEntity::class,
         SyncedFileEntity::class
     ],
-    version = 10
+    version = 11
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun novelDao(): NovelDao
@@ -206,11 +206,32 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v10 to v11: adds sync_folder_name to novels (see
+        // docs/arkarium/NEXT_FIXES.md #5 and Entities.kt's doc comment on the column). Null-
+        // backfilled for every existing row, synced or not; a synced novel created by an
+        // older build picks up a real value the next time it successfully syncs (see
+        // SyncManager.sync's folder-relocation fallback chain), a purely-local novel
+        // never sets it at all.
+        //
+        // This migration intentionally does NOT rename any already-existing "synced-
+        // <hash>" folder on disk to match its fiction's title - only newly-added
+        // fictions get a human-readable folder name going forward. Renaming a folder
+        // that's already sitting in someone's SAF tree is a separate, riskier operation
+        // (it would need to happen while nothing else is reading from it, and papers
+        // over the fact that sync's own lookup no longer requires the on-disk name to
+        // mean anything in particular) - deliberately left alone here to keep this
+        // migration a pure schema change with no filesystem side effects.
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE novels ADD COLUMN sync_folder_name TEXT")
+            }
+        }
+
         fun create(context: Context): AppDatabase = Room.databaseBuilder(
             context.applicationContext,
             AppDatabase::class.java,
             "arkarium.db"
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
             .fallbackToDestructiveMigration()
             .build()
     }

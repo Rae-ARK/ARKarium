@@ -192,7 +192,14 @@ class SyncClient {
 data class SyncOutcome(
     val newVersion: Int,
     val files: List<SyncedFileEntity>,
-    val changed: Boolean  // false when the manifest version already matched - nothing was downloaded or deleted
+    val changed: Boolean,  // false when the manifest version already matched - nothing was downloaded or deleted
+    // The on-disk folder name this sync pass actually resolved/wrote into - null only
+    // for the early "already up to date" return, which never needs it (see
+    // NovelDao.updateSyncState, only ever called when `changed` is true). Callers
+    // persist this into NovelEntity.syncFolderName so the *next* sync doesn't have to
+    // re-derive the folder by name/id-hash guessing - see sync()'s folder-relocation
+    // comment below.
+    val folderName: String? = null
 )
 
 // Handles the file IO for a sync pass: downloading new/changed files into a novel's
@@ -217,14 +224,45 @@ class SyncManager(private val context: Context, private val client: SyncClient =
                     .toString() == novelId
             }
 
-        // Deterministic per-URL folder name for a brand-new synced fiction, used before
-        // its own metadata.json (itself part of the synced file set) has been
-        // downloaded and can supply a real title. ScannerImpl.scanRoot falls back to
-        // the folder name as the title until then, same as any manually-dropped-in
-        // folder with no metadata.json - see docs/arkarium/SYNC_MVP.md §4. Deterministic so
-        // re-adding the same source URL reuses the same folder rather than creating a
-        // duplicate novel.
+        // Legacy folder-naming scheme, kept only as a relocation fallback for novels
+        // synced by a pre-MIGRATION_10_11 build - their on-disk folder was actually
+        // created with this name and never renamed since. Nothing new ever creates a
+        // folder this way anymore (see downloadInitial below, which names new folders
+        // after the fiction itself); this only exists so sync() can still find an
+        // old-style folder for a novel whose sync_folder_name column is still null.
         fun slugForUrl(baseUrl: String): String = "synced-" + sha256Hex(baseUrl.toByteArray()).take(10)
+
+        // Sanitizes a fiction's display name into a filesystem-safe folder name.
+        // Strips characters that are outright illegal (or inconsistently handled
+        // across SAF providers) rather than trying to escape every provider's own
+        // quirks: path separators, Windows-reserved characters, and control
+        // characters. Collapses whitespace and caps length well under typical
+        // filesystem limits (255 bytes on most, and titles can contain multi-byte
+        // characters). A title that sanitizes down to nothing (e.g. pure punctuation)
+        // falls back to a generic name rather than creating a blank-named folder.
+        fun sanitizeFolderName(name: String): String {
+            val cleaned = name
+                .replace(Regex("[/\\\\:*?\"<>|\\u0000-\\u001F]"), "")
+                .trim()
+                .replace(Regex("\\s+"), " ")
+                .take(80)
+                .trim()
+            return cleaned.ifBlank { "fiction" }
+        }
+
+        // Appends " (2)", " (3)", ... to `baseName` until it doesn't collide with an
+        // existing child of libraryRoot. Two different fictions can legitimately share
+        // a title, and a title can just as easily collide with an unrelated
+        // manually-dropped-in folder - reusing (or worse, silently writing into)
+        // someone else's existing folder because the names happened to match would be
+        // a correctness bug, not a cosmetic one, now that folder names are
+        // human-chosen text instead of a collision-proof hash.
+        fun uniqueFolderName(libraryRoot: DocumentFile, baseName: String): String {
+            if (libraryRoot.findFile(baseName) == null) return baseName
+            var suffix = 2
+            while (libraryRoot.findFile("$baseName ($suffix)") != null) suffix++
+            return "$baseName ($suffix)"
+        }
     }
 
     // Creates (or reuses) a folder under libraryRoot for a brand-new fiction source and
@@ -233,20 +271,30 @@ class SyncManager(private val context: Context, private val client: SyncClient =
     // library scan discovers this folder for the first time, same as any other novel
     // folder (see docs/arkarium/SYNC_MVP.md §4). Callers must .copy(novelId = ...) each entry
     // once that id is known, before persisting.
+    // `displayName` is the fiction's human-readable title (what the user typed/picked,
+    // e.g. via FictionLut) - it becomes the actual on-disk folder name (sanitized +
+    // de-duplicated, see sanitizeFolderName/uniqueFolderName above), so a library
+    // folder browsed outside the app reads as "Summoned By Mistake" rather than
+    // "synced-a1b2c3d4e5". Unlike the old hash-slug scheme, this is deliberately NOT
+    // reused deterministically across calls - re-adding the same source URL now
+    // creates a fresh uniquely-named folder rather than silently reusing one that
+    // might already be a different novel's folder that merely started with the same
+    // slug (see sync()'s comment on why folder identity no longer comes from this
+    // name at all once the novel exists).
     suspend fun downloadInitial(
         baseUrl: String,
         libraryRoot: DocumentFile,
+        displayName: String,
         onProgress: suspend (message: String) -> Unit = {}
     ): Pair<String, SyncOutcome> = withContext(Dispatchers.IO) {
         onProgress("Fetching manifest...")
         val manifest = client.fetchManifest(baseUrl)
-        val slug = slugForUrl(baseUrl)
-        val folder = libraryRoot.findFile(slug)
-            ?: libraryRoot.createDirectory(slug)
+        val folderName = uniqueFolderName(libraryRoot, sanitizeFolderName(displayName))
+        val folder = libraryRoot.createDirectory(folderName)
             ?: throw IOException("Could not create a folder for this fiction")
 
         val records = downloadManifestFiles(baseUrl, manifest, folder, libraryRoot, existing = emptyList(), onProgress)
-        slug to SyncOutcome(newVersion = manifest.version, files = records, changed = true)
+        folderName to SyncOutcome(newVersion = manifest.version, files = records, changed = true, folderName = folderName)
     }
 
     // Re-syncs an already-added fiction. Fetches the manifest and returns immediately
@@ -278,21 +326,39 @@ class SyncManager(private val context: Context, private val client: SyncClient =
             return@withContext SyncOutcome(newVersion = manifest.version, files = knownFiles, changed = false)
         }
 
-        // findNovelFolder first (re-derives the folder from novel.id, the normal case),
-        // then fall back to the deterministic slug name via findFile - mirroring
-        // downloadInitial's own findFile-before-createDirectory pattern (see
-        // docs/arkarium/NEXT_FIXES.md #1) so a folder that already exists under that slug name
-        // (e.g. left over from an interrupted previous sync) is reused instead of
-        // colliding with a same-named duplicate. Only creates a brand-new folder, and
-        // only when the caller has explicitly allowed it, once both lookups miss.
-        val folder = findNovelFolder(libraryRoot, novel.id)
+        // Folder relocation, in priority order:
+        //
+        //  1. novel.syncFolderName - the exact on-disk folder name persisted the last
+        //     time this novel synced successfully (see Entities.kt's doc comment and
+        //     NovelDao.updateSyncState). This is now the primary lookup, and
+        //     deliberately so: since downloadInitial names a new synced folder after
+        //     the fiction itself (human-readable, not a stable hash), the folder name
+        //     alone can no longer double as sync's own identity key the way the old
+        //     slug scheme did - two fictions can share a title, and nothing stops a
+        //     title from colliding with an unrelated folder. Persisting the *actual*
+        //     resolved name once and just reading it back is what keeps "where does
+        //     this novel's content live" decoupled from "what is this folder named" -
+        //     see docs/arkarium/NEXT_FIXES.md #5.
+        //  2. findNovelFolder(novel.id) - re-derive by re-hashing every child's URI
+        //     against novel.id. Still correct as a fallback (novel.id itself was fixed
+        //     at creation and never changes), and is what covers a syncFolderName
+        //     that's null because this novel predates MIGRATION_10_11.
+        //  3. slugForUrl(baseUrl) - the old hash-slug scheme. Only ever matches a
+        //     folder that a pre-patch build created and that hasn't been touched since.
+        //
+        // Only creates a brand-new folder, and only when the caller has explicitly
+        // allowed it, once all three lookups miss.
+        val folder = novel.syncFolderName?.let { libraryRoot.findFile(it) }
+            ?: findNovelFolder(libraryRoot, novel.id)
             ?: libraryRoot.findFile(slugForUrl(baseUrl))
             ?: if (allowRecreateMissingFolder) {
-                libraryRoot.createDirectory(slugForUrl(baseUrl))
+                val recreatedName = novel.syncFolderName ?: slugForUrl(baseUrl)
+                libraryRoot.createDirectory(recreatedName)
                     ?: throw IOException("Could not find or recreate this fiction's folder")
             } else {
                 throw MissingLocalFolderException(novel.id)
             }
+        val folderName = folder.name ?: novel.syncFolderName ?: slugForUrl(baseUrl)
 
         val records = downloadManifestFiles(baseUrl, manifest, folder, libraryRoot, existing = knownFiles, onProgress)
 
@@ -315,7 +381,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
             }
         }
 
-        SyncOutcome(newVersion = manifest.version, files = records, changed = true)
+        SyncOutcome(newVersion = manifest.version, files = records, changed = true, folderName = folderName)
     }
 
     // Downloads whatever in `manifest` isn't already present-and-unchanged in
