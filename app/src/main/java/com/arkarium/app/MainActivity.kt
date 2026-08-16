@@ -42,6 +42,7 @@ import com.arkarium.app.ui.ReaderScreen
 import com.arkarium.app.ui.SettingsScreen
 import com.arkarium.app.ui.SplashScreen
 import com.arkarium.app.ui.SyncProgressDialog
+import com.arkarium.app.ui.SyncResolutionDialog
 import com.arkarium.app.ui.FictionBrowseScreen
 import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.ArcEntity
@@ -59,6 +60,9 @@ import com.arkarium.app.data.FictionLut
 import com.arkarium.app.data.relayBaseUrlForSlug
 import com.arkarium.app.data.Theme
 import com.arkarium.app.data.NovelStatus
+import com.arkarium.app.data.SyncStatus
+import com.arkarium.app.data.SourceGoneException
+import com.arkarium.app.data.MissingLocalFolderException
 import com.arkarium.app.data.TextChapterContentRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
@@ -126,6 +130,18 @@ sealed class SyncCheckState {
     data class Error(val novel: NovelEntity, val message: String) : SyncCheckState()
 }
 
+// See docs/NEXT_FIXES.md #2. Drives SyncResolutionDialog, shown when checkForUpdates
+// hits a situation that shouldn't be resolved silently in either direction: the
+// synced novel's local folder is gone (MISSING_LOCALLY - resolved by resyncing or
+// removing the novel) or the relay no longer serves it (SOURCE_GONE - resolved by
+// unlinking, since local content stays readable either way).
+enum class SyncResolutionReason { MISSING_LOCALLY, SOURCE_GONE }
+
+sealed class SyncResolutionState {
+    object Idle : SyncResolutionState()
+    data class NeedsResolution(val novel: NovelEntity, val reason: SyncResolutionReason) : SyncResolutionState()
+}
+
 // Warm, sepia-toned reading theme - lower contrast than pure light/dark, meant to
 // be easier on the eyes for long reading sessions (a common e-reader "paper" mode).
 //
@@ -185,6 +201,7 @@ class MainActivity : ComponentActivity() {
     private val addFictionState = mutableStateOf<AddFictionState>(AddFictionState.Hidden)
     private val syncAllState = mutableStateOf<SyncAllState>(SyncAllState.Idle)
     private val syncCheckState = mutableStateOf<SyncCheckState>(SyncCheckState.Idle)
+    private val syncResolutionState = mutableStateOf<SyncResolutionState>(SyncResolutionState.Idle)
     private lateinit var db: AppDatabase
     private lateinit var scanner: ScannerImpl
     private lateinit var prefsManager: PreferencesManager
@@ -232,6 +249,82 @@ class MainActivity : ComponentActivity() {
         return DocumentFile.fromFile(defaultDir)
     }
 
+    // Merges a freshly-scanned NovelEntity with whatever row already exists for this
+    // novel id, carrying over fields the scan itself doesn't own (pageSize,
+    // readingStatus, remote-metadata fields once a "Fetch info" lookup has run) -
+    // see the long comment this was pulled out of below for the full field-by-field
+    // rationale. Shared by startScan's onDiscovered and scanSingleSyncedNovel (see
+    // docs/NEXT_FIXES.md #4) so both a full-library rescan and a scoped single-novel
+    // sync scan apply the exact same merge rules.
+    private fun mergeNovelForRescan(scanned: NovelEntity, existing: NovelEntity?): NovelEntity {
+        if (existing == null) return scanned
+        val remoteFetched = existing.metadataFetchedAt != null
+        return scanned.copy(
+            pageSize = existing.pageSize,
+            readingStatus = existing.readingStatus,
+            author = scanned.author ?: existing.author,
+            description = if (remoteFetched) existing.description else (scanned.description ?: existing.description),
+            genres = if (remoteFetched) existing.genres else (scanned.genres ?: existing.genres),
+            remoteCoverUrl = existing.remoteCoverUrl,
+            publishedDate = if (remoteFetched) existing.publishedDate else (scanned.publishedDate ?: existing.publishedDate),
+            externalSourceUrl = existing.externalSourceUrl,
+            metadataFetchedAt = existing.metadataFetchedAt,
+            // Sync bookkeeping columns aren't touched by ScannerImpl at all (scanned's
+            // are always the NovelEntity defaults) - always carry the existing row's
+            // values forward so a rescan/resync can never accidentally wipe them.
+            syncSourceUrl = existing.syncSourceUrl,
+            syncSourceVersion = existing.syncSourceVersion,
+            lastSyncedAt = existing.lastSyncedAt,
+            syncStatus = existing.syncStatus
+        )
+        // authorId is deliberately NOT carried over here (unlike the free-text `author`
+        // right next to it): ScannerImpl resolves it fresh every single scan from that
+        // scan's authors/ folder contents, not just from this fiction's own
+        // metadata.json - so unlike `author`/`description`/etc, a null `scanned.authorId`
+        // isn't "this scan didn't look," it's "this scan looked and the link no longer
+        // resolves." Falling back to the old `existing.authorId` here would make a
+        // resolved author link permanent even after its source file is gone. Leaving it
+        // out of the copy() call above lets `scanned.authorId` (including null) win
+        // outright, the same way `coverUri` already does by simply not appearing in it.
+    }
+
+    // Scoped counterpart to startScan (see docs/NEXT_FIXES.md #4): runs the exact same
+    // discover -> merge -> upsert -> scanChaptersForNovel sequence startScan's
+    // onDiscovered callback runs per-novel, but for exactly one already-known folder,
+    // via ScannerImpl.scanSingleNovel instead of a full scanRoot() pass. Used by
+    // syncAllRaeArkNovels so syncing fiction M into a library of N-1 other synced
+    // novels doesn't re-list and re-fingerprint all N-1 of them on every iteration.
+    // Deliberately does NOT do startScan's stale-novel reconciliation (that requires
+    // seeing every folder in one pass, which is exactly what this method avoids) - the
+    // library's next full scan (e.g. next app launch) still catches anything that
+    // needs it.
+    private suspend fun scanSingleSyncedNovel(
+        libraryRoot: DocumentFile,
+        novelFolder: DocumentFile,
+        onProgress: suspend (message: String) -> Unit = {}
+    ): NovelEntity {
+        val scanned = scanner.scanSingleNovel(
+            root = libraryRoot,
+            novelFolder = novelFolder,
+            onAuthorsDiscovered = { discoveredAuthors ->
+                val seenIds = discoveredAuthors.map { it.id }.toSet()
+                discoveredAuthors.forEach { db.authorDao().upsert(it) }
+                db.authorDao().all().filter { it.id !in seenIds }.forEach { stale ->
+                    db.authorDao().delete(stale.id)
+                }
+            }
+        )
+        val existing = db.novelDao().findById(scanned.id)
+        val novel = mergeNovelForRescan(scanned, existing)
+        db.novelDao().upsert(novel)
+        withContext(Dispatchers.Main) {
+            val idx = novels.indexOfFirst { it.id == novel.id }
+            if (idx >= 0) novels[idx] = novel else novels.add(novel)
+        }
+        scanner.scanChaptersForNovel(novelFolder, novel.id, db, onProgress)
+        return novel
+    }
+
     private suspend fun startScan(root: DocumentFile) {
         // startScan runs unattended on every app launch once a library folder has been
         // picked once (see the libraryUri.collect below), with no user interaction in
@@ -256,43 +349,13 @@ class MainActivity : ComponentActivity() {
                         // exists (readLocalMetadata in ScannerImpl), null otherwise. Upsert()
                         // REPLACEs the whole row, so without carrying values over from the
                         // existing row, a rescan would silently wipe pageSize/readingStatus,
-                        // and - once a remote "Fetch info" lookup has actually run for this
-                        // novel (existing.metadataFetchedAt != null) - would let a rescan
-                        // clobber that curated remote data with an empty/stale local
-                        // metadata.json. Before any remote fetch, prefer this scan's freshly
-                        // read metadata.json values (so editing the file and rescanning
-                        // actually takes effect), falling back to whatever was already saved
-                        // only for fields this scan didn't find a value for.
-                        //
-                        // authorId is deliberately NOT included in that fallback (unlike the
-                        // free-text `author` right next to it): ScannerImpl resolves it fresh
-                        // every single scan from that scan's authors/ folder contents (see
-                        // "Linking a fiction to an author" in AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md),
-                        // not just from this fiction's own metadata.json - so unlike `author`/
-                        // `description`/etc, a null `scanned.authorId` isn't "this scan didn't
-                        // look," it's "this scan looked and the link no longer resolves" (the
-                        // authors/<id>.json was deleted or renamed). Falling back to the old
-                        // `existing.authorId` here would make a resolved author link permanent
-                        // even after its source file is gone - the fiction page and chapter
-                        // page would keep pointing at a dead author. Leaving it out of this
-                        // copy() lets `scanned.authorId` (including null) win outright, the
-                        // same way `coverUri` already does by simply not appearing in this
-                        // copy() call's argument list at all.
+                        // sync bookkeeping, and - once a remote "Fetch info" lookup has
+                        // actually run for this novel - would let a rescan clobber that
+                        // curated remote data with an empty/stale local metadata.json. See
+                        // mergeNovelForRescan above for the full field-by-field rationale
+                        // (shared with scanSingleSyncedNovel, docs/NEXT_FIXES.md #4).
                         val existing = db.novelDao().findById(scanned.id)
-                        val novel = if (existing != null) {
-                            val remoteFetched = existing.metadataFetchedAt != null
-                            scanned.copy(
-                                pageSize = existing.pageSize,
-                                readingStatus = existing.readingStatus,
-                                author = scanned.author ?: existing.author,
-                                description = if (remoteFetched) existing.description else (scanned.description ?: existing.description),
-                                genres = if (remoteFetched) existing.genres else (scanned.genres ?: existing.genres),
-                                remoteCoverUrl = existing.remoteCoverUrl,
-                                publishedDate = if (remoteFetched) existing.publishedDate else (scanned.publishedDate ?: existing.publishedDate),
-                                externalSourceUrl = existing.externalSourceUrl,
-                                metadataFetchedAt = existing.metadataFetchedAt
-                            )
-                        } else scanned
+                        val novel = mergeNovelForRescan(scanned, existing)
                         db.novelDao().upsert(novel)
                         seenNovelIds.add(novel.id)
                         withContext(Dispatchers.Main) {
@@ -336,11 +399,32 @@ class MainActivity : ComponentActivity() {
                     // genuine onScanCompleted (never fired on an aborted/partial scan -
                     // see ScannerImpl.scanRoot), means the UI only ever loses a novel
                     // when this scan actually confirmed its folder is gone.
-                    val staleIds = db.novelDao().all().map { it.id }.filter { it !in seenNovelIds }.toSet()
-                    staleIds.forEach { db.novelDao().delete(it) }
-                    if (staleIds.isNotEmpty()) {
+                    //
+                    // See docs/NEXT_FIXES.md #2: a synced novel (syncSourceUrl != null)
+                    // whose folder disappeared used to hit this same cascade-delete as a
+                    // purely-local novel, silently dropping the whole novel - reading
+                    // history, overrides, everything - the moment its folder went missing
+                    // for any reason (including a transient one, e.g. mid-switch between
+                    // storage modes). A synced novel's folder can always be re-fetched
+                    // from its relay, so instead of deleting it here, mark it
+                    // MISSING_LOCALLY and leave the row (and the UI list entry) alone -
+                    // the user resolves it explicitly from the novel's detail screen
+                    // (resync, or actually remove it) rather than the scanner deciding
+                    // for them. A purely-local novel (no sync source to re-fetch from)
+                    // keeps the original cascade-delete behavior unchanged.
+                    val stale = db.novelDao().all().filter { it.id !in seenNovelIds }
+                    val staleLocal = stale.filter { it.syncSourceUrl == null }
+                    val staleSynced = stale.filter { it.syncSourceUrl != null && it.syncStatus != SyncStatus.MISSING_LOCALLY.name }
+                    staleLocal.forEach { db.novelDao().delete(it.id) }
+                    staleSynced.forEach { db.novelDao().updateSyncStatus(it.id, SyncStatus.MISSING_LOCALLY.name) }
+                    if (staleLocal.isNotEmpty() || staleSynced.isNotEmpty()) {
                         withContext(Dispatchers.Main) {
-                            novels.removeAll { it.id in staleIds }
+                            val staleLocalIds = staleLocal.map { it.id }.toSet()
+                            novels.removeAll { it.id in staleLocalIds }
+                            staleSynced.forEach { s ->
+                                val idx = novels.indexOfFirst { it.id == s.id }
+                                if (idx >= 0) novels[idx] = novels[idx].copy(syncStatus = SyncStatus.MISSING_LOCALLY.name)
+                            }
                         }
                     }
                 },
@@ -550,12 +634,26 @@ class MainActivity : ComponentActivity() {
 
     // "Sync all Rae ARK's novels" (EmptyLibraryPrompt's primary first-run action, see
     // HomeScreen.kt). Downloads every fiction FictionLut.allEntries lists, one after
-    // another, reusing exactly the same per-fiction download/scan/persist steps as
+    // another, reusing exactly the same per-fiction download/persist steps as
     // addFictionByName above - this is just that same flow run in a loop with one
-    // shared progress dialog instead of one dialog per fiction. A single fiction
-    // failing partway through is reported and stops the batch rather than silently
-    // skipping ahead, so a real relay problem (not just "already added") is never
-    // masked by finishing everything else.
+    // shared progress dialog instead of one dialog per fiction.
+    //
+    // Two differences from the original version (see docs/NEXT_FIXES.md #4 and #2):
+    //
+    // - Each iteration now calls scanSingleSyncedNovel (scoped to just the one
+    //   just-downloaded folder) instead of a full startScan() pass. The old version's
+    //   full-rescan-per-iteration was O(M x N) SAF directory listings for M fictions
+    //   being synced into a library of N - every already-synced novel got re-listed
+    //   and re-fingerprinted on every single loop iteration, not just the one that
+    //   actually changed. This keeps the same "show up as it finishes" UX (each
+    //   fiction is still discovered and added to `novels` the moment its own download
+    //   completes) without paying for a full-library rescan per fiction.
+    // - A SourceGoneException for one fiction (the relay 404s on its manifest - e.g. a
+    //   stale FictionLut entry) no longer aborts the whole batch. It's reported and
+    //   skipped, and the batch continues with the next fiction - a single stale/removed
+    //   entry shouldn't block every other fiction from syncing. Any other exception
+    //   (a real relay/network problem) still stops the batch, same as before, so a
+    //   genuine outage isn't masked by "finished anyway."
     private fun syncAllRaeArkNovels(libraryRoot: DocumentFile) {
         val entries = FictionLut.allEntries(this)
         if (entries.isEmpty()) {
@@ -564,37 +662,59 @@ class MainActivity : ComponentActivity() {
         }
         syncAllState.value = SyncAllState.InProgress("Starting...")
         lifecycleScope.launch {
+            val skipped = mutableListOf<String>()
+            var syncedCount = 0
             try {
-                entries.forEachIndexed { index, (displayName, slug) ->
+                for ((index, entry) in entries.withIndex()) {
+                    val (displayName, slug) = entry
                     val url = relayBaseUrlForSlug(slug)
                     withContext(Dispatchers.Main) {
                         syncAllState.value =
                             SyncAllState.InProgress("${index + 1}/${entries.size}: Fetching \"$displayName\"...")
                     }
-                    val (folderSlug, outcome) = syncManager.downloadInitial(url, libraryRoot) { message ->
-                        withContext(Dispatchers.Main) {
-                            syncAllState.value =
-                                SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message")
+                    try {
+                        val (folderSlug, outcome) = syncManager.downloadInitial(url, libraryRoot) { message ->
+                            withContext(Dispatchers.Main) {
+                                syncAllState.value =
+                                    SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message")
+                            }
                         }
-                    }
-                    val folder = libraryRoot.findFile(folderSlug)
-                        ?: throw java.io.IOException("\"$displayName\" went missing before it could be scanned")
-                    val novelId = UUID.nameUUIDFromBytes(
-                        (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
-                    ).toString()
-                    // Scan once per fiction (rather than once at the very end) so each
-                    // one shows up in the library as soon as it's done, instead of the
-                    // whole list appearing to hang until the last download finishes.
-                    startScan(libraryRoot)
-                    db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
-                    db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis())
-                    val updated = db.novelDao().findById(novelId)
-                    if (updated != null) {
-                        val idx = novels.indexOfFirst { it.id == updated.id }
-                        if (idx >= 0) novels[idx] = updated
+                        val folder = libraryRoot.findFile(folderSlug)
+                            ?: throw java.io.IOException("\"$displayName\" went missing before it could be scanned")
+                        val novelId = UUID.nameUUIDFromBytes(
+                            (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
+                        ).toString()
+                        // Scoped scan of just this fiction's folder (see docs/NEXT_FIXES.md
+                        // #4) - shows up in the library as soon as it's done, same as
+                        // before, without re-scanning every other already-synced novel.
+                        scanSingleSyncedNovel(libraryRoot, folder) { message ->
+                            withContext(Dispatchers.Main) {
+                                syncAllState.value =
+                                    SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message")
+                            }
+                        }
+                        db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
+                        db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis())
+                        val updated = db.novelDao().findById(novelId)
+                        if (updated != null) {
+                            withContext(Dispatchers.Main) {
+                                val idx = novels.indexOfFirst { it.id == updated.id }
+                                if (idx >= 0) novels[idx] = updated
+                            }
+                        }
+                        syncedCount++
+                    } catch (e: SourceGoneException) {
+                        // This one fiction isn't served here anymore (stale LUT entry, or
+                        // the author removed it) - report and move on rather than blocking
+                        // every other fiction in the batch behind it.
+                        skipped.add(displayName)
                     }
                 }
-                syncAllState.value = SyncAllState.Done("Synced ${entries.size} novel(s).")
+                val summary = StringBuilder("Synced $syncedCount novel(s).")
+                if (skipped.isNotEmpty()) {
+                    summary.append(" Skipped (source unavailable): ${skipped.joinToString(", ")}.")
+                }
+                syncAllState.value = SyncAllState.Done(summary.toString())
             } catch (e: Exception) {
                 syncAllState.value = SyncAllState.Error("Sync stopped: ${e.message}")
             }
@@ -608,14 +728,23 @@ class MainActivity : ComponentActivity() {
     // when something actually changed, so an "already up to date" check stays a single
     // manifest fetch instead of paying for a full rescan every time (docs/SYNC_MVP.md
     // "Future considerations" #5).
-    private fun checkForUpdates(novel: NovelEntity, libraryRoot: DocumentFile) {
+    // `allowRecreateMissingFolder` is only ever true when the user has explicitly
+    // confirmed it via the sync-resolution dialog (see syncResolutionState below) -
+    // an automatic/background-triggered call always leaves it false, so a missing
+    // local folder surfaces as a NeedsResolution prompt instead of a silent
+    // redownload (see docs/NEXT_FIXES.md #2 and SyncManager.sync's own doc comment).
+    private fun checkForUpdates(
+        novel: NovelEntity,
+        libraryRoot: DocumentFile,
+        allowRecreateMissingFolder: Boolean = false
+    ) {
         syncCheckState.value = SyncCheckState.InProgress(novel, "Checking for updates...")
         lifecycleScope.launch {
             try {
                 val sourceUrl = novel.syncSourceUrl
                     ?: throw IllegalStateException("This novel has no sync source")
                 val knownFiles = db.syncedFileDao().forNovel(novel.id)
-                val outcome = syncManager.sync(novel, libraryRoot, knownFiles) { message ->
+                val outcome = syncManager.sync(novel, libraryRoot, knownFiles, allowRecreateMissingFolder) { message ->
                     withContext(Dispatchers.Main) {
                         syncCheckState.value = SyncCheckState.InProgress(novel, message)
                     }
@@ -624,6 +753,10 @@ class MainActivity : ComponentActivity() {
                     db.syncedFileDao().deleteForNovel(novel.id)
                     db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novel.id) })
                     db.novelDao().updateSyncState(novel.id, sourceUrl, outcome.newVersion, System.currentTimeMillis())
+                    // This resync succeeded, so whatever made the novel MISSING_LOCALLY
+                    // (or that this call is a deliberate resolution retry for) no longer
+                    // applies - clear it back to ACTIVE rather than leaving a stale status.
+                    db.novelDao().updateSyncStatus(novel.id, SyncStatus.ACTIVE.name)
                     startScan(libraryRoot)
                     val updated = db.novelDao().findById(novel.id)
                     if (updated != null) {
@@ -639,8 +772,91 @@ class MainActivity : ComponentActivity() {
                     novel,
                     if (outcome.changed) "Updated to the latest version." else "Already up to date."
                 )
+            } catch (e: MissingLocalFolderException) {
+                // See docs/NEXT_FIXES.md #2: don't silently redownload and don't silently
+                // drop the novel either - ask the user via syncResolutionState.
+                db.novelDao().updateSyncStatus(novel.id, SyncStatus.MISSING_LOCALLY.name)
+                val updated = db.novelDao().findById(novel.id)
+                if (updated != null) {
+                    withContext(Dispatchers.Main) {
+                        val idx = novels.indexOfFirst { it.id == updated.id }
+                        if (idx >= 0) novels[idx] = updated
+                    }
+                }
+                syncCheckState.value = SyncCheckState.Idle
+                syncResolutionState.value = SyncResolutionState.NeedsResolution(
+                    updated ?: novel, SyncResolutionReason.MISSING_LOCALLY
+                )
+            } catch (e: SourceGoneException) {
+                // See docs/NEXT_FIXES.md #2: distinguishable from a generic network
+                // failure so the prompt can say what's actually true - the source is
+                // gone, not just unreachable right now. Local content stays readable.
+                db.novelDao().updateSyncStatus(novel.id, SyncStatus.SOURCE_GONE.name)
+                val updated = db.novelDao().findById(novel.id)
+                if (updated != null) {
+                    withContext(Dispatchers.Main) {
+                        val idx = novels.indexOfFirst { it.id == updated.id }
+                        if (idx >= 0) novels[idx] = updated
+                    }
+                }
+                syncCheckState.value = SyncCheckState.Idle
+                syncResolutionState.value = SyncResolutionState.NeedsResolution(
+                    updated ?: novel, SyncResolutionReason.SOURCE_GONE
+                )
             } catch (e: Exception) {
                 syncCheckState.value = SyncCheckState.Error(novel, "Sync failed: ${e.message}")
+            }
+        }
+    }
+
+    // Resolution actions offered from SyncResolutionDialog once checkForUpdates hits a
+    // MissingLocalFolderException or SourceGoneException (see above and
+    // docs/NEXT_FIXES.md #2). All three are explicit, user-triggered choices - none of
+    // them ever fire automatically.
+
+    // "Sync again": the user has confirmed they want the folder recreated and the
+    // fiction redownloaded from scratch - re-runs checkForUpdates with
+    // allowRecreateMissingFolder = true, the one path that's allowed to recreate a
+    // missing folder.
+    private fun resolveMissingFolderBySyncing(novel: NovelEntity, libraryRoot: DocumentFile) {
+        syncResolutionState.value = SyncResolutionState.Idle
+        checkForUpdates(novel, libraryRoot, allowRecreateMissingFolder = true)
+    }
+
+    // "Remove from library": the user confirms the deletion they'd otherwise have had
+    // done to them silently by the old stale-removal cascade - same NovelDao.delete
+    // cascade (arcs/chapters/overrides/progress/synced_files all cascade away with it).
+    private fun resolveByRemovingFromLibrary(novel: NovelEntity) {
+        syncResolutionState.value = SyncResolutionState.Idle
+        lifecycleScope.launch {
+            db.novelDao().delete(novel.id)
+            db.syncedFileDao().deleteForNovel(novel.id)
+            withContext(Dispatchers.Main) {
+                novels.removeAll { it.id == novel.id }
+                if (currentScreen.value.let { it is Screen.NovelDetail && it.novel.id == novel.id }) {
+                    currentScreen.value = Screen.Home
+                }
+            }
+        }
+    }
+
+    // "Unlink": only offered for SOURCE_GONE. Drops the sync relationship (this novel
+    // reverts to a plain local one) without touching any local content - there's
+    // nothing left to sync against, but everything already downloaded keeps working.
+    private fun resolveSourceGoneByUnlinking(novel: NovelEntity) {
+        syncResolutionState.value = SyncResolutionState.Idle
+        lifecycleScope.launch {
+            db.novelDao().unlinkSyncSource(novel.id)
+            val updated = db.novelDao().findById(novel.id)
+            if (updated != null) {
+                withContext(Dispatchers.Main) {
+                    val idx = novels.indexOfFirst { it.id == updated.id }
+                    if (idx >= 0) novels[idx] = updated
+                    val screen = currentScreen.value
+                    if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
+                        currentScreen.value = Screen.NovelDetail(updated)
+                    }
+                }
             }
         }
     }
@@ -1309,6 +1525,27 @@ class MainActivity : ComponentActivity() {
                             message = "",
                             errorMessage = state.message,
                             onDismiss = { syncCheckState.value = SyncCheckState.Idle }
+                        )
+                    }
+                }
+
+                // See docs/NEXT_FIXES.md #2 - offered whenever checkForUpdates hits a
+                // missing-local-folder or source-gone situation, in place of silently
+                // resolving either one.
+                when (val state = syncResolutionState.value) {
+                    SyncResolutionState.Idle -> {}
+                    is SyncResolutionState.NeedsResolution -> {
+                        SyncResolutionDialog(
+                            novelTitle = state.novel.title,
+                            isMissingLocally = state.reason == SyncResolutionReason.MISSING_LOCALLY,
+                            onSyncAgain = {
+                                resolveLibraryRoot(useCustomFolder.value, savedUri.value)?.let { root ->
+                                    resolveMissingFolderBySyncing(state.novel, root)
+                                }
+                            },
+                            onRemoveFromLibrary = { resolveByRemovingFromLibrary(state.novel) },
+                            onUnlink = { resolveSourceGoneByUnlinking(state.novel) },
+                            onDismiss = { syncResolutionState.value = SyncResolutionState.Idle }
                         )
                     }
                 }

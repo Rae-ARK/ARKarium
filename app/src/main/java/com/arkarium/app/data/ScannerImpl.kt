@@ -138,31 +138,7 @@ class ScannerImpl(private val context: Context) {
                         // switching between the two in Settings naturally mints fresh
                         // novel IDs for the newly active source rather than colliding
                         // with IDs from whichever source was active before.
-                        val id = UUID.nameUUIDFromBytes((root.uri.toString() + ":" + child.uri.toString()).toByteArray()).toString()
-                        val coverUri = findCoverUri(child)
-                        // Optional per-novel metadata.json in the novel's own folder, next to
-                        // cover.* and the chapter/arc folders - see readLocalMetadata() for the
-                        // schema. Lets a user set title/author/description/genres/publishedDate
-                        // by hand (or via a script) without needing the "Fetch info" lookup,
-                        // which only searches Google Books and mostly won't have web novels.
-                        val localMetadata = readLocalMetadata(child)
-                        // Resolution order (see "Linking a fiction to an author" in
-                        // AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md): explicit authorId first, then a
-                        // case-insensitive name fallback, then no link at all.
-                        val resolvedAuthorId = localMetadata?.authorId
-                            ?.trim()?.lowercase()
-                            ?.takeIf { authorsById.containsKey(it) }
-                            ?: localMetadata?.author?.let { authorIdByNormalizedName[it.trim().lowercase()] }
-                        val novel = NovelEntity(
-                            id = id,
-                            title = localMetadata?.title?.takeIf { it.isNotBlank() } ?: title,
-                            author = localMetadata?.author,
-                            authorId = resolvedAuthorId,
-                            coverUri = coverUri,
-                            description = localMetadata?.description,
-                            genres = localMetadata?.genres,
-                            publishedDate = localMetadata?.publishedDate
-                        )
+                        val novel = buildNovelEntity(root, child, title, authorsById, authorIdByNormalizedName)
                         onDiscovered(novel, child)
                     } catch (e: Exception) {
                         // Don't let one bad/inaccessible novel folder abort the whole scan.
@@ -177,6 +153,74 @@ class ScannerImpl(private val context: Context) {
         } catch (e: Exception) {
             onProgress(0, 0, "Scan failed: ${e.message}")
         }
+    }
+
+    // Builds the NovelEntity for a single already-located novel folder, without
+    // touching Room or scanning any other folder. Pulled out of scanRoot's per-child
+    // loop above so it can also back scanSingleNovel below (see docs/NEXT_FIXES.md #4)
+    // - both call sites need exactly this construction, just with `authorsById`/
+    // `authorIdByNormalizedName` sourced differently (a full-library scan's one shared
+    // authors/ pass vs. a scoped single-novel scan's own smaller one).
+    private fun buildNovelEntity(
+        root: DocumentFile,
+        child: DocumentFile,
+        title: String,
+        authorsById: Map<String, AuthorEntity>,
+        authorIdByNormalizedName: Map<String, String>
+    ): NovelEntity {
+        val id = UUID.nameUUIDFromBytes((root.uri.toString() + ":" + child.uri.toString()).toByteArray()).toString()
+        val coverUri = findCoverUri(child)
+        // Optional per-novel metadata.json in the novel's own folder, next to
+        // cover.* and the chapter/arc folders - see readLocalMetadata() for the
+        // schema. Lets a user set title/author/description/genres/publishedDate
+        // by hand (or via a script) without needing the "Fetch info" lookup,
+        // which only searches Google Books and mostly won't have web novels.
+        val localMetadata = readLocalMetadata(child)
+        // Resolution order (see "Linking a fiction to an author" in
+        // AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md): explicit authorId first, then a
+        // case-insensitive name fallback, then no link at all.
+        val resolvedAuthorId = localMetadata?.authorId
+            ?.trim()?.lowercase()
+            ?.takeIf { authorsById.containsKey(it) }
+            ?: localMetadata?.author?.let { authorIdByNormalizedName[it.trim().lowercase()] }
+        return NovelEntity(
+            id = id,
+            title = localMetadata?.title?.takeIf { it.isNotBlank() } ?: title,
+            author = localMetadata?.author,
+            authorId = resolvedAuthorId,
+            coverUri = coverUri,
+            description = localMetadata?.description,
+            genres = localMetadata?.genres,
+            publishedDate = localMetadata?.publishedDate
+        )
+    }
+
+    // Scoped counterpart to scanRoot: discovers/builds just the one novel folder the
+    // caller already knows about, instead of listing and considering every folder
+    // under root. Built for the sync batch path (see docs/NEXT_FIXES.md #4) -
+    // `syncAllRaeArkNovels` used to call the full scanRoot() once per fiction in its
+    // loop, which re-listed and re-fingerprinted every *already-synced* novel on every
+    // single iteration (O(M x N) SAF directory listings for M fictions being synced
+    // into a library of N). This still parses the shared authors/ folder (cheap - one
+    // folder listing, not per-novel) so author linking keeps working, but never lists
+    // or touches any other novel's folder. Caller is responsible for the same
+    // upsert/scanChaptersForNovel steps scanRoot's onDiscovered callback would have
+    // done - this only builds the entity and hands back its folder, mirroring the
+    // onDiscovered contract without the surrounding loop.
+    suspend fun scanSingleNovel(
+        root: DocumentFile,
+        novelFolder: DocumentFile,
+        onAuthorsDiscovered: suspend (List<AuthorEntity>) -> Unit = {}
+    ): NovelEntity = withContext(Dispatchers.IO) {
+        val authorsFolder = findAuthorsFolder(root)
+        val discoveredAuthors = if (authorsFolder != null) {
+            scanAuthorsFolder(authorsFolder) { }
+        } else emptyList()
+        onAuthorsDiscovered(discoveredAuthors)
+        val authorsById = discoveredAuthors.associateBy { it.id }
+        val authorIdByNormalizedName = mutableMapOf<String, String>()
+        discoveredAuthors.forEach { authorIdByNormalizedName.putIfAbsent(it.name.trim().lowercase(), it.id) }
+        buildNovelEntity(root, novelFolder, novelFolder.name ?: "Unknown", authorsById, authorIdByNormalizedName)
     }
 
     suspend fun scanChaptersForNovel(
