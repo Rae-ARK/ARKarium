@@ -15,9 +15,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ChapterEntity::class,
         ChapterOverrideEntity::class,
         ScanFingerprintEntity::class,
-        ReadingProgressEntity::class
+        ReadingProgressEntity::class,
+        SyncedFileEntity::class
     ],
-    version = 8
+    version = 9
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun novelDao(): NovelDao
@@ -27,6 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun chapterOverrideDao(): ChapterOverrideDao
     abstract fun scanFingerprintDao(): ScanFingerprintDao
     abstract fun readingProgressDao(): ReadingProgressDao
+    abstract fun syncedFileDao(): SyncedFileDao
 
     companion object {
         // Migration from v1 to v2: add new tables
@@ -170,11 +172,35 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v8 to v9: adds sync relay tracking (see docs/SYNC_MVP.md).
+        // Three new nullable columns on novels (sync_source_url/sync_source_version/
+        // last_synced_at - all null = "purely local", same backfill-friendly pattern
+        // as MIGRATION_5_6's metadata columns) plus the new synced_files table, which
+        // is the diff source-of-truth a sync pass reads/writes against (see
+        // SyncedFileEntity). No existing table's data is touched.
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE novels ADD COLUMN sync_source_url TEXT")
+                database.execSQL("ALTER TABLE novels ADD COLUMN sync_source_version INTEGER")
+                database.execSQL("ALTER TABLE novels ADD COLUMN last_synced_at INTEGER")
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS synced_files (
+                        novel_id TEXT NOT NULL,
+                        relative_path TEXT NOT NULL,
+                        sha256 TEXT NOT NULL,
+                        size INTEGER NOT NULL,
+                        PRIMARY KEY(novel_id, relative_path),
+                        FOREIGN KEY(novel_id) REFERENCES novels(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun create(context: Context): AppDatabase = Room.databaseBuilder(
             context.applicationContext,
             AppDatabase::class.java,
             "arkarium.db"
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
             .fallbackToDestructiveMigration()
             .build()
     }

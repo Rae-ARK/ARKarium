@@ -34,7 +34,17 @@ data class NovelEntity(
     @ColumnInfo(name = "remote_cover_url") val remoteCoverUrl: String? = null,  // fallback cover when no local cover.jpg was found
     @ColumnInfo(name = "published_date") val publishedDate: String? = null,
     @ColumnInfo(name = "external_source_url") val externalSourceUrl: String? = null,
-    @ColumnInfo(name = "metadata_fetched_at") val metadataFetchedAt: Long? = null  // null = never fetched
+    @ColumnInfo(name = "metadata_fetched_at") val metadataFetchedAt: Long? = null,  // null = never fetched
+    // Sync relay tracking (see docs/SYNC_MVP.md) - deliberately separate from
+    // externalSourceUrl/metadataFetchedAt above, which are about optional
+    // display-metadata lookups (NovelMetadataProvider), not this novel's content
+    // relay. `syncSourceUrl` null means "purely local, not synced from anywhere";
+    // non-null is the manifest.json base URL this novel's files were downloaded
+    // from. `syncSourceVersion` is the last-applied manifest's top-level "version",
+    // used to skip a full re-diff when a sync check finds nothing changed.
+    @ColumnInfo(name = "sync_source_url") val syncSourceUrl: String? = null,
+    @ColumnInfo(name = "sync_source_version") val syncSourceVersion: Int? = null,
+    @ColumnInfo(name = "last_synced_at") val lastSyncedAt: Long? = null
 )
 
 // One row per authors/<id>.json file at the library root (see
@@ -146,4 +156,33 @@ data class ScanFingerprintEntity(
     @ColumnInfo(name = "size") val size: Long?,
     @ColumnInfo(name = "file_count") val fileCount: Int = 0,
     @ColumnInfo(name = "scan_version") val scanVersion: Int = 1  // bump to force full rescan
+)
+
+// One row per file the sync client has actually downloaded and written for a synced
+// novel (see docs/SYNC_MVP.md, "Future considerations" #1). This is the diff's source
+// of truth on both sides - a sync pass downloads manifest paths missing from this
+// table, and deletes rows (and their on-disk files) present here but missing from the
+// new manifest. Deliberately its own table rather than reusing ScanFingerprintEntity,
+// which fingerprints a whole novel folder for rescan-skip purposes and has no
+// per-file provenance to diff against.
+//
+// primaryKeys is (novel_id, relative_path) rather than a synthetic id - there's
+// exactly one row per file-per-novel by construction, and this makes "does this path
+// already exist for this novel" a direct key lookup instead of a query.
+@Entity(
+    tableName = "synced_files",
+    primaryKeys = ["novel_id", "relative_path"],
+    foreignKeys = [
+        ForeignKey(entity = NovelEntity::class, parentColumns = ["id"], childColumns = ["novel_id"], onDelete = ForeignKey.CASCADE)
+    ]
+)
+data class SyncedFileEntity(
+    @ColumnInfo(name = "novel_id") val novelId: String,
+    // Sanitized, manifest-relative path (e.g. "arcs/arc-1/001.txt", "cover.png") -
+    // never trusted as-is from a manifest without validation first (see
+    // docs/SYNC_MVP.md "Future considerations" #2); validation happens in the sync
+    // client before a row like this is ever created, not here.
+    @ColumnInfo(name = "relative_path") val relativePath: String,
+    @ColumnInfo val sha256: String,
+    @ColumnInfo val size: Long
 )

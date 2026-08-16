@@ -58,6 +58,20 @@ interface NovelDao {
         externalSourceUrl: String?,
         fetchedAt: Long
     )
+
+    // Written once after "Add fiction from URL"'s first sync (once the library scan
+    // has discovered the synced folder and assigned it a real novel id - see
+    // docs/SYNC_MVP.md §4), and again after every subsequent successful re-sync. A
+    // plain UPDATE, same rationale as updateMetadata above - this patches an
+    // already-existing row rather than upserting a partial entity.
+    @Query("""
+        UPDATE novels SET
+            sync_source_url = :sourceUrl,
+            sync_source_version = :sourceVersion,
+            last_synced_at = :syncedAt
+        WHERE id = :novelId
+    """)
+    suspend fun updateSyncState(novelId: String, sourceUrl: String, sourceVersion: Int, syncedAt: Long)
 }
 
 @Dao
@@ -182,4 +196,22 @@ interface ScanFingerprintDao {
 
     @Query("DELETE FROM scan_fingerprints WHERE novel_id = :novelId")
     suspend fun delete(novelId: String)
+}
+
+@Dao
+interface SyncedFileDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(file: SyncedFileEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(files: List<SyncedFileEntity>)
+
+    @Query("SELECT * FROM synced_files WHERE novel_id = :novelId")
+    suspend fun forNovel(novelId: String): List<SyncedFileEntity>
+
+    @Query("DELETE FROM synced_files WHERE novel_id = :novelId AND relative_path = :relativePath")
+    suspend fun delete(novelId: String, relativePath: String)
+
+    @Query("DELETE FROM synced_files WHERE novel_id = :novelId")
+    suspend fun deleteForNovel(novelId: String)
 }
