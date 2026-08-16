@@ -61,7 +61,7 @@ interface NovelDao {
 
     // Written once after "Add fiction from URL"'s first sync (once the library scan
     // has discovered the synced folder and assigned it a real novel id - see
-    // docs/SYNC_MVP.md §4), and again after every subsequent successful re-sync. A
+    // docs/arkarium/SYNC_MVP.md §4), and again after every subsequent successful re-sync. A
     // plain UPDATE, same rationale as updateMetadata above - this patches an
     // already-existing row rather than upserting a partial entity.
     @Query("""
@@ -73,14 +73,14 @@ interface NovelDao {
     """)
     suspend fun updateSyncState(novelId: String, sourceUrl: String, sourceVersion: Int, syncedAt: Long)
 
-    // See docs/NEXT_FIXES.md #2 / Entities.kt SyncStatus. Set to MISSING_LOCALLY when a
+    // See docs/arkarium/NEXT_FIXES.md #2 / Entities.kt SyncStatus. Set to MISSING_LOCALLY when a
     // synced novel's on-disk folder is discovered gone by a scan, or to SOURCE_GONE when
     // its relay 404s on manifest.json - either way this deliberately never deletes the
     // row itself (see startScan's stale-removal in MainActivity.kt).
     @Query("UPDATE novels SET sync_status = :status WHERE id = :novelId")
     suspend fun updateSyncStatus(novelId: String, status: String)
 
-    // "Unlink" resolution for a SOURCE_GONE novel (see docs/NEXT_FIXES.md #2): drops the
+    // "Unlink" resolution for a SOURCE_GONE novel (see docs/arkarium/NEXT_FIXES.md #2): drops the
     // sync relationship entirely and reverts this novel to a plain local one. Local
     // content is untouched - only the sync bookkeeping columns are cleared. Caller is
     // still responsible for clearing this novel's SyncedFileEntity rows if desired;

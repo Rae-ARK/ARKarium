@@ -1,10 +1,10 @@
 # Future plans
 
-> **Status:** Idea / architecture notes, same spirit as `docs/ARKarium_Idea.md`
+> **Status:** Idea / architecture notes, same spirit as `docs/arkarium/IDEA.md`
 > — nothing here is built. Captures a design-review pass over what's missing
 > relative to the app's own stated v1 vision, plus a concrete first pass at
 > the TTS architecture the idea doc calls out as the project's "killer
-> feature." See `docs/NEXT_FIXES.md` for known sync bugs to fix first — this
+> feature." See `docs/arkarium/NEXT_FIXES.md` for known sync bugs to fix first — this
 > file is everything past that, further out.
 
 ---
@@ -13,7 +13,7 @@
 
 ### The big one: TTS is entirely unbuilt
 
-`docs/ARKarium_Idea.md` calls character-aware multi-voice TTS **"the killer
+`docs/arkarium/IDEA.md` calls character-aware multi-voice TTS **"the killer
 feature"** — the stated reason this isn't just another Royal Road clone.
 There is currently no TTS code anywhere in `app/src`: no `TextToSpeech`
 usage, no voice/character data model, nothing. Even Stage 1 (narration
@@ -36,23 +36,28 @@ a concrete architecture proposal.
 
 ### From `app/README.md`'s own "Known limitations"
 
-- **EPUB/PDF ingestion isn't implemented.** The README points at
-  `docs/EPUB_SUPPORT.md` for details, but that file doesn't exist in this
-  repo — worth resolving (write the doc, or drop the reference) rather than
-  leaving a dangling pointer.
+- **EPUB/PDF ingestion isn't implemented.** The README's pointer to an EPUB
+  design doc is no longer dangling — ARKster's own staged plan for this is
+  now pulled in at `docs/reference/arkster/EPUB_SUPPORT.md` (see
+  `docs/README.md` for why it lives there instead of under `arkarium/`). It's
+  prior art from the predecessor project, not yet re-specified for
+  ARKarium's own schema/sync-manifest shape — that re-specification is
+  still open work, just no longer blocked on a missing doc.
 - **Search is title/author only** — doesn't search chapter contents. Fine
   at small library sizes, probably not once someone's synced a dozen
   400-chapter novels.
 
-### A documentation gap worth flagging on its own
+### Documentation gap — resolved
 
-Several source comments reference docs not actually present in this repo:
-`bugs.md` (cited repeatedly around rescan/dedup fixes),
-`EPUB_SUPPORT.md`, and `AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md` (cited for the
-author-linking resolution order). Either they live outside this repo or
-were never committed — worth tracking down or reconstructing, since real
-design history is currently invisible to anyone reading only what's checked
-in.
+Several source comments reference `bugs.md`, `EPUB_SUPPORT.md`, and
+`AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md` (cited around rescan/dedup fixes and
+author-linking resolution order). These weren't missing history — they live
+in the predecessor ARKster repo, and are now pulled into this repo as
+frozen reference copies under `docs/reference/arkster/` (see
+`docs/README.md` for the full explanation of the split and
+`docs/reference/arkster/README.md` for what's there and why). Source
+comments citing these filenames now resolve correctly; no reconstruction
+needed.
 
 ### What's already in good shape
 
@@ -60,7 +65,7 @@ Worth stating plainly: the core reading experience is close to solid —
 SAF folder scanning, incremental fingerprinted rescans, arc/chapter
 detection with sort-tier handling, author pages, chapter overrides,
 encoding fallback, crash recovery. The gap is concentrated in TTS (missing
-entirely) and sync robustness/scope (see `docs/NEXT_FIXES.md`), not in the
+entirely) and sync robustness/scope (see `docs/arkarium/NEXT_FIXES.md`), not in the
 reader itself.
 
 ---

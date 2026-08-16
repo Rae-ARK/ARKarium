@@ -20,7 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-// Shown from the home screen's "add fiction" icon (see docs/SYNC_MVP.md §5/Stage 3,
+// Shown from the home screen's "add fiction" icon (see docs/arkarium/SYNC_MVP.md §5/Stage 3,
 // and the later change to single-origin-by-name lookup). The name field stays visible
 // and editable through every state (including Error, so the user can just fix a typo
 // and retry without reopening the dialog) - only isLoading gates whether it and the
@@ -132,7 +132,7 @@ fun SyncProgressDialog(
 }
 
 // Shown when a "Check for updates" pass hits something that shouldn't be resolved
-// silently in either direction (see docs/NEXT_FIXES.md #2 and
+// silently in either direction (see docs/arkarium/NEXT_FIXES.md #2 and
 // MainActivity.SyncResolutionState): either this novel's local folder is gone, or its
 // relay no longer serves it. Which buttons are offered depends on `isMissingLocally` -
 // "Sync again" / "Remove from library" for a missing folder (there's still a live

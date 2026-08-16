@@ -34,7 +34,9 @@ How to build and run
 5. Wait for scan to complete, then tap a novel to see chapters, and tap a chapter to read.
 
 Known limitations
-- EPUB/PDF support not yet implemented (see `docs/EPUB_SUPPORT.md`).
+- EPUB/PDF support not yet implemented. See `docs/reference/arkster/EPUB_SUPPORT.md`
+  for the predecessor project's staged plan (prior art, not yet re-specified
+  for ARKarium — see `docs/README.md`).
 - Library-wide search matches title/author only; it doesn't search chapter contents.
 
 Architecture notes

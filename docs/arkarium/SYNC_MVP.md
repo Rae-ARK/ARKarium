@@ -6,7 +6,7 @@
 > question" at the bottom, both of which described the URL-paste version.
 > Stage 4+ (multi-relay fallback, auth, background sync, TTS metadata)
 > remains design-only — see "Deliberately punted" below.
-> **Relationship to `docs/ARKarium_Idea.md`:** this is the load-bearing subset of
+> **Relationship to `docs/arkarium/IDEA.md`:** this is the load-bearing subset of
 > that doc's "Static relay architecture" and "Manifests and synchronization"
 > sections, cut down to what's needed for a first working version. Multi-relay
 > fallback chains, auth/paid content, and semantic TTS metadata are explicitly
@@ -212,7 +212,7 @@ here so they aren't silently lost between the idea and the implementation.
    updates" fetching a manifest over a flaky connection, or dying mid-way
    through a multi-file download — what does `SyncedFileEntity` look like
    afterward? Given the product's stated local-first/offline-first value
-   (see `docs/ARKarium_Idea.md`), a sync that aborts partway through should
+   (see `docs/arkarium/IDEA.md`), a sync that aborts partway through should
    never leave the tracking table claiming a file was synced when it wasn't,
    or vice versa. This doesn't need a full transactional design for MVP, but
    the failure mode shouldn't be silently ignored either — at minimum, only

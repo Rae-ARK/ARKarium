@@ -35,7 +35,7 @@ data class NovelEntity(
     @ColumnInfo(name = "published_date") val publishedDate: String? = null,
     @ColumnInfo(name = "external_source_url") val externalSourceUrl: String? = null,
     @ColumnInfo(name = "metadata_fetched_at") val metadataFetchedAt: Long? = null,  // null = never fetched
-    // Sync relay tracking (see docs/SYNC_MVP.md) - deliberately separate from
+    // Sync relay tracking (see docs/arkarium/SYNC_MVP.md) - deliberately separate from
     // externalSourceUrl/metadataFetchedAt above, which are about optional
     // display-metadata lookups (NovelMetadataProvider), not this novel's content
     // relay. `syncSourceUrl` null means "purely local, not synced from anywhere";
@@ -45,7 +45,7 @@ data class NovelEntity(
     @ColumnInfo(name = "sync_source_url") val syncSourceUrl: String? = null,
     @ColumnInfo(name = "sync_source_version") val syncSourceVersion: Int? = null,
     @ColumnInfo(name = "last_synced_at") val lastSyncedAt: Long? = null,
-    // Only meaningful when syncSourceUrl != null (see docs/NEXT_FIXES.md #2). ACTIVE =
+    // Only meaningful when syncSourceUrl != null (see docs/arkarium/NEXT_FIXES.md #2). ACTIVE =
     // normal state. MISSING_LOCALLY = this novel's on-disk folder disappeared out from
     // under a synced novel (user deleted it, SAF re-permission minted a new tree, etc)
     // - the row is deliberately kept rather than cascade-deleted so the user can choose
@@ -172,7 +172,7 @@ data class ScanFingerprintEntity(
 )
 
 // One row per file the sync client has actually downloaded and written for a synced
-// novel (see docs/SYNC_MVP.md, "Future considerations" #1). This is the diff's source
+// novel (see docs/arkarium/SYNC_MVP.md, "Future considerations" #1). This is the diff's source
 // of truth on both sides - a sync pass downloads manifest paths missing from this
 // table, and deletes rows (and their on-disk files) present here but missing from the
 // new manifest. Deliberately its own table rather than reusing ScanFingerprintEntity,
@@ -193,7 +193,7 @@ data class SyncedFileEntity(
     @ColumnInfo(name = "novel_id") val novelId: String,
     // Sanitized, manifest-relative path (e.g. "arcs/arc-1/001.txt", "cover.png") -
     // never trusted as-is from a manifest without validation first (see
-    // docs/SYNC_MVP.md "Future considerations" #2); validation happens in the sync
+    // docs/arkarium/SYNC_MVP.md "Future considerations" #2); validation happens in the sync
     // client before a row like this is ever created, not here.
     @ColumnInfo(name = "relative_path") val relativePath: String,
     @ColumnInfo val sha256: String,

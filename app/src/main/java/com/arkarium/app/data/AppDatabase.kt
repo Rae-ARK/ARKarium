@@ -172,7 +172,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // Migration from v8 to v9: adds sync relay tracking (see docs/SYNC_MVP.md).
+        // Migration from v8 to v9: adds sync relay tracking (see docs/arkarium/SYNC_MVP.md).
         // Three new nullable columns on novels (sync_source_url/sync_source_version/
         // last_synced_at - all null = "purely local", same backfill-friendly pattern
         // as MIGRATION_5_6's metadata columns) plus the new synced_files table, which
@@ -196,7 +196,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // Migration from v9 to v10: adds sync_status to novels (see docs/NEXT_FIXES.md
+        // Migration from v9 to v10: adds sync_status to novels (see docs/arkarium/NEXT_FIXES.md
         // #2 - "no graceful handling when a synced novel's folder disappears"). Backfills
         // to 'ACTIVE' for every existing row, synced or not; the column is simply unused
         // for a purely-local novel (syncSourceUrl == null).

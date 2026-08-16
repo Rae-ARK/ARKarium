@@ -157,7 +157,7 @@ class ScannerImpl(private val context: Context) {
 
     // Builds the NovelEntity for a single already-located novel folder, without
     // touching Room or scanning any other folder. Pulled out of scanRoot's per-child
-    // loop above so it can also back scanSingleNovel below (see docs/NEXT_FIXES.md #4)
+    // loop above so it can also back scanSingleNovel below (see docs/arkarium/NEXT_FIXES.md #4)
     // - both call sites need exactly this construction, just with `authorsById`/
     // `authorIdByNormalizedName` sourced differently (a full-library scan's one shared
     // authors/ pass vs. a scoped single-novel scan's own smaller one).
@@ -197,7 +197,7 @@ class ScannerImpl(private val context: Context) {
 
     // Scoped counterpart to scanRoot: discovers/builds just the one novel folder the
     // caller already knows about, instead of listing and considering every folder
-    // under root. Built for the sync batch path (see docs/NEXT_FIXES.md #4) -
+    // under root. Built for the sync batch path (see docs/arkarium/NEXT_FIXES.md #4) -
     // `syncAllRaeArkNovels` used to call the full scanRoot() once per fiction in its
     // loop, which re-listed and re-fingerprinted every *already-synced* novel on every
     // single iteration (O(M x N) SAF directory listings for M fictions being synced
