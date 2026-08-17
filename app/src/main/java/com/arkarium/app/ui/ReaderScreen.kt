@@ -1,7 +1,6 @@
 package com.arkarium.app.ui
 
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -11,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -47,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -308,35 +305,36 @@ fun ReaderScreen(
         // Bottom controls: the reading-progress readout ("0% • page 1 of x") and the
         // Reader Preferences pill.
         //
-        // Previous bug: the pill sat *below* the progress readout inside a single
+        // Original bug: the pill sat *below* the progress readout inside a single
         // Column, and the readout was only added to the composition at all when
         // showControls was true. A Column packs its children directly below one
         // another, so removing the readout from composition shrank the Column - which
-        // yanked the pill up/down every single time immersive mode was toggled. That
-        // vertical jump was the pill's "weird behaviour": its resting position depended
-        // on whether the readout happened to be present, instead of staying put.
+        // yanked the pill up/down every single time immersive mode was toggled.
         //
-        // Fix: the pill is now pinned to a constant offset from the bottom of the
-        // screen (its position never changes) and rendered on top of the progress
-        // readout - both spatially (the readout sits above it, not below) and in
-        // z-order (declared second below, so drawn over it). The readout itself now
-        // stays permanently in the composition; instead of vanishing outright when
-        // controls hide, it animates sliding down and fading out until it's tucked in
-        // right behind the pill's fixed position - "pulled down" onto the pill, rather
-        // than the pill jumping to it.
-        val pillBottomPadding = 16.dp
-        // Seeded with a sane default (matches the pill's typical measured height) so
-        // there's no first-frame jump before onSizeChanged reports the real value.
+        // The pill needs to stay reachable in both modes (people change font/spacing/
+        // mode mid-read, immersive or not), so it's the pill that should visibly move -
+        // dropping down to reclaim the vertical space the readout was using once
+        // immersive mode hides it, rather than sitting still while something else
+        // animates around it. The readout itself is only useful in non-immersive mode
+        // (nobody needs a page count while immersed), so it can just appear/disappear
+        // with the mode - no animation of its own required. This is safe now, unlike
+        // before: the pill has its own explicit, independently-animated offset from the
+        // bottom edge, so adding/removing the readout from composition can no longer
+        // move it.
+        val basePillPadding = 16.dp
+        val gap = 8.dp
+        // Seeded with sane defaults so there's no first-frame jump before
+        // onSizeChanged reports the real measured sizes.
         var pillHeight by remember { mutableStateOf(48.dp) }
+        var readoutHeight by remember { mutableStateOf(32.dp) }
         val density = LocalDensity.current
 
-        val progressOffsetY by animateDpAsState(
-            targetValue = if (showControls.value) 0.dp else pillHeight + 8.dp,
-            label = "readerProgressOffset"
-        )
-        val progressAlpha by animateFloatAsState(
-            targetValue = if (showControls.value) 1f else 0f,
-            label = "readerProgressAlpha"
+        // Pill's distance from the bottom edge: raised, with room left above it for the
+        // readout, in non-immersive mode; dropped all the way down to `basePillPadding`
+        // once immersive mode hides the readout and that space is free to reclaim.
+        val pillBottomPadding by animateDpAsState(
+            targetValue = if (showControls.value) basePillPadding + readoutHeight + gap else basePillPadding,
+            label = "pillBottomPadding"
         )
 
         Box(
@@ -344,37 +342,41 @@ fun ReaderScreen(
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
         ) {
-            // Progress readout - rests just above the pill's fixed spot, then animates
-            // down onto it (see comment above) instead of being added/removed from the
-            // tree, which is what caused the jump.
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = pillBottomPadding + pillHeight + 8.dp)
-                    .offset(y = progressOffsetY)
-                    .graphicsLayer { alpha = progressAlpha }
-                    .background(backgroundColor)
-                    .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
-            ) {
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.Center
+            // Reading progress readout - only relevant in non-immersive mode, so it's
+            // simply not composed in immersive mode. Safe to do (unlike before): it no
+            // longer shares a Column with the pill, so removing it from the tree can't
+            // move anything else - only the pill's own animated offset above does that.
+            if (showControls.value) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(bottom = basePillPadding + readoutHeight + gap + pillHeight + gap)
+                        .onSizeChanged { readoutHeight = with(density) { it.height.toDp() } }
+                        .background(backgroundColor)
+                        .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
                 ) {
-                    val progressPercent = (currentProgress() * 100).toInt()
-                    val currentPage = (currentProgress() * estimatedTotalPages).toInt().coerceIn(1, estimatedTotalPages)
-                    Text(
-                        "$progressPercent% • page $currentPage of $estimatedTotalPages",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = textColor.copy(alpha = 0.7f)
-                    )
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val progressPercent = (currentProgress() * 100).toInt()
+                        val currentPage = (currentProgress() * estimatedTotalPages).toInt().coerceIn(1, estimatedTotalPages)
+                        Text(
+                            "$progressPercent% • page $currentPage of $estimatedTotalPages",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textColor.copy(alpha = 0.7f)
+                        )
+                    }
                 }
             }
 
-            // Reader Preferences: the pill + its font/spacing/mode panel. Pinned to
-            // `pillBottomPadding` from the bottom regardless of showControls or
-            // showPreferences - Alignment.BottomCenter anchors this Column's *bottom*
-            // edge, so the panel opening above the pill grows the column upward without
-            // ever moving the pill itself.
+            // Reader Preferences: the pill + its font/spacing/mode panel. Animates
+            // between the two resting offsets computed above - raised in non-immersive
+            // mode, dropped down toward the bottom edge in immersive mode.
+            // Alignment.BottomCenter anchors this Column's *bottom* edge, so the panel
+            // opening above the pill grows the column upward without disturbing the
+            // pill's own animated bottom padding.
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
