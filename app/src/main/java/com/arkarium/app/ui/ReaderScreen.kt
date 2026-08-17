@@ -351,7 +351,12 @@ fun ReaderScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(bottom = basePillPadding + readoutHeight + gap + pillHeight + gap)
+                        // Sits in the gap the pill's own bottom padding (below) reserves
+                        // for it - basePillPadding is the true screen-bottom offset, the
+                        // same anchor the pill drops to in immersive mode. Do NOT add
+                        // pillHeight/gap here: that would stack the readout above the
+                        // pill instead of below it, in space nothing reserved for it.
+                        .padding(bottom = basePillPadding)
                         .onSizeChanged { readoutHeight = with(density) { it.height.toDp() } }
                         .background(backgroundColor)
                         .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
