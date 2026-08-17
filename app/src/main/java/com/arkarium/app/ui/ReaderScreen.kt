@@ -1,5 +1,7 @@
 package com.arkarium.app.ui
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -9,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -35,14 +38,19 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -297,54 +305,81 @@ fun ReaderScreen(
             )
         }
 
-        // Bottom controls: the reading-progress readout (gated on showControls, same as
-        // the top bar) and the Reader Preferences pill (always visible - see its own
-        // comment below) used to be two SEPARATE Columns each independently
-        // align(Alignment.BottomCenter)'d against this Box. Two children both anchored
-        // to BottomCenter overlap at the same position rather than stacking, so in
-        // non-immersive mode (both visible at once) the pill - composed second, so on
-        // top in z-order - was drawn directly over the progress readout and hid it.
-        // Wrapping both in one shared BottomCenter Column makes them lay out in order
-        // (progress readout above, pill below) instead of on top of each other.
-        Column(
+        // Bottom controls: the reading-progress readout ("0% • page 1 of x") and the
+        // Reader Preferences pill.
+        //
+        // Previous bug: the pill sat *below* the progress readout inside a single
+        // Column, and the readout was only added to the composition at all when
+        // showControls was true. A Column packs its children directly below one
+        // another, so removing the readout from composition shrank the Column - which
+        // yanked the pill up/down every single time immersive mode was toggled. That
+        // vertical jump was the pill's "weird behaviour": its resting position depended
+        // on whether the readout happened to be present, instead of staying put.
+        //
+        // Fix: the pill is now pinned to a constant offset from the bottom of the
+        // screen (its position never changes) and rendered on top of the progress
+        // readout - both spatially (the readout sits above it, not below) and in
+        // z-order (declared second below, so drawn over it). The readout itself now
+        // stays permanently in the composition; instead of vanishing outright when
+        // controls hide, it animates sliding down and fading out until it's tucked in
+        // right behind the pill's fixed position - "pulled down" onto the pill, rather
+        // than the pill jumping to it.
+        val pillBottomPadding = 16.dp
+        // Seeded with a sane default (matches the pill's typical measured height) so
+        // there's no first-frame jump before onSizeChanged reports the real value.
+        var pillHeight by remember { mutableStateOf(48.dp) }
+        val density = LocalDensity.current
+
+        val progressOffsetY by animateDpAsState(
+            targetValue = if (showControls.value) 0.dp else pillHeight + 8.dp,
+            label = "readerProgressOffset"
+        )
+        val progressAlpha by animateFloatAsState(
+            targetValue = if (showControls.value) 1f else 0f,
+            label = "readerProgressAlpha"
+        )
+
+        Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
         ) {
-            // Reading progress readout stays tied to the immersive tap-to-show/hide
-            // gesture (showControls), same as the top bar.
-            if (showControls.value) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(backgroundColor)
-                        .padding(top = 16.dp, start = 16.dp, end = 16.dp)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val progressPercent = (currentProgress() * 100).toInt()
-                        val currentPage = (currentProgress() * estimatedTotalPages).toInt().coerceIn(1, estimatedTotalPages)
-                        Text(
-                            "$progressPercent% • page $currentPage of $estimatedTotalPages",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = textColor.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            }
-
-            // Reader Preferences: an explicit, always-visible pill (Royal Road-style)
-            // that opens the font/spacing/mode panel. Unlike the block above, this isn't
-            // gated on showControls, so it stays reachable even when the top bar and
-            // progress readout are hidden in immersive mode.
+            // Progress readout - rests just above the pill's fixed spot, then animates
+            // down onto it (see comment above) instead of being added/removed from the
+            // tree, which is what caused the jump.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 16.dp)
+                    .padding(bottom = pillBottomPadding + pillHeight + 8.dp)
+                    .offset(y = progressOffsetY)
+                    .graphicsLayer { alpha = progressAlpha }
+                    .background(backgroundColor)
+                    .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val progressPercent = (currentProgress() * 100).toInt()
+                    val currentPage = (currentProgress() * estimatedTotalPages).toInt().coerceIn(1, estimatedTotalPages)
+                    Text(
+                        "$progressPercent% • page $currentPage of $estimatedTotalPages",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor.copy(alpha = 0.7f)
+                    )
+                }
+            }
+
+            // Reader Preferences: the pill + its font/spacing/mode panel. Pinned to
+            // `pillBottomPadding` from the bottom regardless of showControls or
+            // showPreferences - Alignment.BottomCenter anchors this Column's *bottom*
+            // edge, so the panel opening above the pill grows the column upward without
+            // ever moving the pill itself.
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = pillBottomPadding)
             ) {
             if (showPreferences.value) {
                 Column(
@@ -465,12 +500,17 @@ fun ReaderScreen(
                 }
             }
 
-            // The pill itself - Royal Road-style rounded button, centered, always on
-            // top of whatever else is showing. Toggles the panel above rather than
-            // navigating anywhere, so it stays a single persistent affordance instead
-            // of disappearing once tapped.
+            // The pill itself - Royal Road-style rounded button, centered, on top of
+            // the progress readout both positionally and in z-order. Toggles the panel
+            // above rather than navigating anywhere, so it stays a single persistent
+            // affordance instead of disappearing once tapped. Its own measured height
+            // feeds `pillHeight` above, so the progress readout's resting offset always
+            // matches the pill's actual size (font scale, locale text length, etc.)
+            // instead of a guessed constant.
             Box(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { pillHeight = with(density) { it.height.toDp() } },
                 contentAlignment = Alignment.Center
             ) {
                 Surface(
@@ -493,8 +533,8 @@ fun ReaderScreen(
                     }
                 }
             }
+            }
         }
-    }
     }
 }
 
