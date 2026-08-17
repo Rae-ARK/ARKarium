@@ -94,7 +94,7 @@ fun SplashScreen(onFinished: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                "A better way to organise local novels",
+                "A better way to consume Rae ARK's Novels straight from him.",
                 color = SplashForeground.copy(alpha = 0.7f),
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center
