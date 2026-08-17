@@ -10,6 +10,11 @@ on:
 jobs:
   build-release:
     runs-on: ubuntu-latest
+    # softprops/action-gh-release needs write access to create the tag/release
+    # and upload the APK - the default GITHUB_TOKEN scope depends on repo/org
+    # settings, so this is stated explicitly rather than assumed.
+    permissions:
+      contents: write
     # A step's own `if:` condition cannot see the `secrets` context directly
     # (GitHub Actions rejects that at workflow-parse time - "Unrecognized
     # named-value: 'secrets'" - which is exactly the 422 this repo hit trying
@@ -78,6 +83,31 @@ jobs:
         name: arkarium-release-apk
         path: app/build/outputs/apk/release/*.apk
         retention-days: 90
+
+    # Artifacts above are CI-run-scoped and expire after 90 days - not a real
+    # release. This reads the version back out of the same build.gradle.kts
+    # single source of truth (see app/build.gradle.kts's own comment on
+    # versionName) so the tag/title always match what's actually in the APK,
+    # rather than being hand-typed here and risking drift.
+    - name: Read app version
+      id: app_version
+      run: |
+        VERSION_NAME=$(grep -m1 'versionName = "' app/build.gradle.kts | sed -E 's/.*versionName = "([^"]+)".*/\1/')
+        echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        tag_name: v${{ steps.app_version.outputs.version_name }}
+        name: ARKarium v${{ steps.app_version.outputs.version_name }}
+        # Unsigned fallback builds (see build.gradle.kts's signingConfigs
+        # comment) still get published - this workflow already logs which
+        # case it was via the presence check above, and an installable draft
+        # is more useful than none. Mark it a prerelease rather than skip it,
+        # so it's not mistaken for a properly signed build.
+        prerelease: ${{ env.HAS_RELEASE_KEYSTORE != 'true' }}
+        files: app/build/outputs/apk/release/*.apk
+        generate_release_notes: true
 
     - name: Upload Build Logs on failure
       if: failure()

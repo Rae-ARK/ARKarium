@@ -19,8 +19,8 @@ android {
         // there's exactly one place to bump per release. Static docs (README.md,
         // app/README.md) can't read a Gradle value at doc-render time and are kept in
         // sync by hand - bump those alongside this when you bump here.
-        versionCode = 2
-        versionName = "0.2"
+        versionCode = 3
+        versionName = "0.5"
     }
 
     buildFeatures {
