@@ -71,6 +71,12 @@ fun SettingsScreen(
     onUseCustomFolderToggle: (Boolean) -> Unit,
     onSelectFolderClick: () -> Unit,
     onRescan: () -> Unit,
+    // Splash-screen behavior (see PreferencesManager.splashAnimationEnabled /
+    // splashMusicEnabled) - both default to true, independent of each other.
+    splashAnimationEnabled: Boolean = true,
+    splashMusicEnabled: Boolean = true,
+    onSplashAnimationToggle: (Boolean) -> Unit = {},
+    onSplashMusicToggle: (Boolean) -> Unit = {},
     onPrivacyPolicy: () -> Unit,
     onTermsAndConditions: () -> Unit,
     onAboutMe: () -> Unit,
@@ -183,6 +189,56 @@ fun SettingsScreen(
                     .padding(top = 12.dp)
             ) {
                 Text("Rescan Library")
+            }
+
+            Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
+
+            Text("Splash Screen", modifier = Modifier.padding(bottom = 8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // weight(1f) here for the same reason as the "Use custom folder"
+                // row above - forces the description to wrap within its share of
+                // the Row instead of pushing the Switch off-screen.
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
+                    Text("Animation")
+                    Text(
+                        "Lines converge into the ARKarium mark on launch. Turn " +
+                            "off for a plain, faster fade-in instead.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+                Switch(checked = splashAnimationEnabled, onCheckedChange = onSplashAnimationToggle)
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 12.dp)
+                ) {
+                    Text("Animation music")
+                    Text(
+                        "Plays a short guitar chord alongside the launch animation.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    )
+                }
+                Switch(checked = splashMusicEnabled, onCheckedChange = onSplashMusicToggle)
             }
 
             Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))

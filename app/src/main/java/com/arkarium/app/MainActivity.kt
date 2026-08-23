@@ -1141,6 +1141,11 @@ class MainActivity : ComponentActivity() {
                 // without re-collecting these flows a second time.
                 val savedUri = prefsManager.libraryUri.collectAsState(initial = null)
                 val useCustomFolder = prefsManager.useCustomFolder.collectAsState(initial = false)
+                // Splash-screen behavior toggles (see SettingsScreen's "Splash Screen"
+                // section) - collected here too, same reasoning as savedUri/useCustomFolder
+                // above, and both default to true to match PreferencesManager's own default.
+                val splashAnimationEnabled = prefsManager.splashAnimationEnabled.collectAsState(initial = true)
+                val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = true)
 
                 if (showSplash.value) {
                     // Splash always renders on its own solid-black canvas (see
@@ -1153,7 +1158,11 @@ class MainActivity : ComponentActivity() {
                         WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = false
                         window.statusBarColor = Color.Black.toArgb()
                     }
-                    SplashScreen(onFinished = { showSplash.value = false })
+                    SplashScreen(
+                        animationEnabled = splashAnimationEnabled.value,
+                        musicEnabled = splashMusicEnabled.value,
+                        onFinished = { showSplash.value = false }
+                    )
                     return@MaterialTheme
                 }
 
@@ -1473,6 +1482,18 @@ class MainActivity : ComponentActivity() {
                                             // nothing here. Send the user to the picker.
                                             pickFolder.launch(null)
                                         }
+                                    }
+                                },
+                                splashAnimationEnabled = splashAnimationEnabled.value,
+                                splashMusicEnabled = splashMusicEnabled.value,
+                                onSplashAnimationToggle = { enabled ->
+                                    lifecycleScope.launch {
+                                        prefsManager.setSplashAnimationEnabled(enabled)
+                                    }
+                                },
+                                onSplashMusicToggle = { enabled ->
+                                    lifecycleScope.launch {
+                                        prefsManager.setSplashMusicEnabled(enabled)
                                     }
                                 },
                                 onPrivacyPolicy = { currentScreen.value = Screen.PrivacyPolicy },
