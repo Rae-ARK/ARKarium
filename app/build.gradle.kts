@@ -144,5 +144,13 @@ dependencies {
     // the author's site in-app via WebViewClientCompat instead of bouncing
     // out to a browser.
     implementation("androidx.webkit:webkit:1.10.0")
+
+    // Unit test infra (JVM, src/test - no device/emulator needed). Kept deliberately
+    // minimal: JUnit4 for assertions/runner, kotlinx-coroutines-test for suspend-fun
+    // and Flow testing. See docs/arkarium/REFACTOR_PLAN.md for the testing strategy
+    // this is meant to grow into as more logic moves out of MainActivity and into
+    // plain-Kotlin/ViewModel classes that don't need Robolectric or instrumentation.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 }
 
