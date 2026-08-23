@@ -297,7 +297,13 @@ fun ReaderScreen(
                 hasNext = onNext != null,
                 textColor = textColor,
                 onPrevious = { onPrevious?.invoke(currentProgress()) },
-                onNext = { onNext?.invoke(currentProgress()) }
+                onNext = { onNext?.invoke(currentProgress()) },
+                // Only offered where there's actually somewhere to send the reader -
+                // the top copy of this row (above the chapter body) is left as a plain
+                // disabled button at the end of a fiction, since "About the Author" as
+                // the very first thing on the page would read oddly before they've even
+                // reached the content.
+                onAuthorClick = author?.let { { onAuthorClick() } }
             )
 
             // "About the author" card - only rendered when this fiction actually has a
@@ -514,13 +520,21 @@ fun ReaderScreen(
 // AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md). A missing neighbor renders its button disabled
 // rather than hiding it, so the layout doesn't jump between the top and bottom copies
 // of this row depending on which end of the chapter list you're at.
+//
+// Royal Road-style exception: at the very end of a fiction (no next chapter), the
+// "Next Chapter" slot has nothing left to do, so - when there's a linked author to
+// send the reader to - it becomes an "About the Author ›" button instead of just
+// sitting there disabled. hasNext still wins whenever there IS a next chapter, and a
+// fiction with no linked author (onAuthorClick == null) keeps today's disabled-button
+// behavior unchanged.
 @Composable
 private fun ChapterNavRow(
     hasPrevious: Boolean,
     hasNext: Boolean,
     textColor: Color,
     onPrevious: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    onAuthorClick: (() -> Unit)? = null
 ) {
     Row(
         modifier = Modifier
@@ -531,8 +545,14 @@ private fun ChapterNavRow(
         OutlinedButton(onClick = onPrevious, enabled = hasPrevious) {
             Text("‹ Previous Chapter")
         }
-        OutlinedButton(onClick = onNext, enabled = hasNext) {
-            Text("Next Chapter ›")
+        if (!hasNext && onAuthorClick != null) {
+            OutlinedButton(onClick = onAuthorClick) {
+                Text("About the Author ›")
+            }
+        } else {
+            OutlinedButton(onClick = onNext, enabled = hasNext) {
+                Text("Next Chapter ›")
+            }
         }
     }
 }
