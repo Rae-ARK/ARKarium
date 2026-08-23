@@ -80,7 +80,16 @@ class ScannerImpl(private val context: Context) {
         // (if any) has been parsed and before novel folders are iterated - callers do
         // the actual DB upsert/stale-removal themselves, same "ScannerImpl never holds
         // a db reference in scanRoot" style already used for onDiscovered above.
-        onAuthorsDiscovered: suspend (List<AuthorEntity>) -> Unit = {},
+        //
+        // The second parameter is true only when an authors/ folder actually exists at
+        // root - distinct from `discoveredAuthors` being empty, which is also true when
+        // the folder exists but is empty. Callers need this distinction: a novel whose
+        // authorId doesn't resolve against a *found* authors/ folder genuinely has no
+        // link (see buildNovelEntity), but a scan pass that couldn't find authors/ at
+        // all (transient SAF hiccup, sync hasn't pulled it down yet this run, etc)
+        // shouldn't be trusted to say the same thing - see mergeNovelForRescan's use of
+        // this flag.
+        onAuthorsDiscovered: suspend (List<AuthorEntity>, Boolean) -> Unit = { _, _ -> },
         // Fired exactly once, only after the full children loop below has finished a
         // genuine, uninterrupted pass (i.e. NOT on the early SecurityException/
         // "folder no longer accessible" returns above it, and not per-child - a single
@@ -114,7 +123,7 @@ class ScannerImpl(private val context: Context) {
                     onProgress(0, 0, message)
                 }
             } else emptyList()
-            onAuthorsDiscovered(discoveredAuthors)
+            onAuthorsDiscovered(discoveredAuthors, authorsFolder != null)
             val authorsById = discoveredAuthors.associateBy { it.id }
             // Fallback lookup for fictions that set a free-text `author` but no
             // `authorId` - first author with a given normalized name wins ties, same as
@@ -210,13 +219,13 @@ class ScannerImpl(private val context: Context) {
     suspend fun scanSingleNovel(
         root: DocumentFile,
         novelFolder: DocumentFile,
-        onAuthorsDiscovered: suspend (List<AuthorEntity>) -> Unit = {}
+        onAuthorsDiscovered: suspend (List<AuthorEntity>, Boolean) -> Unit = { _, _ -> }
     ): NovelEntity = withContext(Dispatchers.IO) {
         val authorsFolder = findAuthorsFolder(root)
         val discoveredAuthors = if (authorsFolder != null) {
             scanAuthorsFolder(authorsFolder) { }
         } else emptyList()
-        onAuthorsDiscovered(discoveredAuthors)
+        onAuthorsDiscovered(discoveredAuthors, authorsFolder != null)
         val authorsById = discoveredAuthors.associateBy { it.id }
         val authorIdByNormalizedName = mutableMapOf<String, String>()
         discoveredAuthors.forEach { authorIdByNormalizedName.putIfAbsent(it.name.trim().lowercase(), it.id) }

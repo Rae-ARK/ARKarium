@@ -258,13 +258,33 @@ class MainActivity : ComponentActivity() {
     // rationale. Shared by startScan's onDiscovered and scanSingleSyncedNovel (see
     // docs/arkarium/NEXT_FIXES.md #4) so both a full-library rescan and a scoped single-novel
     // sync scan apply the exact same merge rules.
-    private fun mergeNovelForRescan(scanned: NovelEntity, existing: NovelEntity?): NovelEntity {
+    private fun mergeNovelForRescan(
+        scanned: NovelEntity,
+        existing: NovelEntity?,
+        // True when this scan pass actually found an authors/ folder at the library
+        // root - see ScannerImpl.scanRoot's onAuthorsDiscovered doc comment. Defaults
+        // to true so a caller that doesn't pass it (there are none left after this
+        // change, but keeps the signature source-compatible) gets the original
+        // "scanned.authorId always wins" behavior.
+        authorsFolderFound: Boolean = true
+    ): NovelEntity {
         if (existing == null) return scanned
         val remoteFetched = existing.metadataFetchedAt != null
         return scanned.copy(
             pageSize = existing.pageSize,
             readingStatus = existing.readingStatus,
             author = scanned.author ?: existing.author,
+            // authorId is normally NOT carried over from `existing` (see the doc
+            // comment below) - a scan that genuinely searched authors/ and found no
+            // match for this novel's authorId means the link is really gone. But when
+            // authorsFolderFound is false, this scan pass never actually got to look
+            // (transient SAF issue, or - for a synced novel - the authors/ files
+            // simply haven't been pulled down yet this run) - `scanned.authorId` is
+            // null for an unrelated reason in that case, not because the link stopped
+            // resolving, so falling back to whatever was already linked avoids
+            // silently dropping a previously-working author card/nav button until the
+            // next scan that actually reaches authors/.
+            authorId = if (authorsFolderFound) scanned.authorId else (scanned.authorId ?: existing.authorId),
             description = if (remoteFetched) existing.description else (scanned.description ?: existing.description),
             genres = if (remoteFetched) existing.genres else (scanned.genres ?: existing.genres),
             remoteCoverUrl = existing.remoteCoverUrl,
@@ -279,15 +299,6 @@ class MainActivity : ComponentActivity() {
             lastSyncedAt = existing.lastSyncedAt,
             syncStatus = existing.syncStatus
         )
-        // authorId is deliberately NOT carried over here (unlike the free-text `author`
-        // right next to it): ScannerImpl resolves it fresh every single scan from that
-        // scan's authors/ folder contents, not just from this fiction's own
-        // metadata.json - so unlike `author`/`description`/etc, a null `scanned.authorId`
-        // isn't "this scan didn't look," it's "this scan looked and the link no longer
-        // resolves." Falling back to the old `existing.authorId` here would make a
-        // resolved author link permanent even after its source file is gone. Leaving it
-        // out of the copy() call above lets `scanned.authorId` (including null) win
-        // outright, the same way `coverUri` already does by simply not appearing in it.
     }
 
     // Scoped counterpart to startScan (see docs/arkarium/NEXT_FIXES.md #4): runs the exact same
@@ -305,19 +316,31 @@ class MainActivity : ComponentActivity() {
         novelFolder: DocumentFile,
         onProgress: suspend (message: String) -> Unit = {}
     ): NovelEntity {
+        // Captured by the onAuthorsDiscovered callback below (fired before
+        // scanSingleNovel returns) so it's available down here for mergeNovelForRescan
+        // - see that callback's own comment and ScannerImpl.scanRoot's doc comment on
+        // the same flag.
+        var authorsFolderFound = false
         val scanned = scanner.scanSingleNovel(
             root = libraryRoot,
             novelFolder = novelFolder,
-            onAuthorsDiscovered = { discoveredAuthors ->
-                val seenIds = discoveredAuthors.map { it.id }.toSet()
-                discoveredAuthors.forEach { db.authorDao().upsert(it) }
-                db.authorDao().all().filter { it.id !in seenIds }.forEach { stale ->
-                    db.authorDao().delete(stale.id)
+            onAuthorsDiscovered = { discoveredAuthors, found ->
+                authorsFolderFound = found
+                // See startScan's matching callback: only touch the authors table when
+                // this pass actually found authors/ - an empty discoveredAuthors list
+                // from a not-found folder must never be read as "delete every known
+                // author."
+                if (found) {
+                    val seenIds = discoveredAuthors.map { it.id }.toSet()
+                    discoveredAuthors.forEach { db.authorDao().upsert(it) }
+                    db.authorDao().all().filter { it.id !in seenIds }.forEach { stale ->
+                        db.authorDao().delete(stale.id)
+                    }
                 }
             }
         )
         val existing = db.novelDao().findById(scanned.id)
-        val novel = mergeNovelForRescan(scanned, existing)
+        val novel = mergeNovelForRescan(scanned, existing, authorsFolderFound)
         db.novelDao().upsert(novel)
         withContext(Dispatchers.Main) {
             val idx = novels.indexOfFirst { it.id == novel.id }
@@ -341,6 +364,11 @@ class MainActivity : ComponentActivity() {
         // here, matching the same accepted tradeoff scanChaptersForNovel's
         // seenChapterIds/seenArcIds already make for a single skipped item.
         val seenNovelIds = mutableSetOf<String>()
+        // Set by onAuthorsDiscovered below, which ScannerImpl.scanRoot fires exactly
+        // once before the per-novel onDiscovered loop starts - so by the time any
+        // onDiscovered call below reads it, it already reflects this scan pass. See
+        // mergeNovelForRescan's authorsFolderFound param.
+        var authorsFolderFound = false
         try {
             scanner.scanRoot(root,
                 onDiscovered = { scanned, novelFolder ->
@@ -357,7 +385,7 @@ class MainActivity : ComponentActivity() {
                         // mergeNovelForRescan above for the full field-by-field rationale
                         // (shared with scanSingleSyncedNovel, docs/arkarium/NEXT_FIXES.md #4).
                         val existing = db.novelDao().findById(scanned.id)
-                        val novel = mergeNovelForRescan(scanned, existing)
+                        val novel = mergeNovelForRescan(scanned, existing, authorsFolderFound)
                         db.novelDao().upsert(novel)
                         seenNovelIds.add(novel.id)
                         withContext(Dispatchers.Main) {
@@ -377,15 +405,22 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 },
-                onAuthorsDiscovered = { discoveredAuthors ->
+                onAuthorsDiscovered = { discoveredAuthors, found ->
+                    authorsFolderFound = found
                     // Same diff-and-remove pattern scanChaptersForNovel already uses for
                     // arcs: upsert everything this scan found under authors/, then drop
                     // any previously-known author row that scan didn't see this time
-                    // (its authors/<id>.json was deleted or renamed).
-                    val seenIds = discoveredAuthors.map { it.id }.toSet()
-                    discoveredAuthors.forEach { db.authorDao().upsert(it) }
-                    db.authorDao().all().filter { it.id !in seenIds }.forEach { stale ->
-                        db.authorDao().delete(stale.id)
+                    // (its authors/<id>.json was deleted or renamed). Only when the
+                    // authors/ folder was actually found this pass - see
+                    // mergeNovelForRescan's authorsFolderFound param for why a
+                    // not-found pass must leave already-stored author rows alone rather
+                    // than treating an empty discoveredAuthors list as "delete them all."
+                    if (found) {
+                        val seenIds = discoveredAuthors.map { it.id }.toSet()
+                        discoveredAuthors.forEach { db.authorDao().upsert(it) }
+                        db.authorDao().all().filter { it.id !in seenIds }.forEach { stale ->
+                            db.authorDao().delete(stale.id)
+                        }
                     }
                 },
                 onScanCompleted = {
