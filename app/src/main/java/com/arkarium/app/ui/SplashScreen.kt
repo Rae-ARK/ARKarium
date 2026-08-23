@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -32,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arkarium.app.R
+import com.arkarium.app.audio.SplashChordPlayer
 import kotlin.random.Random
 import kotlinx.coroutines.delay
 
@@ -115,6 +117,22 @@ fun SplashScreen(onFinished: () -> Unit) {
     // progress from this rather than running independent animations, so nothing
     // can end up out of step with anything else.
     val playtime = remember { Animatable(0f) }
+
+    // Scores the reconstruction with a synthesized C major guitar strum (see
+    // GuitarChordSynth) - generated in code, no bundled audio asset. Starts
+    // the moment this composable enters composition (i.e. right alongside
+    // the animation below) and is always released via onDispose, so the
+    // AudioTrack can't leak or keep playing past the splash itself.
+    DisposableEffect(Unit) {
+        val player = SplashChordPlayer()
+        try {
+            player.play()
+        } catch (_: Exception) {
+            // An unusual/missing audio output shouldn't be able to crash the
+            // splash - the visual reconstruction still runs fine without sound.
+        }
+        onDispose { player.release() }
+    }
 
     LaunchedEffect(Unit) {
         playtime.animateTo(1f, animationSpec = tween(TOTAL_MS, easing = LinearEasing))
