@@ -1,6 +1,6 @@
 package com.arkarium.app.ui
 
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -46,8 +46,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -160,14 +158,44 @@ fun ReaderScreen(
         ReadingMode.DARK -> Color(0xFFF0F0F0)
     }
 
-    Box(
+    // The footer (progress readout + Reader Preferences pill) used to be a bare overlay
+    // Box on top of the scrollable content, positioned with manual bottom-padding offsets
+    // and z-order. Because verticalScroll content passes freely underneath a BottomCenter
+    // overlay, the footer ended up floating directly on top of whatever paragraph
+    // happened to be scrolled to the bottom of the viewport at the time - not anchored to
+    // a genuinely empty strip at the screen edge the way a real footer bar is. A one-time
+    // spacer after the chapter body only helped once scrolled all the way to the very
+    // end; it did nothing mid-chapter.
+    //
+    // Fixed below by making the footer a real layout sibling of the scrollable area
+    // instead of an overlay: the root is now a plain Column (TopAppBar, then the
+    // scrollable body with weight(1f), then the footer), so the scrollable area's
+    // available height is always exactly "screen height minus whatever the footer
+    // currently occupies" - body text can never end up underneath the footer, in the
+    // middle of a chapter or anywhere else, and the readout genuinely sits flush against
+    // the bottom edge with the pill stacked directly above it.
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundColor)
     ) {
+        // Top bar
+        if (showControls.value) {
+            TopAppBar(
+                title = { Text(chapter.title, maxLines = 1) },
+                navigationIcon = {
+                    IconButton(onClick = { onBack(currentProgress()) }) {
+                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                modifier = Modifier.background(backgroundColor)
+            )
+        }
+
         Column(
             modifier = Modifier
-                .fillMaxSize()
+                .weight(1f)
+                .fillMaxWidth()
                 .verticalScroll(scrollState)
                 // `showControls` already existed and correctly gated both the top bar and
                 // the bottom Text/Spacing/Mode panel below - but nothing ever toggled it, so
@@ -285,114 +313,35 @@ fun ReaderScreen(
                 )
             }
 
-            // Bottom padding for scrolling
-            Box(modifier = Modifier.padding(bottom = 100.dp))
+            // Small trailing gap so the last line of the chapter doesn't sit flush
+            // against the footer below it.
+            Box(modifier = Modifier.padding(bottom = 24.dp))
         }
 
-        // Top bar
-        if (showControls.value) {
-            TopAppBar(
-                title = { Text(chapter.title, maxLines = 1) },
-                navigationIcon = {
-                    IconButton(onClick = { onBack(currentProgress()) }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                modifier = Modifier.background(backgroundColor)
-            )
-        }
-
-        // Bottom controls: the reading-progress readout ("0% • page 1 of x") and the
-        // Reader Preferences pill.
-        //
-        // Original bug: the pill sat *below* the progress readout inside a single
-        // Column, and the readout was only added to the composition at all when
-        // showControls was true. A Column packs its children directly below one
-        // another, so removing the readout from composition shrank the Column - which
-        // yanked the pill up/down every single time immersive mode was toggled.
-        //
-        // The pill needs to stay reachable in both modes (people change font/spacing/
-        // mode mid-read, immersive or not), so it's the pill that should visibly move -
-        // dropping down to reclaim the vertical space the readout was using once
-        // immersive mode hides it, rather than sitting still while something else
-        // animates around it. The readout itself is only useful in non-immersive mode
-        // (nobody needs a page count while immersed), so it can just appear/disappear
-        // with the mode - no animation of its own required. This is safe now, unlike
-        // before: the pill has its own explicit, independently-animated offset from the
-        // bottom edge, so adding/removing the readout from composition can no longer
-        // move it.
-        val basePillPadding = 16.dp
-        val gap = 8.dp
-        // Seeded with sane defaults so there's no first-frame jump before
-        // onSizeChanged reports the real measured sizes.
-        var pillHeight by remember { mutableStateOf(48.dp) }
-        var readoutHeight by remember { mutableStateOf(32.dp) }
-        val density = LocalDensity.current
-
-        // Pill's distance from the bottom edge: raised, with room left above it for the
-        // readout, in non-immersive mode; dropped all the way down to `basePillPadding`
-        // once immersive mode hides the readout and that space is free to reclaim.
-        val pillBottomPadding by animateDpAsState(
-            targetValue = if (showControls.value) basePillPadding + readoutHeight + gap else basePillPadding,
-            label = "pillBottomPadding"
-        )
-
-        Box(
+        // Footer: progress readout + Reader Preferences pill/panel. A real Column
+        // sibling of the scrollable body above (not a floating overlay - see the
+        // comment where this screen's root Column was introduced), so it always sits
+        // in genuinely empty space at the bottom of the screen: the readout flush
+        // against the bottom edge, with the pill (and its panel, when open) stacked
+        // directly above it.
+        Column(
             modifier = Modifier
-                .align(Alignment.BottomCenter)
                 .fillMaxWidth()
+                .background(backgroundColor)
+                // Smooths the footer's height change when the readout appears/
+                // disappears with showControls, instead of jumping instantly. Since
+                // this Column is a real layout sibling of the weight(1f) scroll area
+                // above rather than an overlay, the scroll area's available height
+                // animates in step with it automatically - no separate offset math
+                // needed to keep the two in sync, unlike the old overlay approach.
+                .animateContentSize()
+                .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
-            // Reading progress readout - only relevant in non-immersive mode, so it's
-            // simply not composed in immersive mode. Safe to do (unlike before): it no
-            // longer shares a Column with the pill, so removing it from the tree can't
-            // move anything else - only the pill's own animated offset above does that.
-            if (showControls.value) {
-                Column(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        // Sits in the gap the pill's own bottom padding (below) reserves
-                        // for it - basePillPadding is the true screen-bottom offset, the
-                        // same anchor the pill drops to in immersive mode. Do NOT add
-                        // pillHeight/gap here: that would stack the readout above the
-                        // pill instead of below it, in space nothing reserved for it.
-                        .padding(bottom = basePillPadding)
-                        .onSizeChanged { readoutHeight = with(density) { it.height.toDp() } }
-                        .background(backgroundColor)
-                        .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
-                ) {
-                    Box(
-                        modifier = Modifier.fillMaxWidth(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val progressPercent = (currentProgress() * 100).toInt()
-                        val currentPage = (currentProgress() * estimatedTotalPages).toInt().coerceIn(1, estimatedTotalPages)
-                        Text(
-                            "$progressPercent% • page $currentPage of $estimatedTotalPages",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = textColor.copy(alpha = 0.7f)
-                        )
-                    }
-                }
-            }
-
-            // Reader Preferences: the pill + its font/spacing/mode panel. Animates
-            // between the two resting offsets computed above - raised in non-immersive
-            // mode, dropped down toward the bottom edge in immersive mode.
-            // Alignment.BottomCenter anchors this Column's *bottom* edge, so the panel
-            // opening above the pill grows the column upward without disturbing the
-            // pill's own animated bottom padding.
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(bottom = pillBottomPadding)
-            ) {
             if (showPreferences.value) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 12.dp)
                         .clip(RoundedCornerShape(16.dp))
                         .background(backgroundColor)
                         .padding(16.dp)
@@ -507,17 +456,13 @@ fun ReaderScreen(
                 }
             }
 
-            // The pill itself - Royal Road-style rounded button, centered, on top of
-            // the progress readout both positionally and in z-order. Toggles the panel
-            // above rather than navigating anywhere, so it stays a single persistent
-            // affordance instead of disappearing once tapped. Its own measured height
-            // feeds `pillHeight` above, so the progress readout's resting offset always
-            // matches the pill's actual size (font scale, locale text length, etc.)
-            // instead of a guessed constant.
+            // The pill itself - Royal Road-style rounded button, centered. Toggles the
+            // panel above rather than navigating anywhere, so it stays a single
+            // persistent affordance instead of disappearing once tapped. Always
+            // rendered (people change font/spacing/mode mid-read, immersive or not),
+            // directly above the progress readout below it.
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onSizeChanged { pillHeight = with(density) { it.height.toDp() } },
+                modifier = Modifier.fillMaxWidth(),
                 contentAlignment = Alignment.Center
             ) {
                 Surface(
@@ -540,6 +485,26 @@ fun ReaderScreen(
                     }
                 }
             }
+
+            // Reading progress readout ("0% • page 1 of x") - only relevant in
+            // non-immersive mode, so it's simply not composed in immersive mode. The
+            // last child of this Column, so it's the one that ends up flush against
+            // the bottom edge of the screen, with the pill floating directly above it.
+            if (showControls.value) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    val progressPercent = (currentProgress() * 100).toInt()
+                    val currentPage = (currentProgress() * estimatedTotalPages).toInt().coerceIn(1, estimatedTotalPages)
+                    Text(
+                        "$progressPercent% • page $currentPage of $estimatedTotalPages",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor.copy(alpha = 0.7f)
+                    )
+                }
             }
         }
     }
