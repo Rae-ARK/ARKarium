@@ -321,25 +321,43 @@ class MainActivity : ComponentActivity() {
         // - see that callback's own comment and ScannerImpl.scanRoot's doc comment on
         // the same flag.
         var authorsFolderFound = false
-        val scanned = scanner.scanSingleNovel(
-            root = libraryRoot,
-            novelFolder = novelFolder,
-            onAuthorsDiscovered = { discoveredAuthors, found ->
-                authorsFolderFound = found
-                // See startScan's matching callback: only touch the authors table when
-                // this pass actually found authors/ - an empty discoveredAuthors list
-                // from a not-found folder must never be read as "delete every known
-                // author."
-                if (found) {
-                    val seenIds = discoveredAuthors.map { it.id }.toSet()
-                    discoveredAuthors.forEach { db.authorDao().upsert(it) }
-                    db.authorDao().all().filter { it.id !in seenIds }.forEach { stale ->
-                        db.authorDao().delete(stale.id)
-                    }
+        val onAuthorsDiscovered: suspend (List<AuthorEntity>, Boolean) -> Unit = { discoveredAuthors, found ->
+            authorsFolderFound = found
+            // See startScan's matching callback: only touch the authors table when
+            // this pass actually found authors/ - an empty discoveredAuthors list
+            // from a not-found folder must never be read as "delete every known
+            // author."
+            if (found) {
+                val seenIds = discoveredAuthors.map { it.id }.toSet()
+                discoveredAuthors.forEach { db.authorDao().upsert(it) }
+                db.authorDao().all().filter { it.id !in seenIds }.forEach { stale ->
+                    db.authorDao().delete(stale.id)
                 }
             }
+        }
+        var scanned = scanner.scanSingleNovel(
+            root = libraryRoot,
+            novelFolder = novelFolder,
+            onAuthorsDiscovered = onAuthorsDiscovered
         )
         val existing = db.novelDao().findById(scanned.id)
+        // mergeNovelForRescan's authorsFolderFound fallback only ever runs when
+        // `existing` is non-null - it short-circuits with `if (existing == null)
+        // return scanned` before ever looking at the flag. So a brand-new novel
+        // (this is its very first scan, no row to fall back to) gets zero benefit
+        // from that resilience fix: if this pass didn't see authors/ - e.g. the
+        // authors/<id>.json this fiction's sync just wrote hasn't surfaced in a SAF
+        // listFiles() call yet - authorId is baked in as null the moment this row is
+        // inserted, and nothing will ever re-scan just this one novel again to fix
+        // it (only the next full startScan() would). One immediate retry gives that
+        // transient listing gap a chance to resolve before the row is ever created.
+        if (existing == null && !authorsFolderFound) {
+            scanned = scanner.scanSingleNovel(
+                root = libraryRoot,
+                novelFolder = novelFolder,
+                onAuthorsDiscovered = onAuthorsDiscovered
+            )
+        }
         val novel = mergeNovelForRescan(scanned, existing, authorsFolderFound)
         db.novelDao().upsert(novel)
         withContext(Dispatchers.Main) {
