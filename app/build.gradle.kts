@@ -139,5 +139,10 @@ dependencies {
 
     // DocumentFile
     implementation("androidx.documentfile:documentfile:1.0.1")
+
+    // AndroidX Webkit - used by WebViewScreen (Settings > About Me) to render
+    // the author's site in-app via WebViewClientCompat instead of bouncing
+    // out to a browser.
+    implementation("androidx.webkit:webkit:1.10.0")
 }
 

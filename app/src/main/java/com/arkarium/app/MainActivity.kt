@@ -41,6 +41,7 @@ import com.arkarium.app.ui.NovelDetailScreen
 import com.arkarium.app.ui.ReaderScreen
 import com.arkarium.app.ui.SettingsScreen
 import com.arkarium.app.ui.SplashScreen
+import com.arkarium.app.ui.WebViewScreen
 import com.arkarium.app.ui.SyncProgressDialog
 import com.arkarium.app.ui.SyncResolutionDialog
 import com.arkarium.app.ui.FictionBrowseScreen
@@ -88,6 +89,7 @@ sealed class Screen {
     data class FictionBrowse(val initialQuery: String = "") : Screen()
     object PrivacyPolicy : Screen()
     object TermsAndConditions : Screen()
+    object AboutMe : Screen()
 }
 
 // Drives the "Fetch info" dialog from NovelDetailScreen. Idle = dialog hidden.
@@ -1369,6 +1371,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onPrivacyPolicy = { currentScreen.value = Screen.PrivacyPolicy },
                                 onTermsAndConditions = { currentScreen.value = Screen.TermsAndConditions },
+                                onAboutMe = { currentScreen.value = Screen.AboutMe },
                                 onBack = { currentScreen.value = Screen.Home }
                             )
                         }
@@ -1385,6 +1388,14 @@ class MainActivity : ComponentActivity() {
                             LegalDocumentScreen(
                                 title = "Terms & Conditions",
                                 sections = LegalContent.termsAndConditions,
+                                onBack = { currentScreen.value = Screen.Settings }
+                            )
+                        }
+
+                        is Screen.AboutMe -> {
+                            WebViewScreen(
+                                title = "About Me",
+                                url = "https://rae-ark.horizonarkstudio.workers.dev/",
                                 onBack = { currentScreen.value = Screen.Settings }
                             )
                         }
