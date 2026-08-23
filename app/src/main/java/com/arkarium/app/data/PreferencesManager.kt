@@ -38,6 +38,13 @@ class PreferencesManager(private val context: Context) {
         // app's own private storage. Defaults to false (off) so a fresh install has a
         // working library with zero permission prompts - see MainActivity.resolveLibraryRoot.
         private val USE_CUSTOM_FOLDER_KEY = booleanPreferencesKey("use_custom_folder")
+        // Splash-screen behavior toggles (see SettingsScreen's "Splash Screen"
+        // section). Both default to true - the line-reconstruction animation and
+        // its guitar-chord score are the intended experience out of the box; these
+        // exist purely as an opt-out for people who find them slow or unwanted
+        // (repeat launches, sound in a quiet/public setting, etc.).
+        private val SPLASH_ANIMATION_ENABLED_KEY = booleanPreferencesKey("splash_animation_enabled")
+        private val SPLASH_MUSIC_ENABLED_KEY = booleanPreferencesKey("splash_music_enabled")
     }
 
     // libraryUri.collect() and theme.collect() run unattended in MainActivity.onCreate,
@@ -86,6 +93,18 @@ class PreferencesManager(private val context: Context) {
         prefs[USE_CUSTOM_FOLDER_KEY] ?: false
     }
 
+    // Default true - see SPLASH_ANIMATION_ENABLED_KEY's doc comment above.
+    val splashAnimationEnabled: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[SPLASH_ANIMATION_ENABLED_KEY] ?: true
+    }
+
+    // Default true - see SPLASH_MUSIC_ENABLED_KEY's doc comment above. Independent
+    // of splashAnimationEnabled: a user can keep the visual reconstruction but turn
+    // off sound, or vice versa.
+    val splashMusicEnabled: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[SPLASH_MUSIC_ENABLED_KEY] ?: true
+    }
+
     suspend fun setLibraryUri(uri: String) {
         context.dataStore.edit { prefs ->
             prefs[LIBRARY_URI_KEY] = uri
@@ -118,6 +137,18 @@ class PreferencesManager(private val context: Context) {
     suspend fun setDefaultPageSize(size: Int) {
         context.dataStore.edit { prefs ->
             prefs[DEFAULT_PAGE_SIZE_KEY] = size
+        }
+    }
+
+    suspend fun setSplashAnimationEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[SPLASH_ANIMATION_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun setSplashMusicEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[SPLASH_MUSIC_ENABLED_KEY] = enabled
         }
     }
 }

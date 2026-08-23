@@ -56,7 +56,13 @@ private const val RECONSTRUCT_MS = 1400
 private const val CROSSFADE_MS = 380
 private const val HOLD_MS = 650
 private const val FADE_OUT_MS = 320
-private const val TOTAL_MS = RECONSTRUCT_MS + CROSSFADE_MS + HOLD_MS + FADE_OUT_MS
+
+// Used in place of RECONSTRUCT_MS + CROSSFADE_MS when the line-reconstruction
+// animation is turned off (see SettingsScreen's "Splash Screen" section) - the
+// real logo just does a plain, quick fade-in instead of a multi-second
+// sequence, so disabling the animation actually gets you a faster splash
+// rather than the same total duration with the visual removed.
+private const val SIMPLE_FADE_IN_MS = 280
 
 // How much of the reconstruction phase a single point's own travel takes -
 // 0.4 means each line takes 40% of the phase to arrive, so with staggered
@@ -110,8 +116,19 @@ private fun originPx(origin: LineOrigin, width: Float, height: Float): Offset =
     }
 
 @Composable
-fun SplashScreen(onFinished: () -> Unit) {
-    val pointAnims = remember { buildPointAnimations() }
+fun SplashScreen(
+    // See SettingsScreen's "Splash Screen" section / PreferencesManager -
+    // both default to true. animationEnabled=false skips straight to a plain
+    // fade-in of the real logo (see SIMPLE_FADE_IN_MS); musicEnabled=false
+    // just never starts the AudioTrack. The two are independent of each
+    // other.
+    animationEnabled: Boolean = true,
+    musicEnabled: Boolean = true,
+    onFinished: () -> Unit
+) {
+    val pointAnims = remember(animationEnabled) {
+        if (animationEnabled) buildPointAnimations() else emptyList()
+    }
 
     // Single linear timeline driver - every phase below derives its own
     // progress from this rather than running independent animations, so nothing
@@ -122,8 +139,12 @@ fun SplashScreen(onFinished: () -> Unit) {
     // GuitarChordSynth) - generated in code, no bundled audio asset. Starts
     // the moment this composable enters composition (i.e. right alongside
     // the animation below) and is always released via onDispose, so the
-    // AudioTrack can't leak or keep playing past the splash itself.
-    DisposableEffect(Unit) {
+    // AudioTrack can't leak or keep playing past the splash itself. Skipped
+    // entirely (never even constructed) when musicEnabled is false.
+    DisposableEffect(musicEnabled) {
+        if (!musicEnabled) {
+            return@DisposableEffect onDispose {}
+        }
         val player = SplashChordPlayer()
         try {
             player.play()
@@ -134,22 +155,31 @@ fun SplashScreen(onFinished: () -> Unit) {
         onDispose { player.release() }
     }
 
-    LaunchedEffect(Unit) {
-        playtime.animateTo(1f, animationSpec = tween(TOTAL_MS, easing = LinearEasing))
+    // Reconstruction + crossfade collapse into a single quick fade-in when
+    // the animation is disabled - see SIMPLE_FADE_IN_MS.
+    val reconstructDurationMs = if (animationEnabled) RECONSTRUCT_MS else 0
+    val crossfadeDurationMs = if (animationEnabled) CROSSFADE_MS else SIMPLE_FADE_IN_MS
+    val totalMs = reconstructDurationMs + crossfadeDurationMs + HOLD_MS + FADE_OUT_MS
+
+    LaunchedEffect(totalMs) {
+        playtime.snapTo(0f)
+        playtime.animateTo(1f, animationSpec = tween(totalMs, easing = LinearEasing))
         delay(16) // let the final frame actually render before tearing the composable down
         onFinished()
     }
 
-    val elapsedMs = playtime.value * TOTAL_MS
+    val elapsedMs = playtime.value * totalMs
 
-    // Phase 1: 0f..1f across RECONSTRUCT_MS.
-    val reconstructProgress = (elapsedMs / RECONSTRUCT_MS).coerceIn(0f, 1f)
-    // Phase 2: 0f..1f across CROSSFADE_MS, starting right as phase 1 ends.
+    // Phase 1: 0f..1f across reconstructDurationMs (0 when animation is off,
+    // in which case this stays pinned at 1f and the Canvas below never draws).
+    val reconstructProgress =
+        if (reconstructDurationMs <= 0) 1f else (elapsedMs / reconstructDurationMs).coerceIn(0f, 1f)
+    // Phase 2: 0f..1f across crossfadeDurationMs, starting right as phase 1 ends.
     val crossfadeProgress =
-        ((elapsedMs - RECONSTRUCT_MS) / CROSSFADE_MS).coerceIn(0f, 1f)
-    // Phase 4: 0f..1f across FADE_OUT_MS, starting after RECONSTRUCT+CROSSFADE+HOLD.
+        ((elapsedMs - reconstructDurationMs) / crossfadeDurationMs).coerceIn(0f, 1f)
+    // Phase 4: 0f..1f across FADE_OUT_MS, starting after phase1+phase2+HOLD.
     val fadeOutProgress =
-        ((elapsedMs - RECONSTRUCT_MS - CROSSFADE_MS - HOLD_MS) / FADE_OUT_MS).coerceIn(0f, 1f)
+        ((elapsedMs - reconstructDurationMs - crossfadeDurationMs - HOLD_MS) / FADE_OUT_MS).coerceIn(0f, 1f)
 
     // The real logo+text crossfades in starting in phase 2 and stays fully
     // visible through the hold, then fades with everything else in phase 4.
@@ -166,7 +196,7 @@ fun SplashScreen(onFinished: () -> Unit) {
             .alpha(masterAlpha),
         contentAlignment = Alignment.Center
     ) {
-        if (lineCanvasAlpha > 0f) {
+        if (animationEnabled && lineCanvasAlpha > 0f) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 drawLineReconstruction(pointAnims, reconstructProgress, lineCanvasAlpha)
             }
