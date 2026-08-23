@@ -14,7 +14,10 @@ Content is published as static files and synchronized to the reader's local libr
 - Direct author-to-reader distribution
 - Incremental content synchronization
 - Static content and simple distribution
-- Cross-platform clients
+- Android clients
+
+### At a Future Point
+
 - Character-aware text-to-speech
 - Multi-voice reading
 - Designed for rich fiction experiences
