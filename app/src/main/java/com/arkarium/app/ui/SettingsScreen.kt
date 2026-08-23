@@ -61,7 +61,13 @@ fun SettingsScreen(
     // Whether a custom folder has actually been picked yet - only consulted while
     // useCustomFolder is true, to decide between "Select Folder" and "Change Folder".
     hasCustomFolderSelected: Boolean = false,
+    // Only consulted while currentTheme == Theme.SYSTEM_DEFAULT - which of the two
+    // non-dark themes System Default should behave as during the day (it always
+    // behaves as Dark at night regardless of this choice). See PreferencesManager's
+    // systemDefaultLightVariant doc comment.
+    systemDefaultLightVariant: Theme = Theme.LIGHT,
     onThemeSelected: (Theme) -> Unit,
+    onSystemDefaultLightVariantSelected: (Theme) -> Unit = {},
     onUseCustomFolderToggle: (Boolean) -> Unit,
     onSelectFolderClick: () -> Unit,
     onRescan: () -> Unit,
@@ -82,13 +88,43 @@ fun SettingsScreen(
 
         Column(modifier = Modifier.padding(16.dp)) {
             Text("Theme", modifier = Modifier.padding(bottom = 8.dp))
-            listOf(Theme.LIGHT, Theme.DARK, Theme.WARM_PAPER).forEach { theme ->
-                androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth()) {
+            listOf(Theme.LIGHT, Theme.DARK, Theme.WARM_PAPER, Theme.SYSTEM_DEFAULT).forEach { theme ->
+                Row(modifier = Modifier.fillMaxWidth()) {
                     RadioButton(
                         selected = currentTheme == theme,
                         onClick = { onThemeSelected(theme) }
                     )
-                    Text(theme.name.replace("_", " "))
+                    Text(
+                        theme.name.replace("_", " "),
+                        modifier = Modifier.align(Alignment.CenterVertically)
+                    )
+                }
+
+                // System Default's own daytime-look sub-choice - indented under its
+                // parent option, same "reveal on select" pattern useCustomFolder's
+                // Select/Change Folder button below already uses. Only shown right
+                // under SYSTEM_DEFAULT's own row (not e.g. after every row) so it
+                // reads as belonging to that one option rather than floating loose.
+                if (theme == Theme.SYSTEM_DEFAULT && currentTheme == Theme.SYSTEM_DEFAULT) {
+                    Column(modifier = Modifier.padding(start = 40.dp, bottom = 4.dp)) {
+                        Text(
+                            "Daytime look",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                        listOf(Theme.LIGHT, Theme.WARM_PAPER).forEach { variant ->
+                            Row(modifier = Modifier.fillMaxWidth()) {
+                                RadioButton(
+                                    selected = systemDefaultLightVariant == variant,
+                                    onClick = { onSystemDefaultLightVariantSelected(variant) }
+                                )
+                                Text(
+                                    variant.name.replace("_", " "),
+                                    modifier = Modifier.align(Alignment.CenterVertically)
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
