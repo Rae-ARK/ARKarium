@@ -8,6 +8,7 @@ import androidx.activity.compose.setContent
 import com.arkarium.app.BuildConfig
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -169,7 +170,25 @@ private fun colorSchemeFor(theme: Theme) = when (theme) {
     Theme.LIGHT -> lightColorScheme()
     Theme.DARK -> darkColorScheme()
     Theme.WARM_PAPER -> warmPaperColorScheme()
+    // Never actually reached - resolveTheme() below always substitutes SYSTEM_DEFAULT
+    // for a concrete theme before this function sees it. Falling back to plain Light
+    // here (rather than e.g. throwing) just means a future call site that forgets to
+    // resolve first degrades gracefully instead of crashing.
+    Theme.SYSTEM_DEFAULT -> lightColorScheme()
 }
+
+// Substitutes System Default for whichever concrete theme it should currently behave
+// as, given the system's day/night state - DARK at night, or `lightVariant` (the
+// user's chosen LIGHT/WARM_PAPER daytime preference) during the day. Every other
+// theme passes through unchanged. Pulled out as its own function (rather than inlined
+// where colorSchemeFor is called) so the same resolution logic can't drift between
+// call sites if a second one is ever added.
+private fun resolveTheme(theme: Theme, lightVariant: Theme, systemInDarkTheme: Boolean): Theme =
+    if (theme == Theme.SYSTEM_DEFAULT) {
+        if (systemInDarkTheme) Theme.DARK else lightVariant
+    } else {
+        theme
+    }
 
 class MainActivity : ComponentActivity() {
 
@@ -197,6 +216,10 @@ class MainActivity : ComponentActivity() {
     // not a navigable destination - nothing ever sets currentScreen back to it.
     private val showSplash = mutableStateOf(true)
     private val currentTheme = mutableStateOf(Theme.LIGHT)
+    // Only meaningful while currentTheme is SYSTEM_DEFAULT and the system is
+    // currently in its light/day state - see resolveTheme() and PreferencesManager's
+    // systemDefaultLightVariant doc comment.
+    private val currentSystemDefaultLightVariant = mutableStateOf(Theme.LIGHT)
     private val scanProgress = mutableStateOf<Pair<Int, Int>?>(null)  // (current, total) or null if not scanning
     private val scanMessage = mutableStateOf("")
     private val metadataSearchState = mutableStateOf<MetadataSearchState>(MetadataSearchState.Idle)
@@ -1065,6 +1088,15 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Watch the System Default sub-preference too - a separate DataStore key (see
+        // PreferencesManager) and so a separate collect(), same "own launch per
+        // preference" pattern already used for theme/libraryUri/useCustomFolder above.
+        lifecycleScope.launch {
+            prefsManager.systemDefaultLightVariant.collect { variant ->
+                currentSystemDefaultLightVariant.value = variant
+            }
+        }
+
         // Everything from here down (status-bar theming, HomeScreen and its new
         // empty-library state, etc.) is new UI code that runs on literally every cold
         // launch, before the user touches anything - and unlike the service construction
@@ -1083,7 +1115,18 @@ class MainActivity : ComponentActivity() {
 
     private fun renderMainContent() {
         setContent {
-            val colorScheme = colorSchemeFor(currentTheme.value)
+            // isSystemInDarkTheme() is only meaningful as a live composable read (it's
+            // backed by Configuration's uiMode, which recomposes this on a system
+            // day/night switch same as any other Compose state) - resolving it once in
+            // onCreate the way currentTheme/currentSystemDefaultLightVariant are
+            // collected would miss the system flipping while the app stays open.
+            val systemInDarkTheme = isSystemInDarkTheme()
+            val resolvedTheme = resolveTheme(
+                currentTheme.value,
+                currentSystemDefaultLightVariant.value,
+                systemInDarkTheme
+            )
+            val colorScheme = colorSchemeFor(resolvedTheme)
             MaterialTheme(colorScheme = colorScheme) {
                 // The activity's manifest theme is static (always light), so without this
                 // the system status bar icons stay dark-on-dark whenever the user picks
@@ -1292,7 +1335,11 @@ class MainActivity : ComponentActivity() {
                             ReaderScreen(
                                 chapter = reader.chapter,
                                 content = reader.content,
-                                appTheme = currentTheme.value,
+                                // resolvedTheme, not currentTheme.value directly -
+                                // ReaderScreen's readingModeFor only maps the three
+                                // concrete themes (see its own `when`), and SYSTEM_DEFAULT
+                                // isn't one of them.
+                                appTheme = resolvedTheme,
                                 novelTitle = novel?.title,
                                 arcTitle = arcTitle,
                                 coverUri = readerCoverUri,
@@ -1380,9 +1427,15 @@ class MainActivity : ComponentActivity() {
                                 currentTheme = currentTheme.value,
                                 useCustomFolder = useCustomFolder.value,
                                 hasCustomFolderSelected = savedUri.value != null,
+                                systemDefaultLightVariant = currentSystemDefaultLightVariant.value,
                                 onThemeSelected = { theme ->
                                     lifecycleScope.launch {
                                         prefsManager.setTheme(theme)
+                                    }
+                                },
+                                onSystemDefaultLightVariantSelected = { variant ->
+                                    lifecycleScope.launch {
+                                        prefsManager.setSystemDefaultLightVariant(variant)
                                     }
                                 },
                                 onUseCustomFolderToggle = { enabled ->

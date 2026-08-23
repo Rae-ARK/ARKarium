@@ -72,6 +72,10 @@ private fun readingModeFor(theme: Theme): ReadingMode = when (theme) {
     Theme.LIGHT -> ReadingMode.LIGHT
     Theme.DARK -> ReadingMode.DARK
     Theme.WARM_PAPER -> ReadingMode.SEPIA
+    // MainActivity always resolves SYSTEM_DEFAULT to a concrete theme (see
+    // resolveTheme()) before it ever reaches here - this branch only exists to keep
+    // the `when` exhaustive over Theme's full set of entries.
+    Theme.SYSTEM_DEFAULT -> ReadingMode.LIGHT
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

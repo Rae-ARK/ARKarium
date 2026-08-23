@@ -15,13 +15,24 @@ import java.io.IOException
 val Context.dataStore by preferencesDataStore(name = "arkarium_prefs")
 
 enum class Theme {
-    LIGHT, DARK, WARM_PAPER
+    LIGHT, DARK, WARM_PAPER,
+    // Follows the system's day/night setting: DARK at night, and whichever of
+    // LIGHT/WARM_PAPER the user picked as their preferred daytime look during the
+    // day (see SYSTEM_DEFAULT_LIGHT_VARIANT_KEY below) - there's no equivalent
+    // choice for the dark side since WARM_PAPER doesn't have a night counterpart.
+    SYSTEM_DEFAULT
 }
 
 class PreferencesManager(private val context: Context) {
     companion object {
         private val LIBRARY_URI_KEY = stringPreferencesKey("library_uri")
         private val THEME_KEY = stringPreferencesKey("theme")
+        // Only consulted while THEME_KEY resolves to SYSTEM_DEFAULT and the system is
+        // currently in its light/day state - picks which of the two non-dark themes
+        // (LIGHT or WARM_PAPER) stands in for "light" during the day. Stored
+        // separately from THEME_KEY so switching in and out of System Default doesn't
+        // lose whichever daytime look the user last chose.
+        private val SYSTEM_DEFAULT_LIGHT_VARIANT_KEY = stringPreferencesKey("system_default_light_variant")
         private val DEFAULT_PAGE_SIZE_KEY = intPreferencesKey("default_page_size")
         // Opt-in flag for pointing the scanner at a user-picked SAF folder instead of the
         // app's own private storage. Defaults to false (off) so a fresh install has a
@@ -48,6 +59,20 @@ class PreferencesManager(private val context: Context) {
     val theme: Flow<Theme> = safePrefs.map { prefs ->
         when (prefs[THEME_KEY]) {
             "DARK" -> Theme.DARK
+            "WARM_PAPER" -> Theme.WARM_PAPER
+            "SYSTEM_DEFAULT" -> Theme.SYSTEM_DEFAULT
+            else -> Theme.LIGHT
+        }
+    }
+
+    // Defaults to LIGHT, same as the top-level `theme` flow's own default - a user who
+    // picks System Default without ever touching this sub-choice gets plain Light
+    // during the day, not Warm Paper by surprise. WARM_PAPER is the only other
+    // meaningful value; anything else stored here (including DARK, which isn't a
+    // valid daytime choice) also falls back to LIGHT rather than propagating a bad
+    // value into colorSchemeFor.
+    val systemDefaultLightVariant: Flow<Theme> = safePrefs.map { prefs ->
+        when (prefs[SYSTEM_DEFAULT_LIGHT_VARIANT_KEY]) {
             "WARM_PAPER" -> Theme.WARM_PAPER
             else -> Theme.LIGHT
         }
@@ -76,6 +101,17 @@ class PreferencesManager(private val context: Context) {
     suspend fun setTheme(theme: Theme) {
         context.dataStore.edit { prefs ->
             prefs[THEME_KEY] = theme.name
+        }
+    }
+
+    // `variant` is expected to be LIGHT or WARM_PAPER - DARK/SYSTEM_DEFAULT are
+    // meaningless here (there's no dark or recursive-system daytime look), but this
+    // deliberately doesn't validate/throw: `theme` above reads back to LIGHT for
+    // any unrecognized value, so a bad write here just self-corrects on next read
+    // rather than needing to be guarded against at the call site too.
+    suspend fun setSystemDefaultLightVariant(variant: Theme) {
+        context.dataStore.edit { prefs ->
+            prefs[SYSTEM_DEFAULT_LIGHT_VARIANT_KEY] = variant.name
         }
     }
 
