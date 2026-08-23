@@ -67,6 +67,7 @@ fun SettingsScreen(
     onRescan: () -> Unit,
     onPrivacyPolicy: () -> Unit,
     onTermsAndConditions: () -> Unit,
+    onAboutMe: () -> Unit,
     onBack: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -153,6 +154,12 @@ fun SettingsScreen(
             Text("Legal", modifier = Modifier.padding(bottom = 8.dp))
             LegalRow(label = "Privacy Policy", onClick = onPrivacyPolicy)
             LegalRow(label = "Terms & Conditions", onClick = onTermsAndConditions)
+
+            Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
+
+            // Opens the author's site in-app via WebViewScreen (see MainActivity's
+            // Screen.AboutMe case) rather than sending the reader out to a browser.
+            LegalRow(label = "About Me", onClick = onAboutMe)
 
             Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
 

@@ -5,6 +5,7 @@ build/
 .DS_Store
 local.properties
 *.patch
+*.apk
 
 # Signing material - the actual keystore must never be committed. CI decodes
 # it from the ARKARIUM_RELEASE_KEYSTORE_BASE64 secret at build time instead;
