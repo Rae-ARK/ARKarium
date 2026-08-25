@@ -53,6 +53,8 @@ import com.arkarium.app.data.ArcEntity
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterOverrideEntity
 import com.arkarium.app.data.GoogleBooksMetadataProvider
+import com.arkarium.app.data.mergeNovelForRescan
+import com.arkarium.app.data.resolveLibraryRoot
 import com.arkarium.app.data.NovelMetadataCandidate
 import com.arkarium.app.data.ReadingProgressEntity
 import com.arkarium.app.data.ScannerImpl
@@ -187,72 +189,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Resolves whichever DocumentFile root the scanner should currently read from.
-    // - Custom folder OFF (the default): the app's own private external-storage folder,
-    //   e.g. Android/data/com.arkarium.app/files - readable/writable with zero permission
-    //   prompts on every Android version, so a fresh install has a working library the
-    //   moment novel folders are dropped in there, no SAF picker interaction required.
-    // - Custom folder ON: the SAF tree the user picked in Settings, or null if they've
-    //   turned the toggle on but haven't picked a folder yet (caller should leave the
-    //   library empty and let EmptyLibraryPrompt/Settings prompt them to pick one).
-    private fun resolveLibraryRoot(useCustomFolder: Boolean, savedUri: String?): DocumentFile? {
-        if (useCustomFolder) {
-            val uri = savedUri?.let { Uri.parse(it) } ?: return null
-            return DocumentFile.fromTreeUri(this, uri)
-        }
-        val defaultDir = (getExternalFilesDir(null) ?: filesDir).also { it.mkdirs() }
-        return DocumentFile.fromFile(defaultDir)
-    }
-
-    // Merges a freshly-scanned NovelEntity with whatever row already exists for this
-    // novel id, carrying over fields the scan itself doesn't own (pageSize,
-    // readingStatus, remote-metadata fields once a "Fetch info" lookup has run) -
-    // see the long comment this was pulled out of below for the full field-by-field
-    // rationale. Shared by startScan's onDiscovered and scanSingleSyncedNovel (see
-    // docs/arkarium/NEXT_FIXES.md #4) so both a full-library rescan and a scoped single-novel
-    // sync scan apply the exact same merge rules.
-    private fun mergeNovelForRescan(
-        scanned: NovelEntity,
-        existing: NovelEntity?,
-        // True when this scan pass actually found an authors/ folder at the library
-        // root - see ScannerImpl.scanRoot's onAuthorsDiscovered doc comment. Defaults
-        // to true so a caller that doesn't pass it (there are none left after this
-        // change, but keeps the signature source-compatible) gets the original
-        // "scanned.authorId always wins" behavior.
-        authorsFolderFound: Boolean = true
-    ): NovelEntity {
-        if (existing == null) return scanned
-        val remoteFetched = existing.metadataFetchedAt != null
-        return scanned.copy(
-            pageSize = existing.pageSize,
-            readingStatus = existing.readingStatus,
-            author = scanned.author ?: existing.author,
-            // authorId is normally NOT carried over from `existing` (see the doc
-            // comment below) - a scan that genuinely searched authors/ and found no
-            // match for this novel's authorId means the link is really gone. But when
-            // authorsFolderFound is false, this scan pass never actually got to look
-            // (transient SAF issue, or - for a synced novel - the authors/ files
-            // simply haven't been pulled down yet this run) - `scanned.authorId` is
-            // null for an unrelated reason in that case, not because the link stopped
-            // resolving, so falling back to whatever was already linked avoids
-            // silently dropping a previously-working author card/nav button until the
-            // next scan that actually reaches authors/.
-            authorId = if (authorsFolderFound) scanned.authorId else (scanned.authorId ?: existing.authorId),
-            description = if (remoteFetched) existing.description else (scanned.description ?: existing.description),
-            genres = if (remoteFetched) existing.genres else (scanned.genres ?: existing.genres),
-            remoteCoverUrl = existing.remoteCoverUrl,
-            publishedDate = if (remoteFetched) existing.publishedDate else (scanned.publishedDate ?: existing.publishedDate),
-            externalSourceUrl = existing.externalSourceUrl,
-            metadataFetchedAt = existing.metadataFetchedAt,
-            // Sync bookkeeping columns aren't touched by ScannerImpl at all (scanned's
-            // are always the NovelEntity defaults) - always carry the existing row's
-            // values forward so a rescan/resync can never accidentally wipe them.
-            syncSourceUrl = existing.syncSourceUrl,
-            syncSourceVersion = existing.syncSourceVersion,
-            lastSyncedAt = existing.lastSyncedAt,
-            syncStatus = existing.syncStatus
-        )
-    }
+    // resolveLibraryRoot and mergeNovelForRescan formerly declared here now live in
+    // data/LibraryScan.kt as plain top-level functions (Stage 2.1 of Phase 2 - see
+    // docs/arkarium/REFACTOR_PLAN.md). Every call site below is unchanged except
+    // resolveLibraryRoot's, which now passes `this@MainActivity` as the new explicit
+    // `context` parameter (several call sites are inside `lifecycleScope.launch { }`/
+    // Composable lambdas, where a bare `this` would resolve to the wrong receiver -
+    // see e.g. pickFolder's existing `DocumentFile.fromTreeUri(this@MainActivity,
+    // ...)` above for the same pattern already in use).
 
     // Scoped counterpart to startScan (see docs/arkarium/NEXT_FIXES.md #4): runs the exact same
     // discover -> merge -> upsert -> scanChaptersForNovel sequence startScan's
@@ -1056,7 +1000,7 @@ class MainActivity : ComponentActivity() {
                 .collect { (useCustom, uri) ->
                     if (novels.isEmpty()) {
                         try {
-                            resolveLibraryRoot(useCustom, uri)?.let { startScan(it) }
+                            resolveLibraryRoot(this@MainActivity, useCustom, uri)?.let { startScan(it) }
                         } catch (e: Exception) {
                             scanProgress.value = null
                             scanMessage.value = "Couldn't load your library: ${e.message}"
@@ -1256,7 +1200,7 @@ class MainActivity : ComponentActivity() {
                                 onSelectFolderClick = { currentScreen.value = Screen.Settings },
                                 onAddFictionClick = { addFictionState.value = AddFictionState.EnteringName },
                                 onSyncAllClick = {
-                                    val root = resolveLibraryRoot(useCustomFolder.value, savedUri.value)
+                                    val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
                                     if (root != null) {
                                         syncAllRaeArkNovels(root)
                                     } else {
@@ -1315,7 +1259,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onSyncClick = if (novel.syncSourceUrl != null) {
                                     {
-                                        resolveLibraryRoot(useCustomFolder.value, savedUri.value)?.let { root ->
+                                        resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)?.let { root ->
                                             checkForUpdates(novel, root)
                                         }
                                     }
@@ -1481,7 +1425,7 @@ class MainActivity : ComponentActivity() {
                                         // library empty and let the "Select Folder" button
                                         // below (or EmptyLibraryPrompt on Home) start the
                                         // picker instead of scanning anything.
-                                        resolveLibraryRoot(enabled, savedUri.value)?.let { startScan(it) }
+                                        resolveLibraryRoot(this@MainActivity, enabled, savedUri.value)?.let { startScan(it) }
                                     }
                                 },
                                 onSelectFolderClick = { pickFolder.launch(null) },
@@ -1493,7 +1437,7 @@ class MainActivity : ComponentActivity() {
                                         // actually finishes, instead of blanking the
                                         // visible library up front and hoping the scan
                                         // fully repopulates it.
-                                        val root = resolveLibraryRoot(useCustomFolder.value, savedUri.value)
+                                        val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
                                         if (root != null) {
                                             startScan(root)
                                         } else {
@@ -1595,7 +1539,7 @@ class MainActivity : ComponentActivity() {
                             progressMessage = "",
                             errorMessage = null,
                             onConfirm = { name ->
-                                val root = resolveLibraryRoot(useCustomFolder.value, savedUri.value)
+                                val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
                                 if (root != null) {
                                     addFictionByName(name, root)
                                 } else {
@@ -1621,7 +1565,7 @@ class MainActivity : ComponentActivity() {
                             progressMessage = "",
                             errorMessage = state.message,
                             onConfirm = { name ->
-                                val root = resolveLibraryRoot(useCustomFolder.value, savedUri.value)
+                                val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
                                 if (root != null) {
                                     addFictionByName(name, root)
                                 } else {
@@ -1710,7 +1654,7 @@ class MainActivity : ComponentActivity() {
                             novelTitle = state.novel.title,
                             isMissingLocally = state.reason == SyncResolutionReason.MISSING_LOCALLY,
                             onSyncAgain = {
-                                resolveLibraryRoot(useCustomFolder.value, savedUri.value)?.let { root ->
+                                resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)?.let { root ->
                                     resolveMissingFolderBySyncing(state.novel, root)
                                 }
                             },
