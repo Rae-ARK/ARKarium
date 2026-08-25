@@ -55,7 +55,6 @@ import com.arkarium.app.data.ChapterOverrideEntity
 import com.arkarium.app.data.GoogleBooksMetadataProvider
 import com.arkarium.app.data.mergeNovelForRescan
 import com.arkarium.app.data.resolveLibraryRoot
-import com.arkarium.app.data.NovelMetadataCandidate
 import com.arkarium.app.data.ReadingProgressEntity
 import com.arkarium.app.data.ScannerImpl
 import com.arkarium.app.data.NewChapterCheckWorker
@@ -81,6 +80,7 @@ import com.arkarium.app.navigation.SyncResolutionState
 import com.arkarium.app.ui.theme.colorSchemeFor
 import com.arkarium.app.ui.theme.resolveTheme
 import com.arkarium.app.viewmodel.LibraryViewModel
+import com.arkarium.app.viewmodel.MetadataViewModel
 import com.arkarium.app.viewmodel.SettingsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
@@ -101,6 +101,12 @@ import java.util.UUID
 // (Stage 2.2 of Phase 2, see docs/arkarium/REFACTOR_PLAN.md). Every read site below
 // (`currentTheme.value`, `useCustomFolder.value`, etc.) is unchanged, since
 // settingsViewModel's StateFlows are collected under those same local names.
+//
+// metadataSearchState/addFictionState and fetchMetadataFor/applyMetadata formerly
+// lived here too - all four now come from metadataViewModel (Stage 2.4 of Phase 2,
+// see docs/arkarium/REFACTOR_PLAN.md). addFictionByName - the other writer of
+// addFictionState - stays here (it's Sync logic, not Metadata logic) and now writes
+// metadataViewModel.addFictionState.value directly.
 
 class MainActivity : ComponentActivity() {
 
@@ -126,8 +132,6 @@ class MainActivity : ComponentActivity() {
     // points) becomes visible. Lives here rather than as a Screen case since it's
     // not a navigable destination - nothing ever sets currentScreen back to it.
     private val showSplash = mutableStateOf(true)
-    private val metadataSearchState = mutableStateOf<MetadataSearchState>(MetadataSearchState.Idle)
-    private val addFictionState = mutableStateOf<AddFictionState>(AddFictionState.Hidden)
     private val syncAllState = mutableStateOf<SyncAllState>(SyncAllState.Idle)
     private val syncCheckState = mutableStateOf<SyncCheckState>(SyncCheckState.Idle)
     private val syncResolutionState = mutableStateOf<SyncResolutionState>(SyncResolutionState.Idle)
@@ -157,9 +161,11 @@ class MainActivity : ComponentActivity() {
     // pulled out of MainActivity. Constructed in onCreate right after db/scanner
     // (its two dependencies), same pattern as settingsViewModel above.
     private lateinit var libraryViewModel: LibraryViewModel
-    // Stateless, can't throw, needs no Context - constructed eagerly rather than
-    // alongside the other services in onCreate's try/catch.
-    private val metadataProvider = GoogleBooksMetadataProvider()
+    // Stage 2.4 of Phase 2 (docs/arkarium/REFACTOR_PLAN.md) - the third ViewModel
+    // pulled out of MainActivity. Constructed in onCreate right after libraryViewModel
+    // (one of its two dependencies, alongside db), same pattern as libraryViewModel
+    // itself.
+    private lateinit var metadataViewModel: MetadataViewModel
 
     // Only ever launched from a "Notify me when new chapters are available" toggle
     // being switched on (see NovelDetailScreen's onToggleNotify wiring below) - API <
@@ -343,49 +349,6 @@ class MainActivity : ComponentActivity() {
         libraryViewModel.refreshRecentlyRead()
     }
 
-    // Kicks off a "Fetch info" search for one novel. User-triggered only (see
-    // NovelDetailScreen's info action) - never called automatically during a scan.
-    private fun fetchMetadataFor(novel: NovelEntity) {
-        metadataSearchState.value = MetadataSearchState.Loading(novel)
-        lifecycleScope.launch {
-            try {
-                val results = metadataProvider.search(novel.title)
-                metadataSearchState.value = MetadataSearchState.Results(novel, results)
-            } catch (e: Exception) {
-                metadataSearchState.value = MetadataSearchState.Error(novel, "Couldn't reach the metadata source: ${e.message}")
-            }
-        }
-    }
-
-    // Persists a user-confirmed match and refreshes every in-memory copy of this novel
-    // (the library list and, if it's the screen currently on screen, NovelDetail) so the
-    // new info shows up immediately without navigating away and back.
-    private fun applyMetadata(novel: NovelEntity, candidate: NovelMetadataCandidate) {
-        lifecycleScope.launch {
-            try {
-                db.novelDao().updateMetadata(
-                    novelId = novel.id,
-                    description = candidate.description,
-                    genres = candidate.categories.joinToString(", ").ifBlank { null },
-                    remoteCoverUrl = candidate.thumbnailUrl,
-                    publishedDate = candidate.publishedDate,
-                    externalSourceUrl = candidate.infoLink,
-                    fetchedAt = System.currentTimeMillis()
-                )
-                val updated = db.novelDao().findById(novel.id) ?: return@launch
-                val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
-                if (idx >= 0) libraryViewModel.novels[idx] = updated
-                val screen = currentScreen.value
-                if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
-                    currentScreen.value = Screen.NovelDetail(updated)
-                }
-                metadataSearchState.value = MetadataSearchState.Idle
-            } catch (e: Exception) {
-                metadataSearchState.value = MetadataSearchState.Error(novel, "Couldn't save the fetched info: ${e.message}")
-            }
-        }
-    }
-
     // Kicks off "Add fiction" end to end (see docs/arkarium/SYNC_MVP.md §4/Stage 3, and the
     // later move to single-origin name lookup): resolves the typed name to a slug via
     // FictionLut, builds the one relay's URL for it, downloads every file the relay's
@@ -400,11 +363,11 @@ class MainActivity : ComponentActivity() {
     private fun addFictionByName(name: String, libraryRoot: DocumentFile) {
         val slug = FictionLut.lookup(this, name)
         if (slug == null) {
-            addFictionState.value = AddFictionState.Error("Couldn't find a fiction called \"$name\".")
+            metadataViewModel.addFictionState.value = AddFictionState.Error("Couldn't find a fiction called \"$name\".")
             return
         }
         val url = relayBaseUrlForSlug(slug)
-        addFictionState.value = AddFictionState.InProgress("Fetching manifest...")
+        metadataViewModel.addFictionState.value = AddFictionState.InProgress("Fetching manifest...")
         lifecycleScope.launch {
             try {
                 // `name` (the user-typed fiction name that resolved to this slug) becomes
@@ -413,11 +376,11 @@ class MainActivity : ComponentActivity() {
                 // longer comes from this name once the novel exists).
                 val (folderName, outcome) = syncManager.downloadInitial(url, libraryRoot, name) { message ->
                     withContext(Dispatchers.Main) {
-                        addFictionState.value = AddFictionState.InProgress(message)
+                        metadataViewModel.addFictionState.value = AddFictionState.InProgress(message)
                     }
                 }
                 withContext(Dispatchers.Main) {
-                    addFictionState.value = AddFictionState.InProgress("Adding to your library...")
+                    metadataViewModel.addFictionState.value = AddFictionState.InProgress("Adding to your library...")
                 }
                 val folder = libraryRoot.findFile(folderName)
                     ?: throw java.io.IOException("The downloaded fiction folder went missing before it could be scanned")
@@ -432,9 +395,9 @@ class MainActivity : ComponentActivity() {
                     val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
                     if (idx >= 0) libraryViewModel.novels[idx] = updated
                 }
-                addFictionState.value = AddFictionState.Hidden
+                metadataViewModel.addFictionState.value = AddFictionState.Hidden
             } catch (e: Exception) {
-                addFictionState.value = AddFictionState.Error("Couldn't add this fiction: ${e.message}")
+                metadataViewModel.addFictionState.value = AddFictionState.Error("Couldn't add this fiction: ${e.message}")
             }
         }
     }
@@ -817,6 +780,10 @@ class MainActivity : ComponentActivity() {
                 .get(SettingsViewModel::class.java)
             libraryViewModel = ViewModelProvider(this, LibraryViewModel.factory(db, scanner))
                 .get(LibraryViewModel::class.java)
+            metadataViewModel = ViewModelProvider(
+                this,
+                MetadataViewModel.factory(db, GoogleBooksMetadataProvider(), libraryViewModel)
+            ).get(MetadataViewModel::class.java)
         } catch (e: Throwable) {
             renderCrashScreen(e)
             return
@@ -1047,7 +1014,7 @@ class MainActivity : ComponentActivity() {
                                 // it just routes to Settings, the single place "Use custom
                                 // folder" and the SAF picker now live.
                                 onSelectFolderClick = { currentScreen.value = Screen.Settings },
-                                onAddFictionClick = { addFictionState.value = AddFictionState.EnteringName },
+                                onAddFictionClick = { metadataViewModel.addFictionState.value = AddFictionState.EnteringName },
                                 onSyncAllClick = {
                                     val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
                                     if (root != null) {
@@ -1099,7 +1066,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onEditClick = { currentScreen.value = Screen.ChapterEditor(novel) },
-                                onFetchInfoClick = { fetchMetadataFor(novel) },
+                                onFetchInfoClick = { metadataViewModel.fetchMetadataFor(novel) },
                                 onAuthorClick = {
                                     val authorId = novel.authorId
                                     if (authorId != null) {
@@ -1353,7 +1320,7 @@ class MainActivity : ComponentActivity() {
                 }
                 }
 
-                when (val state = metadataSearchState.value) {
+                when (val state = metadataViewModel.metadataSearchState.value) {
                     is MetadataSearchState.Loading -> {
                         MetadataSearchDialog(
                             novelTitle = state.novel.title,
@@ -1361,7 +1328,7 @@ class MainActivity : ComponentActivity() {
                             errorMessage = null,
                             candidates = emptyList(),
                             onCandidateSelected = {},
-                            onDismiss = { metadataSearchState.value = MetadataSearchState.Idle }
+                            onDismiss = { metadataViewModel.metadataSearchState.value = MetadataSearchState.Idle }
                         )
                     }
                     is MetadataSearchState.Results -> {
@@ -1370,8 +1337,21 @@ class MainActivity : ComponentActivity() {
                             isLoading = false,
                             errorMessage = null,
                             candidates = state.candidates,
-                            onCandidateSelected = { candidate -> applyMetadata(state.novel, candidate) },
-                            onDismiss = { metadataSearchState.value = MetadataSearchState.Idle }
+                            onCandidateSelected = { candidate ->
+                                metadataViewModel.applyMetadata(state.novel, candidate) { updated ->
+                                    // Refreshes the currently-open NovelDetail screen, if this
+                                    // is the novel it's showing, so the new info appears
+                                    // immediately without navigating away and back - see
+                                    // MetadataViewModel.applyMetadata's doc comment for why this
+                                    // callback (rather than the ViewModel itself) is what
+                                    // touches currentScreen.
+                                    val screen = currentScreen.value
+                                    if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
+                                        currentScreen.value = Screen.NovelDetail(updated)
+                                    }
+                                }
+                            },
+                            onDismiss = { metadataViewModel.metadataSearchState.value = MetadataSearchState.Idle }
                         )
                     }
                     is MetadataSearchState.Error -> {
@@ -1381,7 +1361,7 @@ class MainActivity : ComponentActivity() {
                             errorMessage = state.message,
                             candidates = emptyList(),
                             onCandidateSelected = {},
-                            onDismiss = { metadataSearchState.value = MetadataSearchState.Idle }
+                            onDismiss = { metadataViewModel.metadataSearchState.value = MetadataSearchState.Idle }
                         )
                     }
                     is MetadataSearchState.Idle -> {}
@@ -1390,7 +1370,7 @@ class MainActivity : ComponentActivity() {
                 // "Add fiction" (home screen icon) and "Check for updates"
                 // (NovelDetailScreen) - see docs/arkarium/SYNC_MVP.md, Stage 3, and the later
                 // move to single-origin name lookup via FictionLut.
-                when (val state = addFictionState.value) {
+                when (val state = metadataViewModel.addFictionState.value) {
                     AddFictionState.Hidden -> {}
                     AddFictionState.EnteringName -> {
                         AddFictionByNameDialog(
@@ -1402,11 +1382,11 @@ class MainActivity : ComponentActivity() {
                                 if (root != null) {
                                     addFictionByName(name, root)
                                 } else {
-                                    addFictionState.value =
+                                    metadataViewModel.addFictionState.value =
                                         AddFictionState.Error("No library folder is set up yet - pick one in Settings first.")
                                 }
                             },
-                            onDismiss = { addFictionState.value = AddFictionState.Hidden }
+                            onDismiss = { metadataViewModel.addFictionState.value = AddFictionState.Hidden }
                         )
                     }
                     is AddFictionState.InProgress -> {
@@ -1428,11 +1408,11 @@ class MainActivity : ComponentActivity() {
                                 if (root != null) {
                                     addFictionByName(name, root)
                                 } else {
-                                    addFictionState.value =
+                                    metadataViewModel.addFictionState.value =
                                         AddFictionState.Error("No library folder is set up yet - pick one in Settings first.")
                                 }
                             },
-                            onDismiss = { addFictionState.value = AddFictionState.Hidden }
+                            onDismiss = { metadataViewModel.addFictionState.value = AddFictionState.Hidden }
                         )
                     }
                 }

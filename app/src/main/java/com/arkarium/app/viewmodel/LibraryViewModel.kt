@@ -29,14 +29,16 @@ import kotlinx.coroutines.withContext
 // but the writers on MainActivity would mean reaching back into private ViewModel
 // state from outside it, exactly what rule 2 (separation of concerns) rules out.
 //
-// Everything else that still reads/writes `novels` - fetchMetadataFor/applyMetadata,
-// addFictionByName, syncAllRaeArkNovels/checkForUpdates/scanSingleSyncedNovel,
-// setNotifyEnabled, the sync-resolution actions, saveChapterEdits (which only calls
-// this class's loadNovelDetails to refresh, rather than owning chapters itself) - all
-// stay on MainActivity until Stages 2.4/2.5 give them their own ViewModels. Until
-// then they reach into libraryViewModel.novels directly, exactly as the plan's Stage
-// 2.5 note anticipates: "[SyncViewModel's] scanSingleSyncedNovel path... reads/updates
-// the novel list Stage 2.3 already moved."
+// Everything else that still reads/writes `novels` - addFictionByName,
+// syncAllRaeArkNovels/checkForUpdates/scanSingleSyncedNovel, setNotifyEnabled, the
+// sync-resolution actions, saveChapterEdits (which only calls this class's
+// loadNovelDetails to refresh, rather than owning chapters itself) - stays on
+// MainActivity until Stage 2.5 gives it a ViewModel; until then it reaches into
+// libraryViewModel.novels directly, exactly as the plan's Stage 2.5 note anticipates:
+// "[SyncViewModel's] scanSingleSyncedNovel path... reads/updates the novel list Stage
+// 2.3 already moved." fetchMetadataFor/applyMetadata made the same move a stage early
+// (Stage 2.4, MetadataViewModel) - applyMetadata takes this class as a constructor
+// dependency and reaches into `novels` the same way MainActivity's other callers do.
 //
 // mutableStateListOf/mutableStateOf, not StateFlow<List<...>> - every one of these is
 // mutated incrementally in place (index-set, add, removeAll), which is exactly the
