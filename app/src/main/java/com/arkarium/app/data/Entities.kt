@@ -63,7 +63,17 @@ data class NovelEntity(
     // SOURCE_GONE = the relay 404s on this novel's manifest.json - local content stays
     // readable (offline-first), but there's nothing left to sync against. Never set for
     // a purely-local (syncSourceUrl == null) novel.
-    @ColumnInfo(name = "sync_status") val syncStatus: String = SyncStatus.ACTIVE.name
+    @ColumnInfo(name = "sync_status") val syncStatus: String = SyncStatus.ACTIVE.name,
+    // "Notify me when new chapters are available" toggle on NovelDetailScreen (see
+    // docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md). Only ever meaningful for a synced novel
+    // (syncSourceUrl != null) - the toggle is hidden on the fiction page for a purely
+    // local one, same gating as onSyncClick - but the column itself carries no
+    // constraint against that, so a novel that's later unlinked from its sync source
+    // just has an inert flag rather than needing a migration or cleanup step. Read by
+    // NewChapterCheckWorker's periodic background pass (NovelDao.notifyEnabledSynced)
+    // to decide which novels are even worth checking; never written to by ScannerImpl/
+    // mergeNovelForRescan, so a rescan can never silently flip it back off.
+    @ColumnInfo(name = "notify_new_chapters") val notifyNewChapters: Boolean = false
 )
 
 enum class SyncStatus {

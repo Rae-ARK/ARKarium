@@ -1,12 +1,16 @@
 package com.arkarium.app
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import com.arkarium.app.BuildConfig
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
@@ -52,6 +56,8 @@ import com.arkarium.app.data.GoogleBooksMetadataProvider
 import com.arkarium.app.data.NovelMetadataCandidate
 import com.arkarium.app.data.ReadingProgressEntity
 import com.arkarium.app.data.ScannerImpl
+import com.arkarium.app.data.NewChapterCheckWorker
+import com.arkarium.app.data.NewChapterNotifier
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.PreferencesManager
@@ -123,6 +129,17 @@ class MainActivity : ComponentActivity() {
     private val syncAllState = mutableStateOf<SyncAllState>(SyncAllState.Idle)
     private val syncCheckState = mutableStateOf<SyncCheckState>(SyncCheckState.Idle)
     private val syncResolutionState = mutableStateOf<SyncResolutionState>(SyncResolutionState.Idle)
+    // Set when a "new chapter" notification is tapped (see onNewIntent/handleNotificationIntent
+    // below) and read by the LaunchedEffect in renderMainContent that navigates to it -
+    // null the rest of the time. Kept as Activity state rather than acted on directly
+    // in handleNotificationIntent because `novels` may not have finished loading yet
+    // (a cold start from a notification tap runs onCreate's own startScan concurrently)
+    // - the effect re-checks every time `novels` changes until the target novel shows up.
+    private val pendingNotificationNovelId = mutableStateOf<String?>(null)
+    // Set immediately before launching notificationPermission below, read back in its
+    // callback - carries which novel's toggle triggered the permission prompt across
+    // that async round-trip, since RequestPermission's callback only gets a Boolean.
+    private var pendingNotifyToggleNovelId: String? = null
     private lateinit var db: AppDatabase
     private lateinit var scanner: ScannerImpl
     private lateinit var prefsManager: PreferencesManager
@@ -131,6 +148,23 @@ class MainActivity : ComponentActivity() {
     // Stateless, can't throw, needs no Context - constructed eagerly rather than
     // alongside the other services in onCreate's try/catch.
     private val metadataProvider = GoogleBooksMetadataProvider()
+
+    // Only ever launched from a "Notify me when new chapters are available" toggle
+    // being switched on (see NovelDetailScreen's onToggleNotify wiring below) - API <
+    // 33 has no such runtime permission to request in the first place (notifications
+    // there are granted at install time), so this is never triggered on those versions;
+    // the toggle's callback checks Build.VERSION.SDK_INT before ever calling launch().
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val novelId = pendingNotifyToggleNovelId
+        pendingNotifyToggleNovelId = null
+        // Denied: the toggle simply stays off (setNotifyEnabled is never called, so
+        // notify_new_chapters keeps whatever value it already had - false, since this
+        // path only runs when the user just tried to turn it on). They can grant the
+        // permission from system settings later and flip the toggle again.
+        if (granted && novelId != null) {
+            lifecycleScope.launch { setNotifyEnabled(novelId, true) }
+        }
+    }
 
     private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         uri?.let { selectedUri ->
@@ -796,6 +830,42 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Backs NovelDetailScreen's "Notify me when new chapters are available" toggle
+    // (see docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md). The actual permission gate lives in the
+    // toggle's onToggleNotify callback below (which calls this directly when already
+    // granted, or via notificationPermission's result callback otherwise) - this
+    // function itself just persists the change and refreshes in-memory state, same
+    // "update DB then patch `novels`/currentScreen" pattern checkForUpdates uses.
+    private suspend fun setNotifyEnabled(novelId: String, enabled: Boolean) {
+        db.novelDao().updateNotifyNewChapters(novelId, enabled)
+        val updated = db.novelDao().findById(novelId) ?: return
+        withContext(Dispatchers.Main) {
+            val idx = novels.indexOfFirst { it.id == updated.id }
+            if (idx >= 0) novels[idx] = updated
+            val screen = currentScreen.value
+            if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
+                currentScreen.value = Screen.NovelDetail(updated)
+            }
+        }
+    }
+
+    // Reads the novel id a "new chapter" notification's PendingIntent carries (see
+    // NewChapterNotifier.EXTRA_NOVEL_ID) and stashes it for renderMainContent's
+    // LaunchedEffect to navigate to once that novel shows up in `novels` - see
+    // pendingNotificationNovelId's own doc comment. A no-op for any intent without
+    // that extra (a plain launcher tap, or an onNewIntent delivery from something
+    // else entirely).
+    private fun handleNotificationIntent(intent: Intent?) {
+        val novelId = intent?.getStringExtra(NewChapterNotifier.EXTRA_NOVEL_ID) ?: return
+        pendingNotificationNovelId.value = novelId
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleNotificationIntent(intent)
+    }
+
     // Resolution actions offered from SyncResolutionDialog once checkForUpdates hits a
     // MissingLocalFolderException or SourceGoneException (see above and
     // docs/arkarium/NEXT_FIXES.md #2). All three are explicit, user-triggered choices - none of
@@ -953,6 +1023,24 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        // Schedules (or, on every launch after the first, no-ops against - see
+        // ExistingPeriodicWorkPolicy.KEEP) the periodic background "new chapter" check
+        // (see docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md). Safe to call unconditionally on every
+        // cold launch regardless of whether any novel currently has notifications
+        // turned on - the worker itself queries notifyEnabledSynced() and returns
+        // immediately if that's empty, so scheduling it eagerly here just means it's
+        // already running by the time the user first flips a toggle on, rather than
+        // needing this call moved to wherever the very first toggle happens.
+        NewChapterCheckWorker.schedule(this)
+
+        // A cold start from a "new chapter" notification tap delivers its extras via
+        // this initial intent, not onNewIntent (that only fires for an already-running
+        // instance - see the manifest's launchMode="singleTop"). Safe to call before
+        // `novels` has loaded anything: this only ever stashes the novel id for
+        // renderMainContent's LaunchedEffect to act on once startScan (kicked off
+        // below) actually populates it.
+        handleNotificationIntent(intent)
+
         // Auto-scan on every cold launch, before the user has touched anything.
         // Custom folder OFF (the default): always resolves to the app's private storage
         // folder, so this runs and populates the library with zero user interaction ever
@@ -1042,6 +1130,21 @@ class MainActivity : ComponentActivity() {
                 // above, and both default to true to match PreferencesManager's own default.
                 val splashAnimationEnabled = prefsManager.splashAnimationEnabled.collectAsState(initial = true)
                 val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = true)
+
+                // Navigates to whichever novel a "new chapter" notification was tapped
+                // for (see handleNotificationIntent/onNewIntent and
+                // pendingNotificationNovelId's own doc comment), once that novel
+                // actually shows up in `novels`. Keyed on both values: a cold start
+                // from a notification tap sets pendingNotificationNovelId before
+                // startScan has populated `novels` at all, so this needs to re-run as
+                // novels.size grows too, not just once when the pending id itself is
+                // first set.
+                LaunchedEffect(pendingNotificationNovelId.value, novels.size) {
+                    val novelId = pendingNotificationNovelId.value ?: return@LaunchedEffect
+                    val target = novels.firstOrNull { it.id == novelId } ?: return@LaunchedEffect
+                    currentScreen.value = Screen.NovelDetail(target)
+                    pendingNotificationNovelId.value = null
+                }
 
                 if (showSplash.value) {
                     // Splash always renders on its own solid-black canvas (see
@@ -1214,6 +1317,27 @@ class MainActivity : ComponentActivity() {
                                     {
                                         resolveLibraryRoot(useCustomFolder.value, savedUri.value)?.let { root ->
                                             checkForUpdates(novel, root)
+                                        }
+                                    }
+                                } else null,
+                                notifyEnabled = novel.notifyNewChapters,
+                                onToggleNotify = if (novel.syncSourceUrl != null) {
+                                    { enabled ->
+                                        // Only turning it ON ever needs the runtime permission -
+                                        // turning it off just persists false regardless, same as
+                                        // any other permission-gated toggle. API < 33 doesn't have
+                                        // a POST_NOTIFICATIONS runtime prompt to show at all
+                                        // (granted at install time there), so this only branches
+                                        // on Tiramisu+.
+                                        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                            ContextCompat.checkSelfPermission(
+                                                this@MainActivity, Manifest.permission.POST_NOTIFICATIONS
+                                            ) != PackageManager.PERMISSION_GRANTED
+                                        ) {
+                                            pendingNotifyToggleNovelId = novel.id
+                                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        } else {
+                                            lifecycleScope.launch { setNotifyEnabled(novel.id, enabled) }
                                         }
                                     }
                                 } else null

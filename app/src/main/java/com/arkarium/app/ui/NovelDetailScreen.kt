@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.NotificationsNone
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AssistChip
@@ -37,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -81,7 +84,13 @@ fun NovelDetailScreen(
     // local novel (the common case) has nothing to check for updates against, so the
     // action is left off the app bar entirely rather than shown disabled (see
     // docs/arkarium/SYNC_MVP.md, Stage 3).
-    onSyncClick: (() -> Unit)? = null
+    onSyncClick: (() -> Unit)? = null,
+    // Current value of NovelEntity.notifyNewChapters - passed in rather than read off
+    // `novel` directly so the caller can reflect an in-flight permission-request flow
+    // (see MainActivity's notificationPermission launcher) before the DB write it
+    // triggers actually lands. Same non-null-gates-visibility pattern as onSyncClick.
+    notifyEnabled: Boolean = false,
+    onToggleNotify: ((Boolean) -> Unit)? = null
 ) {
     val selectedTabIndex = remember { mutableIntStateOf(0) }
     // Seeded from the novel's persisted page_size so the preference survives navigation
@@ -263,6 +272,38 @@ fun NovelDetailScreen(
                                     .clickable { descriptionExpanded = !descriptionExpanded }
                             )
                         }
+                    }
+                }
+            }
+
+            // "Notify me when new chapters are available" - only offered for a synced
+            // novel (onToggleNotify null for a purely local one), same gating as
+            // onSyncClick in the app bar above: there's nothing to check for updates
+            // against, so nothing to notify about either. See docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md
+            // and NewChapterCheckWorker, which is what actually acts on this once it's on.
+            if (onToggleNotify != null) {
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp)
+                            .clickable { onToggleNotify(!notifyEnabled) },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            if (notifyEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsNone,
+                            contentDescription = null,
+                            tint = if (notifyEnabled) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            "Notify me when new chapters are available",
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier
+                                .padding(start = 12.dp)
+                                .weight(1f)
+                        )
+                        Switch(checked = notifyEnabled, onCheckedChange = onToggleNotify)
                     }
                 }
             }
