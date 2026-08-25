@@ -34,9 +34,11 @@ import androidx.core.view.WindowCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.arkarium.app.ui.ChapterEditorScreen
 import com.arkarium.app.ui.AuthorPageScreen
 import com.arkarium.app.ui.HomeScreen
@@ -587,6 +589,14 @@ class MainActivity : ComponentActivity() {
                     val novelId = pendingNotificationNovelId.value ?: return@LaunchedEffect
                     val target = libraryViewModel.novels.firstOrNull { it.id == novelId } ?: return@LaunchedEffect
                     currentScreen.value = Screen.NovelDetail(target)
+                    // Stage 3.2 (see docs/arkarium/REFACTOR_PLAN.md): Screen.NovelDetail
+                    // still routes through the "legacy" NavHost destination, but a cold
+                    // start from a notification tap begins on "home" (the NavHost's
+                    // startDestination) - without this, currentScreen.value would flip to
+                    // NovelDetail while the NavHost stayed parked on "home", showing the
+                    // library instead of the tapped novel. launchSingleTop avoids stacking
+                    // a duplicate "legacy" entry if this ever fires while already there.
+                    navController.navigate("legacy") { launchSingleTop = true }
                     pendingNotificationNovelId.value = null
                 }
 
@@ -646,104 +656,147 @@ class MainActivity : ComponentActivity() {
                     color = colorScheme.background,
                     contentColor = colorScheme.onBackground
                 ) {
-                // Stage 3.1 (see docs/arkarium/REFACTOR_PLAN.md): NavHost scaffolding.
+                // Stage 3.1-3.2 (see docs/arkarium/REFACTOR_PLAN.md): NavHost scaffolding.
                 // "legacy" is every Screen case that hasn't been migrated off manual
                 // currentScreen routing yet - it just wraps the old when-block verbatim,
-                // still switching on currentScreen.value exactly as before. Only
-                // Settings/PrivacyPolicy/TermsAndConditions/AboutMe (the four destinations
-                // with zero payload of their own) get their own fixed routes below; every
-                // other Screen case, and its call sites, are untouched by this stage.
+                // still switching on currentScreen.value exactly as before. "home" and
+                // "fictionBrowse" (Stage 3.2) and Settings/PrivacyPolicy/
+                // TermsAndConditions/AboutMe (Stage 3.1) get their own fixed routes
+                // below; only NovelDetail/Reader/ChapterEditor/Author still route
+                // through "legacy" now.
                 NavHost(
                     navController = navController,
-                    startDestination = "legacy",
+                    // Stage 3.2 (see docs/arkarium/REFACTOR_PLAN.md): Home becomes the
+                    // NavHost's own startDestination, replacing currentScreen's
+                    // mutableStateOf<Screen>(Screen.Home) default as the thing that
+                    // actually decides what's on screen first. currentScreen still
+                    // defaults to Screen.Home (unchanged) and stays in sync below purely
+                    // for bookkeeping - nothing reads it to decide whether "home" is
+                    // showing anymore.
+                    startDestination = "home",
                     modifier = Modifier.fillMaxSize()
                 ) {
+                composable("home") {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        HomeScreen(
+                            novels = libraryViewModel.novels,
+                            inProgressNovels = libraryViewModel.inProgressNovels,
+                            onNovelClick = { novel ->
+                                lifecycleScope.launch {
+                                    libraryViewModel.loadNovelDetails(novel)
+                                    currentScreen.value = Screen.NovelDetail(novel)
+                                    // NovelDetail still routes through "legacy" (Stage 3.3
+                                    // migrates it) - launchSingleTop avoids piling up a new
+                                    // "legacy" back-stack entry every time Home is revisited
+                                    // and a novel is tapped again.
+                                    navController.navigate("legacy") { launchSingleTop = true }
+                                }
+                            },
+                            onContinueReading = { novel ->
+                                lifecycleScope.launch {
+                                    val lastProgress = db.readingProgressDao().forNovel(novel.id)
+                                    if (lastProgress != null) {
+                                        val chapter = db.chapterDao().findById(lastProgress.chapterId)
+                                        if (chapter != null) {
+                                            // "Continue Reading" used to jump straight into
+                                            // Screen.Reader without ever calling
+                                            // loadNovelDetails(), unlike every other path into
+                                            // the reader - so `chapters`/`arcs` could still hold
+                                            // a *different* novel's data (or be empty) here.
+                                            // That was harmless before Stage 3, since ReaderScreen
+                                            // didn't read them; now Previous/Next need the
+                                            // correctly-scoped chapter list to compute neighbors.
+                                            libraryViewModel.loadNovelDetails(novel)
+                                            readerAuthor.value = novel.authorId?.let { db.authorDao().findById(it) }
+                                            val chapterContent = contentRepo.getTextContent(chapter.sourcePath)
+                                            currentScreen.value = Screen.Reader(novel.id, chapter, chapterContent.body)
+                                            navController.navigate("legacy") { launchSingleTop = true }
+                                        }
+                                    } else {
+                                        libraryViewModel.loadNovelDetails(novel)
+                                        currentScreen.value = Screen.NovelDetail(novel)
+                                        navController.navigate("legacy") { launchSingleTop = true }
+                                    }
+                                }
+                            },
+                            onBrowseClick = {
+                                currentScreen.value = Screen.FictionBrowse()
+                                navController.navigate("fictionBrowse")
+                            },
+                            onSettingsClick = {
+                                currentScreen.value = Screen.Settings
+                                navController.navigate("settings")
+                            },
+                            onSearch = { query ->
+                                if (query.isNotEmpty()) {
+                                    currentScreen.value = Screen.FictionBrowse(initialQuery = query)
+                                    navController.navigate("fictionBrowse?initialQuery=${Uri.encode(query)}")
+                                }
+                            },
+                            // The library now works out of the box against the app's
+                            // default private storage folder (see resolveLibraryRoot),
+                            // so this no longer needs to be a first-run dead-end fix -
+                            // it just routes to Settings, the single place "Use custom
+                            // folder" and the SAF picker now live.
+                            onSelectFolderClick = {
+                                currentScreen.value = Screen.Settings
+                                navController.navigate("settings")
+                            },
+                            onAddFictionClick = { metadataViewModel.addFictionState.value = AddFictionState.EnteringName },
+                            onSyncAllClick = {
+                                val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
+                                if (root != null) {
+                                    syncViewModel.syncAllRaeArkNovels(root)
+                                } else {
+                                    syncViewModel.syncAllState.value =
+                                        SyncAllState.Error("No library folder is set up yet - pick one in Settings first.")
+                                }
+                            }
+                        )
+                    }
+                }
+
+                composable(
+                    "fictionBrowse?initialQuery={initialQuery}",
+                    arguments = listOf(navArgument("initialQuery") {
+                        type = NavType.StringType
+                        defaultValue = ""
+                    })
+                ) { backStackEntry ->
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        FictionBrowseScreen(
+                            novels = libraryViewModel.novels,
+                            initialQuery = backStackEntry.arguments?.getString("initialQuery") ?: "",
+                            onNovelSelected = { novel ->
+                                lifecycleScope.launch {
+                                    libraryViewModel.loadNovelDetails(novel)
+                                    currentScreen.value = Screen.NovelDetail(novel)
+                                    navController.navigate("legacy") { launchSingleTop = true }
+                                }
+                            },
+                            onBack = {
+                                currentScreen.value = Screen.Home
+                                navController.popBackStack()
+                            }
+                        )
+                    }
+                }
+
                 composable("legacy") {
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     when (currentScreen.value) {
-                        is Screen.Home -> {
-                            HomeScreen(
-                                novels = libraryViewModel.novels,
-                                inProgressNovels = libraryViewModel.inProgressNovels,
-                                onNovelClick = { novel ->
-                                    lifecycleScope.launch {
-                                        libraryViewModel.loadNovelDetails(novel)
-                                        currentScreen.value = Screen.NovelDetail(novel)
-                                    }
-                                },
-                                onContinueReading = { novel ->
-                                    lifecycleScope.launch {
-                                        val lastProgress = db.readingProgressDao().forNovel(novel.id)
-                                        if (lastProgress != null) {
-                                            val chapter = db.chapterDao().findById(lastProgress.chapterId)
-                                            if (chapter != null) {
-                                                // "Continue Reading" used to jump straight into
-                                                // Screen.Reader without ever calling
-                                                // loadNovelDetails(), unlike every other path into
-                                                // the reader - so `chapters`/`arcs` could still hold
-                                                // a *different* novel's data (or be empty) here.
-                                                // That was harmless before Stage 3, since ReaderScreen
-                                                // didn't read them; now Previous/Next need the
-                                                // correctly-scoped chapter list to compute neighbors.
-                                                libraryViewModel.loadNovelDetails(novel)
-                                                readerAuthor.value = novel.authorId?.let { db.authorDao().findById(it) }
-                                                val chapterContent = contentRepo.getTextContent(chapter.sourcePath)
-                                                currentScreen.value = Screen.Reader(novel.id, chapter, chapterContent.body)
-                                            }
-                                        } else {
-                                            libraryViewModel.loadNovelDetails(novel)
-                                            currentScreen.value = Screen.NovelDetail(novel)
-                                        }
-                                    }
-                                },
-                                onBrowseClick = { currentScreen.value = Screen.FictionBrowse() },
-                                onSettingsClick = {
-                                    currentScreen.value = Screen.Settings
-                                    navController.navigate("settings")
-                                },
-                                onSearch = { query ->
-                                    if (query.isNotEmpty()) {
-                                        currentScreen.value = Screen.FictionBrowse(initialQuery = query)
-                                    }
-                                },
-                                // The library now works out of the box against the app's
-                                // default private storage folder (see resolveLibraryRoot),
-                                // so this no longer needs to be a first-run dead-end fix -
-                                // it just routes to Settings, the single place "Use custom
-                                // folder" and the SAF picker now live.
-                                onSelectFolderClick = {
-                                    currentScreen.value = Screen.Settings
-                                    navController.navigate("settings")
-                                },
-                                onAddFictionClick = { metadataViewModel.addFictionState.value = AddFictionState.EnteringName },
-                                onSyncAllClick = {
-                                    val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
-                                    if (root != null) {
-                                        syncViewModel.syncAllRaeArkNovels(root)
-                                    } else {
-                                        syncViewModel.syncAllState.value =
-                                            SyncAllState.Error("No library folder is set up yet - pick one in Settings first.")
-                                    }
-                                }
-                            )
-                        }
-
-                        is Screen.FictionBrowse -> {
-                            val browse = currentScreen.value as Screen.FictionBrowse
-                            FictionBrowseScreen(
-                                novels = libraryViewModel.novels,
-                                initialQuery = browse.initialQuery,
-                                onNovelSelected = { novel ->
-                                    lifecycleScope.launch {
-                                        libraryViewModel.loadNovelDetails(novel)
-                                        currentScreen.value = Screen.NovelDetail(novel)
-                                    }
-                                },
-                                onBack = { currentScreen.value = Screen.Home }
-                            )
-                        }
+                        // Home and FictionBrowse used to be cases here too - Stage 3.2
+                        // (see docs/arkarium/REFACTOR_PLAN.md) moved them out to their own
+                        // "home"/"fictionBrowse" NavHost routes, since both screens'
+                        // content already comes entirely from libraryViewModel, not from
+                        // the Screen payload. Every entry point into "legacy" from those
+                        // two routes now navigates the NavController explicitly instead of
+                        // just writing currentScreen.value, so this branch should never
+                        // actually compose while currentScreen is either - kept only so
+                        // the `when` stays exhaustive over all of `Screen`.
+                        is Screen.Home, is Screen.FictionBrowse -> {}
 
                         is Screen.NovelDetail -> {
                             val novel = (currentScreen.value as Screen.NovelDetail).novel
@@ -752,7 +805,20 @@ class MainActivity : ComponentActivity() {
                                 chapters = libraryViewModel.chapters,
                                 arcs = libraryViewModel.arcs,
                                 overriddenChapterIds = libraryViewModel.overriddenChapterIds.value,
-                                onBack = { currentScreen.value = Screen.Home },
+                                onBack = {
+                                    currentScreen.value = Screen.Home
+                                    // NovelDetail always went straight back to Home
+                                    // regardless of how it was reached (direct from Home,
+                                    // or via FictionBrowse) - popUpTo("home", inclusive =
+                                    // false) preserves that exact behavior by collapsing
+                                    // whatever's on top of "home" back down to it, rather
+                                    // than a plain popBackStack() which would only undo the
+                                    // single most recent hop.
+                                    navController.navigate("home") {
+                                        popUpTo("home") { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                },
                                 onChapterSelected = { chapter ->
                                     lifecycleScope.launch {
                                         // Mark novel as IN_PROGRESS when starting to read
@@ -845,6 +911,13 @@ class MainActivity : ComponentActivity() {
                                     lifecycleScope.launch {
                                         saveReadingProgress(reader.novelId, reader.chapter.id, progress)
                                         currentScreen.value = Screen.Home
+                                        // Same popUpTo("home") reasoning as NovelDetail's
+                                        // onBack above - Reader's Back always went straight
+                                        // to Home regardless of entry path.
+                                        navController.navigate("home") {
+                                            popUpTo("home") { inclusive = false }
+                                            launchSingleTop = true
+                                        }
                                     }
                                 },
                                 onBackToFiction = { progress ->
@@ -1240,6 +1313,15 @@ class MainActivity : ComponentActivity() {
                                 syncViewModel.resolveByRemovingFromLibrary(state.novel) { removed ->
                                     if (currentScreen.value.let { it is Screen.NovelDetail && it.novel.id == removed.id }) {
                                         currentScreen.value = Screen.Home
+                                        // Same popUpTo("home") reasoning as NovelDetail's
+                                        // own onBack - this dialog can fire while NovelDetail
+                                        // (the "legacy" route) is showing the just-removed
+                                        // novel, which needs to land back on "home" the same
+                                        // way a normal Back tap from that screen would.
+                                        navController.navigate("home") {
+                                            popUpTo("home") { inclusive = false }
+                                            launchSingleTop = true
+                                        }
                                     }
                                 }
                             },

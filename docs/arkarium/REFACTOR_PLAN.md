@@ -281,7 +281,7 @@ back-stack context) is attempted. Unlike Phase 2's stages - which split along
 a ViewModel (`libraryViewModel.novels`, etc.) via a scalar id argument, versus how much
 still needs to travel through the destination itself.
  
-- **Stage 3.1 - `NavHost` scaffolding + the four argument-free screens.** Add the
+- **Stage 3.1 - `NavHost` scaffolding + the four argument-free screens.Done** Add the
   `NavController`/`NavHost` skeleton in the top-level `App` composable (replacing the
   outer `when (currentScreen.value)` only for these four cases; every other `Screen`
   case keeps routing through the old mechanism for now, so this stage doesn't have to
