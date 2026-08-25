@@ -16,6 +16,10 @@ codebase, this is what you read and what you keep updated.
 - [`FUTURE_PLANS.md`](arkarium/FUTURE_PLANS.md) — gap analysis against the v1
   vision, plus the TTS architecture first pass.
 - [`NEXT_FIXES.md`](arkarium/NEXT_FIXES.md) — known sync-robustness issues.
+- [`SETTINGS_REDESIGN.md`](arkarium/SETTINGS_REDESIGN.md) — one-page-per-option
+  Settings redesign plan, plus a new Text-to-Speech settings page for TTS
+  controls that don't belong in the reader's Reader Preferences pill.
+  Stage 0 (design only) - see the doc for the staged rollout.
 
 ## `reference/arkster/` — predecessor project, historical reference only
 
