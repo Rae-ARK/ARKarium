@@ -82,20 +82,26 @@ problem this plan exists to fix).
 
 ## Phase 1 - done in this patch (no behavior change)
 
-Pure, mechanical extraction. Nothing here changes what the app does; it only moves
-code so later phases have smaller, focused pieces to work with.
+Pure, mechanical extraction, done as three independent stages. Nothing in any stage
+changes what the app does; each only moves code so later phases have smaller, focused
+pieces to work with. The stages have no dependency on each other (each touches a
+disjoint slice of `MainActivity.kt`) and landed together here only because they're
+small - in general each stage below is its own shippable, revertable commit.
 
-- `navigation/AppState.kt` - `Screen` (navigation destinations) and the
-  `MetadataSearchState` / `AddFictionState` / `SyncAllState` / `SyncCheckState` /
-  `SyncResolutionState` sealed classes, moved out of `MainActivity.kt` verbatim.
-- `ui/theme/AppTheme.kt` - `warmPaperColorScheme()`, `colorSchemeFor()`, and
-  `resolveTheme()`, moved out of `MainActivity.kt` verbatim. `resolveTheme` takes and
-  returns plain `Theme` values with no Compose/Android types, which is what makes it
-  possible to unit-test directly (see below) - a template for pulling more decision
-  logic out of the Activity into small functions like it.
-- Test infrastructure - `testImplementation` deps for JUnit4 and
+- **Stage 1.1 - navigation/dialog state -> `navigation/AppState.kt`.** `Screen`
+  (navigation destinations) and the `MetadataSearchState` / `AddFictionState` /
+  `SyncAllState` / `SyncCheckState` / `SyncResolutionState` sealed classes, moved out
+  of `MainActivity.kt` verbatim.
+- **Stage 1.2 - theme decision logic -> `ui/theme/AppTheme.kt`.**
+  `warmPaperColorScheme()`, `colorSchemeFor()`, and `resolveTheme()`, moved out of
+  `MainActivity.kt` verbatim. `resolveTheme` takes and returns plain `Theme` values
+  with no Compose/Android types, which is what makes it possible to unit-test
+  directly (Stage 1.3) - a template for pulling more decision logic out of the
+  Activity into small functions like it (rule 3).
+- **Stage 1.3 - test infrastructure.** `testImplementation` deps for JUnit4 and
   `kotlinx-coroutines-test`, plus `AppThemeTest`, the repo's first unit test, covering
-  `resolveTheme`'s day/night substitution logic.
+  `resolveTheme`'s day/night substitution logic. Deliberately sequenced after 1.2 -
+  there's nothing to test until a pure function exists to test.
 
 `MainActivity.kt`: 1706 -> 1601 lines. Every call site (`resolveTheme(...)`,
 `colorSchemeFor(...)`, `Screen.Home`, etc.) is unchanged; only the imports moved.
@@ -104,17 +110,41 @@ code so later phases have smaller, focused pieces to work with.
 
 Split the Activity's `mutableStateOf` fields and their surrounding logic into a small
 number of feature-scoped ViewModels backed by `StateFlow`, rather than one
-`MainViewModel` that just reassembles the same god-object problem under a new name:
+`MainViewModel` that just reassembles the same god-object problem under a new name.
+Unlike Phase 1, these stages aren't fully independent - each is still its own
+commit/PR, but the order below is deliberate:
 
-- `LibraryViewModel` - `novels`, `chapters`, `arcs`, `recentlyRead`,
-  `inProgressNovels`, scan progress/message, and the scan/rescan logic
-  (`resolveLibraryRoot`, `mergeNovelForRescan`, `startScan`).
-- `SyncViewModel` - `syncAllState`, `syncCheckState`, `syncResolutionState`, and the
-  sync/resolution logic.
-- `MetadataViewModel` - `metadataSearchState`, `addFictionState`, and the
-  fetch/apply-metadata logic.
-- `SettingsViewModel` (or extend `PreferencesManager`'s existing surface) -
-  `currentTheme`, `currentSystemDefaultLightVariant`, `useCustomFolder`, `savedUri`.
+- **Stage 2.1 - pure functions first, no ViewModel yet.** Move `mergeNovelForRescan`
+  and `resolveLibraryRoot` out of `MainActivity` into a plain file of top-level
+  functions (e.g. `data/LibraryScan.kt`), same shape as Phase 1's `resolveTheme` move.
+  `resolveLibraryRoot` only touches `Context` to build a `DocumentFile`, so it takes
+  that as a parameter rather than becoming a method on anything. This is the lowest-
+  risk stage - a mechanical, behavior-preserving move like all of Phase 1 - and it
+  unblocks unit tests for `mergeNovelForRescan`'s field-by-field merge rules before
+  any ViewModel wiring exists to get in the way (rule 3).
+- **Stage 2.2 - `SettingsViewModel`.** `currentTheme`, `currentSystemDefaultLightVariant`,
+  `useCustomFolder`, `savedUri` - thin, mostly a `StateFlow`-shaped wrapper around
+  `PreferencesManager`'s existing surface (or an extension of it). Done first among
+  the four ViewModels because it has no dependency on `novels` or any other
+  cross-feature state, so it's the smallest possible proof that the
+  Activity -> ViewModel -> service call chain works end to end before tackling
+  bigger state.
+- **Stage 2.3 - `LibraryViewModel`.** `novels`, `chapters`, `arcs`, `recentlyRead`,
+  `inProgressNovels`, scan progress/message, and `startScan` (now calling the Stage
+  2.1 functions instead of Activity-private ones). Comes before Sync/Metadata below
+  because both of those read the library's novel list (`SyncViewModel`'s
+  `scanSingleSyncedNovel` path, `MetadataViewModel`'s "apply to novel" step) - giving
+  `LibraryViewModel` a settled shape first means Stages 2.4-2.5 have a real
+  `StateFlow<List<NovelEntity>>` to depend on instead of guessing its eventual shape.
+- **Stage 2.4 - `MetadataViewModel`.** `metadataSearchState`, `addFictionState`, and
+  the fetch/apply-metadata logic, calling `GoogleBooksMetadataProvider` and reading
+  `LibraryViewModel`'s novel list. Ordered before Sync since it's the simpler of the
+  two remaining ViewModels (one external service, no multi-step resolution states).
+- **Stage 2.5 - `SyncViewModel`.** `syncAllState`, `syncCheckState`,
+  `syncResolutionState`, and the sync/resolution logic against `SyncManager`. Last,
+  both because it's the largest remaining slice of Activity state/logic and because
+  its `scanSingleSyncedNovel` path calls into the library-scan functions Stage 2.1
+  extracted and reads/updates the novel list Stage 2.3 already moved.
 
 Constructor-injected dependencies (`AppDatabase`, `ScannerImpl`, `SyncManager`,
 `PreferencesManager`, `TextChapterContentRepository`) already exist as fields on
@@ -122,25 +152,23 @@ Constructor-injected dependencies (`AppDatabase`, `ScannerImpl`, `SyncManager`,
 `AndroidViewModel`/`viewModelFactory` for the pieces that still need `Context` (e.g.
 `getExternalFilesDir`, `contentResolver`).
 
-Applying the architecture philosophy above to this specific move:
+Applying the architecture philosophy above across all five stages:
 
 - **Stays a free function (rule 3), just relocated:** `mergeNovelForRescan` and
-  `resolveLibraryRoot` are pure data-in/data-out logic today (the latter only touches
-  `Context` to build a `DocumentFile`, which can be passed in rather than making the
-  function a method). Both move to a small `LibraryScanCoordinator`-adjacent file as
-  top-level functions, not as private methods buried inside `LibraryViewModel` - so
-  they can keep being unit-tested exactly like `resolveTheme` today, independent of
-  any ViewModel/Android test harness.
+  `resolveLibraryRoot` (Stage 2.1) - top-level functions, not private methods buried
+  inside `LibraryViewModel`, so they keep being unit-tested exactly like
+  `resolveTheme` today, independent of any ViewModel/Android test harness.
 - **Becomes ViewModel state (rule 2):** the `mutableStateOf`/`mutableStateListOf`
-  fields themselves (`novels`, `syncAllState`, `metadataSearchState`, etc.) and the
-  suspend functions that only exist to update them in response to a user action -
-  these are UI state and belong on the ViewModel, not on a service.
+  fields themselves (`novels`, `syncAllState`, `metadataSearchState`, etc., Stages
+  2.2-2.5) and the suspend functions that only exist to update them in response to a
+  user action - these are UI state and belong on the ViewModel, not on a service.
 - **Stays a service, unchanged (rule 1):** `ScannerImpl`, `SyncManager`,
   `PreferencesManager`, `TextChapterContentRepository`, and
-  `GoogleBooksMetadataProvider` don't move or change shape - the ViewModels above just
-  become their new callers instead of `MainActivity`. If a future feature needs new
-  business logic that isn't UI state (e.g. a new sync strategy), it becomes a new
-  service or a new function on an existing one, never a growth spurt on a ViewModel.
+  `GoogleBooksMetadataProvider` don't move or change shape in any of the five stages -
+  the ViewModels above just become their new callers instead of `MainActivity`. If a
+  future feature needs new business logic that isn't UI state (e.g. a new sync
+  strategy), it becomes a new service or a new function on an existing one, never a
+  growth spurt on a ViewModel.
 
 ## Phase 3 - Navigation Compose (not yet started)
 
