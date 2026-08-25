@@ -262,7 +262,7 @@ Applying the architecture philosophy above across all five stages:
   growth spurt on a ViewModel.
 
 ## Phase 3 - Navigation Compose (not yet started)
-
+ 
 `androidx.navigation:navigation-compose` is already a declared dependency
 (`app/build.gradle.kts`) but unused - `Screen` is currently routed by hand with a
 single `mutableStateOf<Screen>` and a large `when` block. Migrating that `when` block
@@ -270,6 +270,91 @@ into a `NavHost` with one composable route per `Screen` case, and a single
 `NavController` hoisted in the top-level `App` composable, removes the need for
 `Screen` to carry manual back-stack context (e.g. `Screen.Author`'s `from` field) since
 `NavController` handles the back stack itself.
+ 
+Like Phase 2, this is split into independently-shippable stages rather than one big
+`when`-block-to-`NavHost` swap, ordered smallest/lowest-risk first so each stage proves
+the `NavHost`/`NavController` wiring on a shrinking, better-understood surface before
+the stage that actually needs it (Reader's Previous/Next chapter hops, Author's `from`
+back-stack context) is attempted. Unlike Phase 2's stages - which split along
+*ownership* lines (each ViewModel took a disjoint slice of state) - these split along
+*data-shape* lines: how much of a `Screen` case's payload can already be resolved from
+a ViewModel (`libraryViewModel.novels`, etc.) via a scalar id argument, versus how much
+still needs to travel through the destination itself.
+ 
+- **Stage 3.1 - `NavHost` scaffolding + the four argument-free screens.** Add the
+  `NavController`/`NavHost` skeleton in the top-level `App` composable (replacing the
+  outer `when (currentScreen.value)` only for these four cases; every other `Screen`
+  case keeps routing through the old mechanism for now, so this stage doesn't have to
+  touch `Screen.NovelDetail`/`Screen.Reader`/etc. or any of their call sites) and
+  migrate `Screen.Settings`, `Screen.PrivacyPolicy`, `Screen.TermsAndConditions`, and
+  `Screen.AboutMe` - the only four destinations that carry zero payload of their own
+  (`Settings` reads everything it needs from `settingsViewModel`/`prefsManager`
+  already; the three legal/about screens are static). Each becomes a fixed-route
+  `composable("settings") { ... }` etc. with `navController.popBackStack()` standing in
+  for `onBack`'s `currentScreen.value = Screen.Home`/`Screen.Settings` writes. Smallest
+  possible slice to prove `NavHost` coexists with the still-manual remainder of the
+  `when` block before anything with real navigation arguments is on the line.
+- **Stage 3.2 - `Screen.Home` and `Screen.FictionBrowse`.** `Home` becomes the
+  `NavHost`'s `startDestination` (replacing `currentScreen`'s
+  `mutableStateOf<Screen>(Screen.Home)` default). `FictionBrowse(initialQuery: String
+  = "")` is the first destination with a real argument, but a single optional `String`
+  is exactly what Navigation Compose's argument system is built for
+  (`navArgument("initialQuery") { defaultValue = "" }` on a
+  `"fictionBrowse?initialQuery={initialQuery}"` route) - no new lookup pattern needed
+  yet. Both screens' actual content (`novels`, `inProgressNovels`) already comes from
+  `libraryViewModel`, not from the `Screen` payload, so this stage is still just
+  routing, not data-fetching.
+- **Stage 3.3 - `Screen.NovelDetail` and `Screen.ChapterEditor`.** The first stage that
+  changes a `Screen` case's shape: both currently carry a full `NovelEntity` as a data
+  class field (`Screen.NovelDetail(val novel: NovelEntity)`), which is how every
+  `onUpdated`/`onApplied` callback added in Stages 2.4/2.5
+  (`metadataViewModel.applyMetadata`'s `onApplied`, `syncViewModel.checkForUpdates`'s
+  `onUpdated`, `resolveMissingFolderBySyncing`/`resolveSourceGoneByUnlinking`'s
+  `onUpdated`) ends up patching `currentScreen.value = Screen.NovelDetail(updated)` -
+  there's no other way to get the freshly-synced/metadata'd `NovelEntity` onto the
+  currently-showing screen when the screen *is* the data. Once the destination instead
+  takes a `novelId: String` route argument and resolves the novel itself via
+  `libraryViewModel.novels.firstOrNull { it.id == novelId }` (same lookup
+  `Screen.Reader`'s composable already does today for `readerAuthor`/chapter
+  neighbors), that whole class of callback becomes unnecessary: `libraryViewModel`
+  patching its own `novels` list (which every one of those functions already does) is
+  enough for the composable to recompose with the new data on its own, since it's
+  reading from a `SnapshotStateList` either way. This stage should delete the
+  `onUpdated`/`onApplied` callback parameters added across Stages 2.4/2.5 (or leave
+  them as unused no-op defaults if any other caller still wants the notification) once
+  their one caller stops needing them.
+- **Stage 3.4 - `Screen.Reader` and `Screen.Author`.** Last, and the only stage that
+  actually needs `NavController`'s back-stack handling rather than just its routing:
+  `Screen.Author(val authorId: String, val from: Screen)` exists purely to remember
+  where to `onBack` to (the fiction page byline or the reader's "About the author"
+  card), which `NavController`'s own back stack makes redundant - `from` is dropped
+  entirely and `onBack` becomes a plain `navController.popBackStack()`. `Reader`'s
+  `onPrevious`/`onNext` currently work by replacing `currentScreen.value` with a new
+  `Screen.Reader(...)` for the neighboring chapter (see `MainActivity`'s existing
+  `previousChapter`/`nextChapter` lookups against `libraryViewModel.chapters`) - under
+  `NavHost` this becomes `navController.navigate("reader/$novelId/${next.id}") {
+  popUpTo("reader/{novelId}/{chapterId}") { inclusive = true } }` (replace, not push),
+  so Back from chapter 5 returns to `NovelDetail`, not to chapter 4 - matching today's
+  behavior, where `onPrevious`/`onNext` never touch a back stack because there wasn't
+  one. `readerAuthor`/`readerCoverUri` resolution (today: an Activity `mutableStateOf`
+  set once on screen entry) moves to a `LaunchedEffect(novelId)` keyed off the route
+  argument, the same pattern `Screen.Author`'s own `LaunchedEffect(screen.authorId)`
+  already uses.
+- **Stage 3.5 - cleanup.** Delete `navigation/AppState.kt`'s `Screen` sealed class, the
+  `currentScreen`/`showSplash` interplay's now-dead branches, and any
+  `this@MainActivity`-scoped navigation helpers Stages 3.1-3.4 left orphaned once every
+  case routes through `NavHost`. `MetadataSearchState`/`AddFictionState`/
+  `SyncAllState`/`SyncCheckState`/`SyncResolutionState` stay in `AppState.kt`
+  unchanged - they drive dialogs layered over the content, not `Screen` destinations,
+  so they're outside this migration's scope regardless of which mechanism routes the
+  screen underneath them.
+Every stage keeps `Screen`'s *content* (which composable renders, with which data)
+identical to today - only how the destination is reached and how far back "Back"
+goes changes. None of the four services or five Stage-2 ViewModels change in this
+phase (rule 1); `NavController` replaces exactly one thing, the hand-rolled
+`currentScreen: MutableState<Screen>` + `when` block, matching rule 2 (navigation is
+its own concern, currently smeared across the Activity alongside three other layers -
+see this doc's opening paragraph).
 
 ## Testing strategy going forward
 
