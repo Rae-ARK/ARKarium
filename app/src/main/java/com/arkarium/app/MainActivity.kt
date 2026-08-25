@@ -34,6 +34,9 @@ import androidx.core.view.WindowCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import com.arkarium.app.ui.ChapterEditorScreen
 import com.arkarium.app.ui.AuthorPageScreen
 import com.arkarium.app.ui.HomeScreen
@@ -551,6 +554,14 @@ class MainActivity : ComponentActivity() {
                 // contrast background - both unreadable. Recompute on every theme change
                 // instead of once, since currentTheme can change at runtime.
                 val view = LocalView.current
+                // Stage 3.1 (see docs/arkarium/REFACTOR_PLAN.md): a single NavController
+                // hoisted here, at the top of the composable tree, same placement
+                // "Migrate Jetpack Navigation to Navigation Compose" recommends for the
+                // top-level App composable. Only Settings/PrivacyPolicy/TermsAndConditions/
+                // AboutMe route through it for now (see the "legacy" NavHost destination
+                // below) - every other Screen case still routes through currentScreen's
+                // manual `when` block until later Stage 3.x's migrate them too.
+                val navController = rememberNavController()
                 // Hoisted above the splash/Surface split (rather than declared inside the
                 // Column below, where they used to live) so the sync dialogs further down -
                 // which are siblings of Surface{}, not descendants of that Column - can also
@@ -635,6 +646,19 @@ class MainActivity : ComponentActivity() {
                     color = colorScheme.background,
                     contentColor = colorScheme.onBackground
                 ) {
+                // Stage 3.1 (see docs/arkarium/REFACTOR_PLAN.md): NavHost scaffolding.
+                // "legacy" is every Screen case that hasn't been migrated off manual
+                // currentScreen routing yet - it just wraps the old when-block verbatim,
+                // still switching on currentScreen.value exactly as before. Only
+                // Settings/PrivacyPolicy/TermsAndConditions/AboutMe (the four destinations
+                // with zero payload of their own) get their own fixed routes below; every
+                // other Screen case, and its call sites, are untouched by this stage.
+                NavHost(
+                    navController = navController,
+                    startDestination = "legacy",
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                composable("legacy") {
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -675,7 +699,10 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onBrowseClick = { currentScreen.value = Screen.FictionBrowse() },
-                                onSettingsClick = { currentScreen.value = Screen.Settings },
+                                onSettingsClick = {
+                                    currentScreen.value = Screen.Settings
+                                    navController.navigate("settings")
+                                },
                                 onSearch = { query ->
                                     if (query.isNotEmpty()) {
                                         currentScreen.value = Screen.FictionBrowse(initialQuery = query)
@@ -686,7 +713,10 @@ class MainActivity : ComponentActivity() {
                                 // so this no longer needs to be a first-run dead-end fix -
                                 // it just routes to Settings, the single place "Use custom
                                 // folder" and the SAF picker now live.
-                                onSelectFolderClick = { currentScreen.value = Screen.Settings },
+                                onSelectFolderClick = {
+                                    currentScreen.value = Screen.Settings
+                                    navController.navigate("settings")
+                                },
                                 onAddFictionClick = { metadataViewModel.addFictionState.value = AddFictionState.EnteringName },
                                 onSyncAllClick = {
                                     val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
@@ -889,114 +919,140 @@ class MainActivity : ComponentActivity() {
                             }
                         }
 
-                        is Screen.Settings -> {
-                            SettingsScreen(
-                                currentTheme = currentTheme.value,
-                                useCustomFolder = useCustomFolder.value,
-                                hasCustomFolderSelected = savedUri.value != null,
-                                systemDefaultLightVariant = currentSystemDefaultLightVariant.value,
-                                // Routed through settingsViewModel (Stage 2.2, see
-                                // docs/arkarium/REFACTOR_PLAN.md) rather than calling
-                                // prefsManager.setTheme/setSystemDefaultLightVariant/
-                                // setUseCustomFolder directly - settingsViewModel is now the
-                                // single owner of writes to this state, matching the
-                                // Activity -> ViewModel -> service call chain the stage exists
-                                // to prove. Fire-and-forget (settingsViewModel's setters launch
-                                // their own viewModelScope coroutine) is safe for these three:
-                                // nothing downstream reads the write back before it lands -
-                                // onThemeSelected/onSystemDefaultLightVariantSelected have no
-                                // downstream at all, and onUseCustomFolderToggle's
-                                // resolveLibraryRoot call below already takes `enabled`
-                                // directly rather than re-reading useCustomFolder.value.
-                                onThemeSelected = { theme -> settingsViewModel.setTheme(theme) },
-                                onSystemDefaultLightVariantSelected = { variant ->
-                                    settingsViewModel.setSystemDefaultLightVariant(variant)
-                                },
-                                onUseCustomFolderToggle = { enabled ->
-                                    settingsViewModel.setUseCustomFolder(enabled)
-                                    // Switching sources mints different novel IDs (see
-                                    // ScannerImpl's id hash, keyed off root.uri) - clear
-                                    // first so the old source's novels don't linger
-                                    // alongside the new source's until the next scan's
-                                    // reconciliation pass catches up. Kept on lifecycleScope
-                                    // (not settingsViewModel, which owns no novel state) -
-                                    // novels/startScan now live on libraryViewModel (Stage
-                                    // 2.3, see docs/arkarium/REFACTOR_PLAN.md).
-                                    lifecycleScope.launch {
-                                        libraryViewModel.novels.clear()
-                                        // Turning custom folder ON with nothing picked yet
-                                        // resolves to null here by design - leave the
-                                        // library empty and let the "Select Folder" button
-                                        // below (or EmptyLibraryPrompt on Home) start the
-                                        // picker instead of scanning anything.
-                                        resolveLibraryRoot(this@MainActivity, enabled, savedUri.value)?.let { libraryViewModel.startScan(it) }
-                                    }
-                                },
-                                onSelectFolderClick = { pickFolder.launch(null) },
-                                onRescan = {
-                                    lifecycleScope.launch {
-                                        // No novels.clear() here - see bugs.md Bug 4.
-                                        // startScan's onScanCompleted now reconciles
-                                        // stale novels against the DB once the scan
-                                        // actually finishes, instead of blanking the
-                                        // visible library up front and hoping the scan
-                                        // fully repopulates it.
-                                        val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
-                                        if (root != null) {
-                                            libraryViewModel.startScan(root)
-                                        } else {
-                                            // Custom folder is on but nothing's been picked
-                                            // yet - "Rescan" would otherwise silently do
-                                            // nothing here. Send the user to the picker.
-                                            pickFolder.launch(null)
-                                        }
-                                    }
-                                },
-                                splashAnimationEnabled = splashAnimationEnabled.value,
-                                splashMusicEnabled = splashMusicEnabled.value,
-                                onSplashAnimationToggle = { enabled ->
-                                    lifecycleScope.launch {
-                                        prefsManager.setSplashAnimationEnabled(enabled)
-                                    }
-                                },
-                                onSplashMusicToggle = { enabled ->
-                                    lifecycleScope.launch {
-                                        prefsManager.setSplashMusicEnabled(enabled)
-                                    }
-                                },
-                                onPrivacyPolicy = { currentScreen.value = Screen.PrivacyPolicy },
-                                onTermsAndConditions = { currentScreen.value = Screen.TermsAndConditions },
-                                onAboutMe = { currentScreen.value = Screen.AboutMe },
-                                onBack = { currentScreen.value = Screen.Home }
-                            )
-                        }
-
-                        is Screen.PrivacyPolicy -> {
-                            LegalDocumentScreen(
-                                title = "Privacy Policy",
-                                sections = LegalContent.privacyPolicy,
-                                onBack = { currentScreen.value = Screen.Settings }
-                            )
-                        }
-
-                        is Screen.TermsAndConditions -> {
-                            LegalDocumentScreen(
-                                title = "Terms & Conditions",
-                                sections = LegalContent.termsAndConditions,
-                                onBack = { currentScreen.value = Screen.Settings }
-                            )
-                        }
-
-                        is Screen.AboutMe -> {
-                            WebViewScreen(
-                                title = "About Me",
-                                url = "https://rae-ark.horizonarkstudio.workers.dev/",
-                                onBack = { currentScreen.value = Screen.Settings }
-                            )
-                        }
+                        // Settings/PrivacyPolicy/TermsAndConditions/AboutMe used to be
+                        // cases here too - Stage 3.1 (see docs/arkarium/REFACTOR_PLAN.md)
+                        // moved them out to their own fixed NavHost routes below, since
+                        // they're the only four destinations that carry zero payload of
+                        // their own. This branch should never actually compose while
+                        // currentScreen is one of those four - the entry points above
+                        // (Home's onSettingsClick/onSelectFolderClick) navigate the
+                        // NavController directly instead of just writing
+                        // currentScreen.value - but the `when` still needs to stay
+                        // exhaustive over all of `Screen`.
+                        is Screen.Settings, is Screen.PrivacyPolicy,
+                        is Screen.TermsAndConditions, is Screen.AboutMe -> {}
                     }
                 }
                 }
+
+                composable("settings") {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        SettingsScreen(
+                            currentTheme = currentTheme.value,
+                            useCustomFolder = useCustomFolder.value,
+                            hasCustomFolderSelected = savedUri.value != null,
+                            systemDefaultLightVariant = currentSystemDefaultLightVariant.value,
+                            // Routed through settingsViewModel (Stage 2.2, see
+                            // docs/arkarium/REFACTOR_PLAN.md) rather than calling
+                            // prefsManager.setTheme/setSystemDefaultLightVariant/
+                            // setUseCustomFolder directly - settingsViewModel is now the
+                            // single owner of writes to this state, matching the
+                            // Activity -> ViewModel -> service call chain the stage exists
+                            // to prove. Fire-and-forget (settingsViewModel's setters launch
+                            // their own viewModelScope coroutine) is safe for these three:
+                            // nothing downstream reads the write back before it lands -
+                            // onThemeSelected/onSystemDefaultLightVariantSelected have no
+                            // downstream at all, and onUseCustomFolderToggle's
+                            // resolveLibraryRoot call below already takes `enabled`
+                            // directly rather than re-reading useCustomFolder.value.
+                            onThemeSelected = { theme -> settingsViewModel.setTheme(theme) },
+                            onSystemDefaultLightVariantSelected = { variant ->
+                                settingsViewModel.setSystemDefaultLightVariant(variant)
+                            },
+                            onUseCustomFolderToggle = { enabled ->
+                                settingsViewModel.setUseCustomFolder(enabled)
+                                // Switching sources mints different novel IDs (see
+                                // ScannerImpl's id hash, keyed off root.uri) - clear
+                                // first so the old source's novels don't linger
+                                // alongside the new source's until the next scan's
+                                // reconciliation pass catches up. Kept on lifecycleScope
+                                // (not settingsViewModel, which owns no novel state) -
+                                // novels/startScan now live on libraryViewModel (Stage
+                                // 2.3, see docs/arkarium/REFACTOR_PLAN.md).
+                                lifecycleScope.launch {
+                                    libraryViewModel.novels.clear()
+                                    // Turning custom folder ON with nothing picked yet
+                                    // resolves to null here by design - leave the
+                                    // library empty and let the "Select Folder" button
+                                    // below (or EmptyLibraryPrompt on Home) start the
+                                    // picker instead of scanning anything.
+                                    resolveLibraryRoot(this@MainActivity, enabled, savedUri.value)?.let { libraryViewModel.startScan(it) }
+                                }
+                            },
+                            onSelectFolderClick = { pickFolder.launch(null) },
+                            onRescan = {
+                                lifecycleScope.launch {
+                                    // No novels.clear() here - see bugs.md Bug 4.
+                                    // startScan's onScanCompleted now reconciles
+                                    // stale novels against the DB once the scan
+                                    // actually finishes, instead of blanking the
+                                    // visible library up front and hoping the scan
+                                    // fully repopulates it.
+                                    val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
+                                    if (root != null) {
+                                        libraryViewModel.startScan(root)
+                                    } else {
+                                        // Custom folder is on but nothing's been picked
+                                        // yet - "Rescan" would otherwise silently do
+                                        // nothing here. Send the user to the picker.
+                                        pickFolder.launch(null)
+                                    }
+                                }
+                            },
+                            splashAnimationEnabled = splashAnimationEnabled.value,
+                            splashMusicEnabled = splashMusicEnabled.value,
+                            onSplashAnimationToggle = { enabled ->
+                                lifecycleScope.launch {
+                                    prefsManager.setSplashAnimationEnabled(enabled)
+                                }
+                            },
+                            onSplashMusicToggle = { enabled ->
+                                lifecycleScope.launch {
+                                    prefsManager.setSplashMusicEnabled(enabled)
+                                }
+                            },
+                            onPrivacyPolicy = { navController.navigate("privacy_policy") },
+                            onTermsAndConditions = { navController.navigate("terms") },
+                            onAboutMe = { navController.navigate("about_me") },
+                            onBack = {
+                                navController.popBackStack()
+                                currentScreen.value = Screen.Home
+                            }
+                        )
+                    }
+                }
+
+                composable("privacy_policy") {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        LegalDocumentScreen(
+                            title = "Privacy Policy",
+                            sections = LegalContent.privacyPolicy,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                }
+
+                composable("terms") {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        LegalDocumentScreen(
+                            title = "Terms & Conditions",
+                            sections = LegalContent.termsAndConditions,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                }
+
+                composable("about_me") {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        WebViewScreen(
+                            title = "About Me",
+                            url = "https://rae-ark.horizonarkstudio.workers.dev/",
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                }
+                } // closes NavHost
+                } // closes Surface
 
                 when (val state = metadataViewModel.metadataSearchState.value) {
                     is MetadataSearchState.Loading -> {
