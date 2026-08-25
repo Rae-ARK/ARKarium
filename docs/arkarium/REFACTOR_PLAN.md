@@ -373,6 +373,43 @@ phase (rule 1); `NavController` replaces exactly one thing, the hand-rolled
 its own concern, currently smeared across the Activity alongside three other layers -
 see this doc's opening paragraph).
 
+## Phase 4 - closing the ViewModel test gap (planned)
+
+Phase 2 shipped four ViewModels; only `SettingsViewModel` has a test file
+(`SettingsViewModelTest.kt`, Stage 2.2's counterpart). This phase adds the other three,
+in the order their dependencies actually allow rather than the order Phase 2 built
+them in - `SyncViewModel` last, because its own class doc comment already states why
+it's the hardest.
+
+- **Stage 4.1 - `MetadataViewModelTest`.** `fetchMetadataFor` takes
+  `NovelMetadataProvider`, an interface, specifically so a test can hand it a fake
+  backed by a plain suspend lambda instead of `GoogleBooksMetadataProvider` - this is
+  the one function in the three remaining ViewModels that's fully unit-testable today
+  with no new scaffolding. `applyMetadata` stays out of scope for this stage: it writes
+  through `db` (concrete `AppDatabase`, no interface split yet), same as
+  `LibraryViewModel.startScan` - exercised by hand/instrumented tests for now, per the
+  class doc comment's own note.
+- **Stage 4.2 - `LibraryViewModelTest`, narrow slice.** `startScan` and
+  `loadNovelDetails` both take `DocumentFile`/touch Room directly, so they're not
+  reachable from a plain JVM test without Robolectric - out of scope here, not silently
+  dropped. `reportScanSetupError` (a pure state write, no `DocumentFile`/`db` involved)
+  is in scope and gets its own test; `refreshRecentlyRead` gets one too if its Room read
+  can be exercised against an in-memory `AppDatabase` cheaply, otherwise it's deferred
+  alongside `startScan`.
+- **Stage 4.3 - `SyncViewModelTest`, deferred.** Every public function on this
+  ViewModel touches `db`, `scanner`, or `syncManager` directly - the class doc comment
+  already calls this out as "consequently untested at the ViewModel tier for the same
+  reason `MetadataViewModel.applyMetadata` is." Nothing here changes without either
+  introducing an interface seam over `SyncManager` (a bigger change than this phase's
+  scope: rule 1 says ViewModels don't change shape outside their own stage) or adopting
+  Robolectric, which the testing strategy below deliberately hasn't reached for yet.
+  This stage is a placeholder until one of those two things happens, not a task to
+  execute now.
+
+This phase doesn't touch `MainActivity`, `AppState.kt`, or any ViewModel's public
+surface - it only adds test files alongside code Phase 2 already wrote, matching
+Phase 3's own rule 1 (no unrelated changes riding along).
+
 ## Testing strategy going forward
 
 - Plain Kotlin logic (parsing, merging, resolving - like `resolveTheme` and
