@@ -294,7 +294,7 @@ still needs to travel through the destination itself.
   for `onBack`'s `currentScreen.value = Screen.Home`/`Screen.Settings` writes. Smallest
   possible slice to prove `NavHost` coexists with the still-manual remainder of the
   `when` block before anything with real navigation arguments is on the line.
-- **Stage 3.2 - `Screen.Home` and `Screen.FictionBrowse`.** `Home` becomes the
+- **Stage 3.2 - `Screen.Home` and `Screen.FictionBrowse`.Done** `Home` becomes the
   `NavHost`'s `startDestination` (replacing `currentScreen`'s
   `mutableStateOf<Screen>(Screen.Home)` default). `FictionBrowse(initialQuery: String
   = "")` is the first destination with a real argument, but a single optional `String`
@@ -304,7 +304,7 @@ still needs to travel through the destination itself.
   yet. Both screens' actual content (`novels`, `inProgressNovels`) already comes from
   `libraryViewModel`, not from the `Screen` payload, so this stage is still just
   routing, not data-fetching.
-- **Stage 3.3 - `Screen.NovelDetail` and `Screen.ChapterEditor`.** The first stage that
+- **Stage 3.3 - `Screen.NovelDetail` and `Screen.ChapterEditor`.Done** The first stage that
   changes a `Screen` case's shape: both currently carry a full `NovelEntity` as a data
   class field (`Screen.NovelDetail(val novel: NovelEntity)`), which is how every
   `onUpdated`/`onApplied` callback added in Stages 2.4/2.5
