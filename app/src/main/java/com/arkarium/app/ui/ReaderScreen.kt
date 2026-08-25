@@ -512,7 +512,8 @@ fun ReaderScreen(
                 // Font family toggle. Same segmented-Surface pattern as the Mode row
                 // below it, so it reads as "another control in this family" rather than
                 // a bolted-on addition. Each segment's label is rendered in the font it
-                // selects, so the choice previews itself instead of just naming itself.                Row(
+                // selects, so the choice previews itself instead of just naming itself.
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp),
