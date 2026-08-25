@@ -106,7 +106,7 @@ small - in general each stage below is its own shippable, revertable commit.
 `MainActivity.kt`: 1706 -> 1601 lines. Every call site (`resolveTheme(...)`,
 `colorSchemeFor(...)`, `Screen.Home`, etc.) is unchanged; only the imports moved.
 
-## Phase 2 - state/business logic into ViewModels (Stages 2.1-2.4 done, 2.5 not started)
+## Phase 2 - state/business logic into ViewModels (all five stages done)
 
 Split the Activity's `mutableStateOf` fields and their surrounding logic into a small
 number of feature-scoped ViewModels backed by `StateFlow`, rather than one
@@ -208,6 +208,34 @@ commit/PR, but the order below is deliberate:
   both because it's the largest remaining slice of Activity state/logic and because
   its `scanSingleSyncedNovel` path calls into the library-scan functions Stage 2.1
   extracted and reads/updates the novel list Stage 2.3 already moved.
+  `scanSingleSyncedNovel`, `syncAllRaeArkNovels`, `checkForUpdates`, and the three
+  `resolveXxx` actions offered from `SyncResolutionDialog`
+  (`resolveMissingFolderBySyncing`/`resolveByRemovingFromLibrary`/
+  `resolveSourceGoneByUnlinking`) all moved verbatim, matching the plan as written -
+  and `addFictionByName` moved too, even though it isn't named in this bullet: per
+  Stage 2.4's own note, it never touches `GoogleBooksMetadataProvider`, only
+  `SyncManager`/`FictionLut` and `libraryViewModel.startScan` - the exact
+  download-then-scan-then-persist shape `syncAllRaeArkNovels` already has - so leaving
+  it on `MainActivity` after this stage would mean the Activity was still doing Sync
+  business logic, just under a different function name. It keeps writing
+  `metadataViewModel.addFictionState.value` directly, the same "state lives on the
+  ViewModel, an external writer sets it via its public property" shape `MainActivity`
+  itself used for it before this stage.
+  `SyncViewModel` is an `AndroidViewModel`, not a plain `ViewModel` - the only one of
+  the four that needs to be, since `FictionLut.lookup`/`allEntries` both take a
+  `Context` to read a bundled asset. `db`/`scanner`/`syncManager` stay concrete types,
+  matching `LibraryViewModel`/`MetadataViewModel`'s own precedent of not abstracting
+  Room/SAF/network away; this class is consequently untested at the ViewModel tier for
+  the same reason `MetadataViewModel.applyMetadata` is. Every place the pre-stage code
+  patched `MainActivity`'s `currentScreen` directly inside one of these functions
+  (`checkForUpdates` on a successful resync, `resolveMissingFolderBySyncing` via
+  `checkForUpdates`, `resolveByRemovingFromLibrary` when the removed novel was open,
+  `resolveSourceGoneByUnlinking` on a successful unlink) now does it via an
+  `onUpdated`/`onRemoved` callback instead, the same `onApplied` shape
+  `MetadataViewModel.applyMetadata` already established in Stage 2.4 for the identical
+  reason - `currentScreen` is Activity navigation state (Phase 3 hasn't happened yet),
+  so none of these ViewModels have any business writing it directly.
+  `MainActivity.kt`: 1509 -> 1205 lines; `viewmodel/SyncViewModel.kt`: 483 lines (new).
 
 Constructor-injected dependencies (`AppDatabase`, `ScannerImpl`, `SyncManager`,
 `PreferencesManager`, `TextChapterContentRepository`) already exist as fields on
