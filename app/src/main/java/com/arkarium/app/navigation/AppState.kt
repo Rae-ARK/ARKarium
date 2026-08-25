@@ -10,48 +10,14 @@ package com.arkarium.app.navigation
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.NovelMetadataCandidate
 
-sealed class Screen {
-    object Home : Screen()
-    // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md): carries only novelId, not a full
-    // NovelEntity. NovelDetail and ChapterEditor are the first two Screen cases whose
-    // destination resolves its own data (via `libraryViewModel.novels.firstOrNull { it.id
-    // == novelId }`, same lookup Reader's composable already used for readerAuthor/chapter
-    // neighbors) instead of having it handed in as a payload - which is what let Stage
-    // 2.4/2.5's onApplied/onUpdated callbacks (MetadataViewModel.applyMetadata,
-    // SyncViewModel.checkForUpdates/resolveMissingFolderBySyncing/
-    // resolveSourceGoneByUnlinking) drop the currentScreen-patching they existed for: a
-    // ViewModel patching its own `novels` SnapshotStateList is now enough on its own for
-    // the destination to recompose with the new data. Still used as a plain data value by
-    // Screen.Author's `from` field (Author hasn't migrated off currentScreen-based
-    // routing yet - that's Stage 3.4), just no longer as a currentScreen case itself.
-    data class NovelDetail(val novelId: String) : Screen()
-    // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md): carries only novelId/chapterId,
-    // same "resolve it yourself from libraryViewModel" shape Stage 3.3 gave NovelDetail/
-    // ChapterEditor above - the reader/{novelId}/{chapterId} destination looks up the
-    // ChapterEntity and loads its body text itself instead of having either handed in
-    // as Screen payload. No longer constructed anywhere (the NavHost route below is
-    // reached via navController.navigate("reader/...") directly) - kept only so this
-    // sealed class' one remaining exhaustive `when` (MainActivity's now-fully-dead
-    // "legacy" branch) still compiles until Stage 3.5's cleanup removes Screen entirely.
-    data class Reader(val novelId: String, val chapterId: String) : Screen()
-    data class ChapterEditor(val novelId: String) : Screen()
-    // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md): `from` is dropped - it existed
-    // purely so onBack knew whether to return to the fiction page byline or the
-    // reader's "About the author" card, which NavController's own back stack now
-    // handles for free via a plain navController.popBackStack(). Same "no longer
-    // constructed anywhere, kept only for `when` exhaustiveness" status as Reader above.
-    data class Author(val authorId: String) : Screen()
-    object Settings : Screen()
-    // initialQuery seeds FictionBrowseScreen's own search field - see Home's onSearch
-    // below. Previously this was `object FictionBrowse`, so the text typed into Home's
-    // search bar had nowhere to go and was silently discarded on navigation; the browse
-    // screen always opened with an empty query even though its own title/author filter
-    // already worked fine once you retyped it there.
-    data class FictionBrowse(val initialQuery: String = "") : Screen()
-    object PrivacyPolicy : Screen()
-    object TermsAndConditions : Screen()
-    object AboutMe : Screen()
-}
+// The Screen sealed class (navigation destinations) that used to live here was removed
+// in Stage 3.5 (see docs/arkarium/REFACTOR_PLAN.md) - Stages 3.1-3.4 migrated every
+// destination onto NavController-based routes ("home", "novelDetail/{novelId}", etc.),
+// after which Screen, MainActivity's currentScreen field, and the "legacy" NavHost
+// destination that switched on it were only reachable via a dead `when` branch. Only the
+// dialog-driving sealed classes below (MetadataSearchState, AddFictionState, etc.) are
+// still in scope for this file - they drive dialogs layered over NavHost's content, not
+// Screen destinations, so Phase 3's migration never touched them.
 
 // Drives the "Fetch info" dialog from NovelDetailScreen. Idle = dialog hidden.
 sealed class MetadataSearchState {
