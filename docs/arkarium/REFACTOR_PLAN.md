@@ -27,6 +27,59 @@ This plan follows current Android/Compose architecture guidance:
   unrelated business logic once everything is *just* moved out of the Activity - the
   plan below splits by feature area rather than creating one giant `MainViewModel`.
 
+## Architecture philosophy
+
+Everything in this plan, and every future change to the codebase, is expected to
+follow one governing philosophy: **service-oriented, separated by concern, minimal
+boilerplate, functional by default, with classes/objects reserved for where they
+actually earn their keep.** Concretely, that means four rules:
+
+1. **Service-oriented architecture.** Anything that owns an external resource or a
+   unit of business capability - the DocumentFile tree (`ScannerImpl`), the network +
+   manifest diff (`SyncManager`), remote lookups (`GoogleBooksMetadataProvider`), local
+   file content (`TextChapterContentRepository`), persisted settings
+   (`PreferencesManager`), notifications (`NewChapterNotifier`) - is a small service
+   with an explicit boundary: a narrow public API, its own file, and (where more than
+   one implementation is plausible, as with metadata lookup) an interface the rest of
+   the app depends on instead of the concrete type. `ScannerImpl`, `SyncManager`, and
+   `TextChapterContentRepository` already follow this well - each does exactly one job,
+   takes its dependencies through its constructor, and never reaches into a sibling
+   service's internals. That's the shape every future service, and every service pulled
+   out of `MainActivity` in Phase 2 below, should match.
+2. **Separation of concerns over convenience.** The Activity/Composable layer renders
+   state and forwards user intent; ViewModels (Phase 2) hold and update UI state;
+   services hold business logic and I/O; Room DAOs hold persistence. A layer should
+   depend only on the layer(s) below it, never sideways into another feature's state or
+   upward into UI types (`ScannerImpl` and `SyncManager` already take an `AppDatabase`
+   but no Compose/Activity type, which is why they're straightforward to unit test).
+   `MainActivity.kt`'s core problem (see above) is exactly that all four layers -
+   navigation, UI state, business logic, and orchestration - currently collapse into
+   one file; Phase 2 is this rule applied to the biggest offender.
+3. **Functional by default.** Business logic that transforms data - merging,
+   resolving, parsing, deciding - should default to a plain function (ideally a pure
+   one: same inputs, same output, no hidden state or I/O), not a method on a stateful
+   class invented to hold it. `resolveTheme()`/`colorSchemeFor()` (Phase 1, already
+   pulled out) and `mergeNovelForRescan()` (candidate for Phase 2) are the template:
+   free functions taking plain values in and returning plain values out, which is what
+   makes them unit-testable with zero setup. Reach for a class only when there's
+   actual state or a resource to own across calls (an open connection, a cache, a
+   `Context`, something with a lifecycle) - not as a default container for logic that
+   has neither.
+4. **Minimal boilerplate.** Prefer the smallest construct that expresses the intent:
+   a top-level `fun` over a class with one method, a `data class`/`sealed class` over a
+   hand-rolled equivalent, extension functions over wrapper types, and no interface
+   until a second implementation (real or concretely planned) actually needs one.
+   `NewChapterNotifier` (a plain `object`, since there's only ever one notifier and no
+   per-instance state) and the sealed `*State` classes in `navigation/AppState.kt`
+   (Phase 1) are existing examples worth extending, not replacing, in later phases.
+
+Phase 2's ViewModel split and Phase 3's `NavHost` migration below are both direct
+applications of rule 2; the "pull business logic into small functions like
+`resolveTheme`" note in Phase 1 is rule 3; and the guidance not to reach for one giant
+`MainViewModel` is rule 4 (a single god ViewModel is boilerplate-minimal in the wrong
+direction - it "saves" a few files at the cost of recreating the separation-of-concerns
+problem this plan exists to fix).
+
 ## Phase 1 - done in this patch (no behavior change)
 
 Pure, mechanical extraction. Nothing here changes what the app does; it only moves
@@ -68,6 +121,26 @@ Constructor-injected dependencies (`AppDatabase`, `ScannerImpl`, `SyncManager`,
 `MainActivity` and mostly just need to move down into these ViewModels, using
 `AndroidViewModel`/`viewModelFactory` for the pieces that still need `Context` (e.g.
 `getExternalFilesDir`, `contentResolver`).
+
+Applying the architecture philosophy above to this specific move:
+
+- **Stays a free function (rule 3), just relocated:** `mergeNovelForRescan` and
+  `resolveLibraryRoot` are pure data-in/data-out logic today (the latter only touches
+  `Context` to build a `DocumentFile`, which can be passed in rather than making the
+  function a method). Both move to a small `LibraryScanCoordinator`-adjacent file as
+  top-level functions, not as private methods buried inside `LibraryViewModel` - so
+  they can keep being unit-tested exactly like `resolveTheme` today, independent of
+  any ViewModel/Android test harness.
+- **Becomes ViewModel state (rule 2):** the `mutableStateOf`/`mutableStateListOf`
+  fields themselves (`novels`, `syncAllState`, `metadataSearchState`, etc.) and the
+  suspend functions that only exist to update them in response to a user action -
+  these are UI state and belong on the ViewModel, not on a service.
+- **Stays a service, unchanged (rule 1):** `ScannerImpl`, `SyncManager`,
+  `PreferencesManager`, `TextChapterContentRepository`, and
+  `GoogleBooksMetadataProvider` don't move or change shape - the ViewModels above just
+  become their new callers instead of `MainActivity`. If a future feature needs new
+  business logic that isn't UI state (e.g. a new sync strategy), it becomes a new
+  service or a new function on an existing one, never a growth spurt on a ViewModel.
 
 ## Phase 3 - Navigation Compose (not yet started)
 
