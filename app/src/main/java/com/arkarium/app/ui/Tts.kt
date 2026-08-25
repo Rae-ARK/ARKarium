@@ -65,42 +65,70 @@ class ChapterTtsState internal constructor() {
         internal set
 
     internal var engine: TextToSpeech? = null
-    private var lastUtteranceId: String? = null
+    private var pendingChunks: List<String> = emptyList()
+    private var pendingIndex: Int = 0
+    private var lastQueuedUtteranceId: String? = null
 
+    // Only sets the rate on the engine; does NOT touch anything already queued. Android's
+    // TextToSpeech.setSpeechRate() only affects speak() calls made *after* it returns - it
+    // has no effect on utterances that were already submitted to the engine's synthesis
+    // queue, even if they haven't started playing yet. Chunks are queued one at a time (see
+    // speakNextChunk() below) precisely so that a rate change here reaches the *next* chunk
+    // rather than being silently dropped because every chunk for the chapter was already
+    // queued up front.
     fun setRate(rate: Float) {
         speechRate = rate
         engine?.setSpeechRate(rate)
     }
 
-    // Stops whatever's currently queued and starts reading `text` from the top. Each
-    // chunk from splitForTts() gets its own utteranceId; the first is queued with
-    // QUEUE_FLUSH (clears anything mid-utterance from a previous speak() call) and the
-    // rest with QUEUE_ADD so they play back-to-back as one continuous read.
+    // Stops whatever's currently queued and starts reading `text` from the top.
     fun speak(text: String) {
         val tts = engine ?: return
         val chunks = splitForTts(text)
         if (chunks.isEmpty()) return
+        pendingChunks = chunks
+        pendingIndex = 0
         isSpeaking = true
-        chunks.forEachIndexed { index, chunk ->
-            val utteranceId = "arkarium_chunk_${index}_${chunk.hashCode()}"
-            if (index == chunks.lastIndex) lastUtteranceId = utteranceId
-            val queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-            tts.speak(chunk, queueMode, null, utteranceId)
-        }
+        speakNextChunk(TextToSpeech.QUEUE_FLUSH)
+    }
+
+    // Queues exactly one chunk - the one at pendingIndex - rather than the whole chapter at
+    // once. The engine's current speechRate is applied immediately beforehand so that a
+    // setRate() call made while a previous chunk is still playing takes effect on this
+    // chunk, instead of this chunk having already been queued (and its rate locked in)
+    // before the user touched the slider. The next chunk is only queued once this one
+    // finishes, from onUtteranceFinished() below, keeping the same "one queued rate change
+    // ahead" behavior for every chunk boundary in a long chapter.
+    private fun speakNextChunk(queueMode: Int) {
+        val tts = engine ?: return
+        if (pendingIndex !in pendingChunks.indices) return
+        val chunk = pendingChunks[pendingIndex]
+        val utteranceId = "arkarium_chunk_${pendingIndex}_${chunk.hashCode()}"
+        lastQueuedUtteranceId = utteranceId
+        tts.setSpeechRate(speechRate)
+        tts.speak(chunk, queueMode, null, utteranceId)
     }
 
     fun stop() {
         engine?.stop()
         isSpeaking = false
+        pendingChunks = emptyList()
+        pendingIndex = 0
+        lastQueuedUtteranceId = null
     }
 
     // Called from the engine's UtteranceProgressListener (see rememberChapterTts) on
-    // both successful completion and error, for any queued chunk. isSpeaking should
-    // only drop back to false once the *last* queued chunk finishes - clearing it on an
-    // earlier chunk would flip the button back to "play" while the engine is still
-    // reading later chunks in the queue.
+    // both successful completion and error, for any queued chunk. Ignores callbacks that
+    // don't match the chunk we most recently queued - a late onDone/onError arriving after
+    // stop() (or after a fresh speak() call replaced the queue) would otherwise advance a
+    // read that's no longer current. Otherwise, advances to the next chunk if there is one,
+    // or drops isSpeaking back to false once the last chunk in the chapter finishes.
     internal fun onUtteranceFinished(utteranceId: String?) {
-        if (utteranceId == null || utteranceId == lastUtteranceId) {
+        if (utteranceId != null && utteranceId != lastQueuedUtteranceId) return
+        pendingIndex++
+        if (pendingIndex in pendingChunks.indices) {
+            speakNextChunk(TextToSpeech.QUEUE_ADD)
+        } else {
             isSpeaking = false
         }
     }
