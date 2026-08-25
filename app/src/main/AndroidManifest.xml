@@ -5,14 +5,27 @@
          remote cover thumbnails via Coil. The app is otherwise fully offline. -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Runtime-requested (see MainActivity's notificationPermission launcher) rather
+         than implied by targeting API 33+ - required to actually show the "new chapter"
+         notifications NewChapterCheckWorker posts (see
+         docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md). Declaring it here is still required even
+         though it's requested at runtime; without it the runtime request itself is a
+         no-op on API 33+. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:label="ARKarium"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        <!-- launchMode="singleTop" so tapping a "new chapter" notification (see
+             NewChapterNotifier's PendingIntent) delivers straight into onNewIntent()
+             on an already-running instance instead of spawning a second MainActivity
+             on top of it - see MainActivity.onNewIntent. -->
         <activity android:name="com.arkarium.app.MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

@@ -18,7 +18,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ReadingProgressEntity::class,
         SyncedFileEntity::class
     ],
-    version = 11
+    version = 12
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun novelDao(): NovelDao
@@ -227,11 +227,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v11 to v12: adds notify_new_chapters to novels (see
+        // Entities.kt's doc comment on the column and docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md).
+        // Backfills to 0 (off) for every existing row, synced or not - nobody is
+        // opted into background notifications by a version bump they didn't ask for.
+        val MIGRATION_11_12 = object : Migration(11, 12) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE novels ADD COLUMN notify_new_chapters INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun create(context: Context): AppDatabase = Room.databaseBuilder(
             context.applicationContext,
             AppDatabase::class.java,
             "arkarium.db"
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
             .fallbackToDestructiveMigration()
             .build()
     }

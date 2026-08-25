@@ -101,6 +101,26 @@ interface NovelDao {
         WHERE id = :novelId
     """)
     suspend fun unlinkSyncSource(novelId: String)
+
+    // Backs NovelDetailScreen's "Notify me when new chapters are available" toggle
+    // (see docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md). A plain UPDATE, same rationale as
+    // updatePageSize/updateReadingStatus above.
+    @Query("UPDATE novels SET notify_new_chapters = :enabled WHERE id = :novelId")
+    suspend fun updateNotifyNewChapters(novelId: String, enabled: Boolean)
+
+    // Every novel NewChapterCheckWorker's periodic background pass needs to check:
+    // opted into notifications, actually synced from somewhere, and not already known
+    // to be missing/gone (MISSING_LOCALLY and SOURCE_GONE both need a user decision
+    // via SyncResolutionDialog first - a background worker never resolves either one
+    // on its own, same as checkForUpdates's allowRecreateMissingFolder always being
+    // false for an automatic call).
+    @Query("""
+        SELECT * FROM novels
+        WHERE notify_new_chapters = 1
+          AND sync_source_url IS NOT NULL
+          AND sync_status = 'ACTIVE'
+    """)
+    suspend fun notifyEnabledSynced(): List<NovelEntity>
 }
 
 @Dao

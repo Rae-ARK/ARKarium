@@ -127,6 +127,12 @@ dependencies {
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
 
+    // WorkManager - backs the periodic background "new chapter" check (see
+    // docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md and data/NewChapterCheckWorker.kt). ktx artifact
+    // for the CoroutineWorker base class and suspend-friendly WorkManager APIs, rather
+    // than plain work-runtime + a manual ListenableFuture bridge.
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
+
     // Coil for images. coil-compose (not the bare coil artifact) is needed for
     // AsyncImage, used to render remote cover thumbnails in the metadata match picker.
     implementation("io.coil-kt:coil-compose:2.4.0")
