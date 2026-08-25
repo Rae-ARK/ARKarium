@@ -62,6 +62,39 @@ enum class ReadingMode {
     LIGHT, SEPIA, DARK
 }
 
+// Font family choice for the chapter body, alongside the existing size/spacing
+// controls in the Reader Preferences pill. DYSLEXIC doesn't bundle a dedicated
+// dyslexia-friendly typeface (e.g. OpenDyslexic) - that would mean shipping and
+// licensing a font file for a comparatively small typography change. Instead it
+// uses the system sans-serif family with wider letter/word spacing, which is
+// itself a recognized readability aid for dyslexic readers independent of glyph
+// shapes (see resolveFontFamily/extraLetterSpacing below). SERIF matches the
+// reader's previous hardcoded default so existing users see no change unless
+// they opt into something else.
+enum class ReaderFontFamily {
+    SERIF, SANS, DYSLEXIC
+}
+
+// Maps a ReaderFontFamily choice to the actual Compose FontFamily to render with.
+// DYSLEXIC intentionally reuses SansSerif rather than a bundled custom font - see
+// the ReaderFontFamily doc comment above.
+private fun resolveFontFamily(choice: ReaderFontFamily): FontFamily = when (choice) {
+    ReaderFontFamily.SERIF -> FontFamily.Serif
+    ReaderFontFamily.SANS -> FontFamily.SansSerif
+    ReaderFontFamily.DYSLEXIC -> FontFamily.SansSerif
+}
+
+// Extra tracking applied on top of the font choice. Only DYSLEXIC gets any: wider
+// spacing between letters (and, via word spacing below, between words) reduces
+// crowding effects that make adjacent letters harder to tell apart - one of the
+// few typography changes with reasonably consistent evidence behind it, unlike
+// glyph-shape claims made by some "dyslexia fonts". 0.5.sp is a light touch, tuned
+// to stay comfortable at the reader's default 18sp body size.
+private fun extraLetterSpacing(choice: ReaderFontFamily) = when (choice) {
+    ReaderFontFamily.DYSLEXIC -> 0.5.sp
+    else -> 0.sp
+}
+
 // Reader's own LIGHT/SEPIA/DARK palette is intentionally separate from the app-wide
 // Theme (it needs a sepia option Theme doesn't have, and users may want a different
 // reading background than their nav-screen background) - but it should still *start*
@@ -118,6 +151,12 @@ fun ReaderScreen(
 ) {
     val fontSize = remember { mutableFloatStateOf(18f) }
     val lineHeight = remember { mutableFloatStateOf(1.8f) }
+    // Defaults to SERIF, matching what the chapter body always rendered with before
+    // this control existed - same "no behavior change until the user opts in"
+    // rationale as fontSize/lineHeight's own defaults. Lives alongside them as
+    // in-session `remember` state rather than a persisted PreferencesManager entry,
+    // since neither of those two are persisted across chapters/sessions either.
+    val fontFamilyChoice = remember { mutableStateOf(ReaderFontFamily.SERIF) }
     val readingMode = remember { mutableStateOf(readingModeFor(appTheme)) }
     val showControls = remember { mutableStateOf(true) }
     // Separate from showControls: showControls is the tap-anywhere immersive toggle
@@ -289,7 +328,8 @@ fun ReaderScreen(
                         fontSize = fontSize.value.sp,
                         lineHeight = (fontSize.value * lineHeight.value).sp,
                         color = textColor,
-                        fontFamily = FontFamily.Serif,
+                        fontFamily = resolveFontFamily(fontFamilyChoice.value),
+                        letterSpacing = extraLetterSpacing(fontFamilyChoice.value),
                         textAlign = TextAlign.Justify
                     ),
                     modifier = Modifier.padding(20.dp)
@@ -407,6 +447,51 @@ fun ReaderScreen(
                         color = textColor,
                         modifier = Modifier.padding(start = 8.dp)
                     )
+                }
+
+                // Font family toggle. Same segmented-Surface pattern as the Mode row
+                // below it, so it reads as "another control in this family" rather than
+                // a bolted-on addition. Each segment's label is rendered in the font it
+                // selects, so the choice previews itself instead of just naming itself.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text("Font:", style = MaterialTheme.typography.labelSmall, color = textColor)
+                    ReaderFontFamily.values().forEach { choice ->
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(2.dp)
+                                .clickable { fontFamilyChoice.value = choice },
+                            color = if (fontFamilyChoice.value == choice)
+                                MaterialTheme.colorScheme.primary
+                            else
+                                MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                when (choice) {
+                                    ReaderFontFamily.SERIF -> "Serif"
+                                    ReaderFontFamily.SANS -> "Sans"
+                                    ReaderFontFamily.DYSLEXIC -> "Dyslexia-friendly"
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp, horizontal = 4.dp),
+                                textAlign = TextAlign.Center,
+                                fontFamily = resolveFontFamily(choice),
+                                letterSpacing = extraLetterSpacing(choice),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (fontFamilyChoice.value == choice)
+                                    MaterialTheme.colorScheme.onPrimary
+                                else
+                                    Color.Black
+                            )
+                        }
+                    }
                 }
 
                 // Reading mode toggle
