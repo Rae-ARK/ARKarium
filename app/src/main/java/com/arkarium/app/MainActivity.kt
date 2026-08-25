@@ -24,6 +24,7 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -128,11 +129,15 @@ class MainActivity : ComponentActivity() {
     // (Stage 2.3 of Phase 2, see docs/arkarium/REFACTOR_PLAN.md). Every read site
     // below is unchanged except for the `libraryViewModel.` prefix, since the fields
     // kept their names.
-    // Author of the fiction currently open in the reader, resolved once when entering
-    // Screen.Reader (see the two entry points below) rather than looked up reactively
-    // per-recomposition - it doesn't change across a Previous/Next hop within the same
-    // fiction, only when a *different* fiction's reader is opened. Null covers both
-    // "not resolved yet" and "this fiction has no linked author" (see NovelEntity.authorId).
+    // Author of the fiction currently open in the reader. Stage 3.4 (see
+    // docs/arkarium/REFACTOR_PLAN.md) moved resolution from each entry point setting
+    // this manually into a LaunchedEffect(novelId) inside the "reader/{novelId}/
+    // {chapterId}" composable itself, keyed off the route argument - same pattern
+    // Screen.Author's own LaunchedEffect(authorId) already used. Still looked up once
+    // per novel rather than reactively per-recomposition - it doesn't change across a
+    // Previous/Next hop within the same fiction, only when a *different* fiction's
+    // reader is opened. Null covers both "not resolved yet" and "this fiction has no
+    // linked author" (see NovelEntity.authorId).
     private val readerAuthor = mutableStateOf<AuthorEntity?>(null)
     // Backs Screen.Author - reloaded via LaunchedEffect whenever the authorId changes,
     // same "state lives in the Activity, screen just renders it" pattern as chapters/arcs.
@@ -709,10 +714,16 @@ class MainActivity : ComponentActivity() {
                                             // didn't read them; now Previous/Next need the
                                             // correctly-scoped chapter list to compute neighbors.
                                             libraryViewModel.loadNovelDetails(novel)
-                                            readerAuthor.value = novel.authorId?.let { db.authorDao().findById(it) }
-                                            val chapterContent = contentRepo.getTextContent(chapter.sourcePath)
-                                            currentScreen.value = Screen.Reader(novel.id, chapter, chapterContent.body)
-                                            navController.navigate("legacy") { launchSingleTop = true }
+                                            // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md):
+                                            // Reader is now its own "reader/{novelId}/
+                                            // {chapterId}" route - readerAuthor resolution and
+                                            // the chapter body fetch both move into that
+                                            // composable's own LaunchedEffects, keyed off the
+                                            // route arguments, instead of happening here at
+                                            // every entry point.
+                                            navController.navigate("reader/${novel.id}/${chapter.id}") {
+                                                launchSingleTop = true
+                                            }
                                         }
                                     } else {
                                         libraryViewModel.loadNovelDetails(novel)
@@ -786,162 +797,19 @@ class MainActivity : ComponentActivity() {
                 Column(
                     modifier = Modifier.fillMaxSize()
                 ) {
+                    // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md) migrated the last two
+                    // real cases this `when` still handled - Reader and Author - to their
+                    // own "reader/{novelId}/{chapterId}"/"author/{authorId}" NavHost routes
+                    // below, the same way Stage 3.1-3.3 migrated every other Screen case
+                    // before them. Every entry point into what used to be "legacy" now
+                    // navigates the NavController directly instead of writing
+                    // currentScreen.value, so this branch should never actually compose for
+                    // any case anymore - "legacy" itself, and this now-fully-dead `when`,
+                    // are left in place only because removing them is Stage 3.5's job
+                    // (deleting Screen entirely, currentScreen, and every branch that only
+                    // existed to route through it), not this stage's.
                     when (currentScreen.value) {
-                        // Home and FictionBrowse used to be cases here too - Stage 3.2
-                        // (see docs/arkarium/REFACTOR_PLAN.md) moved them out to their own
-                        // "home"/"fictionBrowse" NavHost routes, since both screens'
-                        // content already comes entirely from libraryViewModel, not from
-                        // the Screen payload. NovelDetail and ChapterEditor moved out the
-                        // same way in Stage 3.3, to "novelDetail/{novelId}"/
-                        // "chapterEditor/{novelId}" below. Every entry point into "legacy"
-                        // from any of those four routes now navigates the NavController
-                        // explicitly instead of just writing currentScreen.value, so none
-                        // of these branches should ever actually compose while
-                        // currentScreen holds one - kept only so the `when` stays
-                        // exhaustive over all of `Screen`.
-                        is Screen.Home, is Screen.FictionBrowse,
-                        is Screen.NovelDetail, is Screen.ChapterEditor -> {}
-
-                        is Screen.Reader -> {
-                            val reader = currentScreen.value as Screen.Reader
-                            // `chapters`/`arcs` are scoped to whichever novel was last loaded via
-                            // loadNovelDetails() - both paths that create Screen.Reader now call
-                            // it first (see onContinueReading/onChapterSelected above), so this is
-                            // safe to read directly rather than re-querying the DB here.
-                            val novel = libraryViewModel.novels.firstOrNull { it.id == reader.novelId }
-                            val currentIndex = libraryViewModel.chapters.indexOfFirst { it.id == reader.chapter.id }
-                            val previousChapter = libraryViewModel.chapters.getOrNull(currentIndex - 1).takeIf { currentIndex > 0 }
-                            val nextChapter = libraryViewModel.chapters.getOrNull(currentIndex + 1).takeIf { currentIndex >= 0 }
-                            val arcTitle = reader.chapter.arcId?.let { arcId -> libraryViewModel.arcs.firstOrNull { it.id == arcId }?.name }
-                            // Arc cover -> fiction cover -> null (renders the placeholder) - see
-                            // bugs.md Bug 3b. Resolved here rather than in ReaderScreen so it stays
-                            // decoupled from ArcEntity/NovelEntity, same rationale as novelTitle/arcTitle.
-                            val readerCoverUri = reader.chapter.arcId
-                                ?.let { arcId -> libraryViewModel.arcs.firstOrNull { it.id == arcId }?.coverUri }
-                                ?: novel?.coverUri
-                            ReaderScreen(
-                                chapter = reader.chapter,
-                                content = reader.content,
-                                // resolvedTheme, not currentTheme.value directly -
-                                // ReaderScreen's readingModeFor only maps the three
-                                // concrete themes (see its own `when`), and SYSTEM_DEFAULT
-                                // isn't one of them.
-                                appTheme = resolvedTheme,
-                                novelTitle = novel?.title,
-                                arcTitle = arcTitle,
-                                coverUri = readerCoverUri,
-                                author = readerAuthor.value,
-                                onBack = { progress ->
-                                    lifecycleScope.launch {
-                                        saveReadingProgress(reader.novelId, reader.chapter.id, progress)
-                                        currentScreen.value = Screen.Home
-                                        // Same popUpTo("home") reasoning as NovelDetail's
-                                        // onBack above - Reader's Back always went straight
-                                        // to Home regardless of entry path.
-                                        navController.navigate("home") {
-                                            popUpTo("home") { inclusive = false }
-                                            launchSingleTop = true
-                                        }
-                                    }
-                                },
-                                onBackToFiction = { progress ->
-                                    if (novel != null) {
-                                        lifecycleScope.launch {
-                                            saveReadingProgress(reader.novelId, reader.chapter.id, progress)
-                                            // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md):
-                                            // NovelDetail is now its own route, keyed by
-                                            // novelId, rather than a "legacy" case switched
-                                            // to via currentScreen - reaching it from here
-                                            // (still "legacy", Reader hasn't migrated yet -
-                                            // that's Stage 3.4) needs an explicit push, same
-                                            // as every other entry point into it.
-                                            navController.navigate("novelDetail/${novel.id}") {
-                                                launchSingleTop = true
-                                            }
-                                        }
-                                    }
-                                },
-                                onPrevious = previousChapter?.let { prev ->
-                                    { progress: Float ->
-                                        lifecycleScope.launch {
-                                            saveReadingProgress(reader.novelId, reader.chapter.id, progress)
-                                            val chapterContent = contentRepo.getTextContent(prev.sourcePath)
-                                            currentScreen.value = Screen.Reader(reader.novelId, prev, chapterContent.body)
-                                        }
-                                    }
-                                },
-                                onNext = nextChapter?.let { next ->
-                                    { progress: Float ->
-                                        lifecycleScope.launch {
-                                            saveReadingProgress(reader.novelId, reader.chapter.id, progress)
-                                            val chapterContent = contentRepo.getTextContent(next.sourcePath)
-                                            currentScreen.value = Screen.Reader(reader.novelId, next, chapterContent.body)
-                                        }
-                                    }
-                                },
-                                onAuthorClick = {
-                                    val authorId = readerAuthor.value?.id
-                                    if (authorId != null) {
-                                        currentScreen.value = Screen.Author(authorId, from = currentScreen.value)
-                                    }
-                                }
-                            )
-                        }
-
-                        is Screen.Author -> {
-                            val screen = currentScreen.value as Screen.Author
-                            // Reload whenever the authorId changes (tapping into a
-                            // different author's page while one is already showing isn't
-                            // a real path today, but this keeps the screen correct if it
-                            // ever is) - not on every recomposition.
-                            LaunchedEffect(screen.authorId) {
-                                loadAuthorPage(screen.authorId)
-                            }
-                            val author = authorPageAuthor.value
-                            if (author != null) {
-                                AuthorPageScreen(
-                                    author = author,
-                                    novels = authorPageNovels,
-                                    onBack = {
-                                        val from = screen.from
-                                        if (from is Screen.NovelDetail) {
-                                            // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md):
-                                            // NovelDetail no longer has a "legacy" case to
-                                            // switch currentScreen back to - entering Author
-                                            // from it (below, and in NovelDetailScreen's own
-                                            // onAuthorClick) pushes a real "legacy" back-stack
-                                            // entry on top of "novelDetail/{novelId}" instead
-                                            // of reusing the current one (unlike entering
-                                            // Author from Reader, which stays on the same
-                                            // "legacy" entry - see the `else` branch), so
-                                            // popping back here returns to it correctly.
-                                            navController.popBackStack()
-                                        } else {
-                                            currentScreen.value = from
-                                        }
-                                    },
-                                    onNovelClick = { novel ->
-                                        lifecycleScope.launch {
-                                            libraryViewModel.loadNovelDetails(novel)
-                                            navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
-                                        }
-                                    }
-                                )
-                            }
-                        }
-
-                        // Settings/PrivacyPolicy/TermsAndConditions/AboutMe used to be
-                        // cases here too - Stage 3.1 (see docs/arkarium/REFACTOR_PLAN.md)
-                        // moved them out to their own fixed NavHost routes below, since
-                        // they're the only four destinations that carry zero payload of
-                        // their own. This branch should never actually compose while
-                        // currentScreen is one of those four - the entry points above
-                        // (Home's onSettingsClick/onSelectFolderClick) navigate the
-                        // NavController directly instead of just writing
-                        // currentScreen.value - but the `when` still needs to stay
-                        // exhaustive over all of `Screen`.
-                        is Screen.Settings, is Screen.PrivacyPolicy,
-                        is Screen.TermsAndConditions, is Screen.AboutMe -> {}
+                        else -> {}
                     }
                 }
                 }
@@ -1010,14 +878,15 @@ class MainActivity : ComponentActivity() {
                                         // Mark novel as IN_PROGRESS when starting to read
                                         db.novelDao().updateReadingStatus(novel.id, NovelStatus.IN_PROGRESS.name)
                                         libraryViewModel.refreshRecentlyRead()
-                                        readerAuthor.value = novel.authorId?.let { db.authorDao().findById(it) }
-                                        val chapterContent = contentRepo.getTextContent(chapter.sourcePath)
-                                        currentScreen.value = Screen.Reader(novel.id, chapter, chapterContent.body)
-                                        // Reader hasn't migrated off "legacy" yet (Stage
-                                        // 3.4) - reaching it from here needs an explicit
-                                        // push, same as Home/FictionBrowse's own entry
-                                        // points into Reader.
-                                        navController.navigate("legacy") { launchSingleTop = true }
+                                        // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md):
+                                        // Reader is now its own "reader/{novelId}/
+                                        // {chapterId}" route - readerAuthor resolution and
+                                        // the chapter body fetch both move into that
+                                        // composable's own LaunchedEffects, keyed off the
+                                        // route arguments, instead of happening here.
+                                        navController.navigate("reader/${novel.id}/${chapter.id}") {
+                                            launchSingleTop = true
+                                        }
                                     }
                                 },
                                 onResizePages = { pageSize ->
@@ -1030,12 +899,12 @@ class MainActivity : ComponentActivity() {
                                 onAuthorClick = {
                                     val authorId = novel.authorId
                                     if (authorId != null) {
-                                        currentScreen.value = Screen.Author(authorId, from = Screen.NovelDetail(novel.id))
-                                        // Author hasn't migrated off "legacy" yet (Stage
-                                        // 3.4) - reaching it from here needs an explicit
-                                        // push (unlike Reader's own onAuthorClick, which
-                                        // stays on the same "legacy" entry it's already on).
-                                        navController.navigate("legacy") { launchSingleTop = true }
+                                        // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md):
+                                        // Author is now its own "author/{authorId}" route -
+                                        // no more `from` payload to carry, since
+                                        // NavController's own back stack already knows to
+                                        // pop back to "novelDetail/${novel.id}" from here.
+                                        navController.navigate("author/$authorId")
                                     }
                                 },
                                 onSyncClick = if (novel.syncSourceUrl != null) {
@@ -1086,6 +955,186 @@ class MainActivity : ComponentActivity() {
                                     saveChapterEdits(novel, updatedChapters, arcStartIds)
                                 },
                                 onBack = { navController.popBackStack() }
+                            )
+                        }
+                    }
+                }
+
+                // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md): the last stage of the
+                // Screen-case migration, and the only one that actually needs
+                // NavController's own back-stack handling rather than just its routing -
+                // see this route's onPrevious/onNext (replace, not push) and the
+                // "author/{authorId}" route below (onBack is now a plain popBackStack()).
+                // Like NovelDetail/ChapterEditor (Stage 3.3), this destination resolves
+                // its own ChapterEntity from libraryViewModel.chapters via the chapterId
+                // route argument rather than having one handed in as Screen payload; the
+                // chapter's body text - never part of Screen even before this stage, since
+                // it's loaded async from contentRepo - now loads via a LaunchedEffect keyed
+                // on chapterId instead of being fetched once at each entry point above.
+                composable(
+                    "reader/{novelId}/{chapterId}",
+                    arguments = listOf(
+                        navArgument("novelId") { type = NavType.StringType },
+                        navArgument("chapterId") { type = NavType.StringType }
+                    )
+                ) { backStackEntry ->
+                    val novelId = backStackEntry.arguments?.getString("novelId") ?: ""
+                    val chapterId = backStackEntry.arguments?.getString("chapterId") ?: ""
+                    val novel = libraryViewModel.novels.firstOrNull { it.id == novelId }
+                    val chapter = libraryViewModel.chapters.firstOrNull { it.id == chapterId }
+                    if (chapter == null) {
+                        // Mirrors novelDetail/{novelId}'s own null-novel handling above -
+                        // the chapter this route pointed to is no longer in
+                        // libraryViewModel.chapters (e.g. a rescan dropped it), so there's
+                        // nothing left to render. Leave for the novel's detail page if we
+                        // at least still know the novel, otherwise Home.
+                        LaunchedEffect(novelId, chapterId) {
+                            if (novel != null) {
+                                navController.navigate("novelDetail/${novel.id}") {
+                                    popUpTo("home") { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            } else {
+                                navController.navigate("home") {
+                                    popUpTo("home") { inclusive = false }
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                    } else {
+                        // Resolved once per novel, not per chapter - a Previous/Next hop
+                        // (same novelId, different chapterId) shouldn't re-fetch it. Same
+                        // "Activity mutableStateOf set via LaunchedEffect" pattern
+                        // Screen.Author's own author lookup below already used.
+                        LaunchedEffect(novelId) {
+                            readerAuthor.value = novel?.authorId?.let { db.authorDao().findById(it) }
+                        }
+                        // Keyed on chapterId (via `remember(chapterId)`) so a Previous/Next
+                        // hop's `navigate(...) { popUpTo(...) { inclusive = true } }` below -
+                        // which replaces this backStackEntry with a fresh one rather than
+                        // recomposing the existing one in place - starts each new chapter's
+                        // content back at "not loaded yet" instead of briefly showing the
+                        // previous chapter's text.
+                        val chapterContentState = remember(chapterId) { mutableStateOf<String?>(null) }
+                        LaunchedEffect(chapterId) {
+                            chapterContentState.value = contentRepo.getTextContent(chapter.sourcePath).body
+                        }
+                        val content = chapterContentState.value
+                        if (content != null) {
+                            Column(modifier = Modifier.fillMaxSize()) {
+                                val currentIndex = libraryViewModel.chapters.indexOfFirst { it.id == chapterId }
+                                val previousChapter = libraryViewModel.chapters.getOrNull(currentIndex - 1).takeIf { currentIndex > 0 }
+                                val nextChapter = libraryViewModel.chapters.getOrNull(currentIndex + 1).takeIf { currentIndex >= 0 }
+                                val arcTitle = chapter.arcId?.let { arcId -> libraryViewModel.arcs.firstOrNull { it.id == arcId }?.name }
+                                // Arc cover -> fiction cover -> null (renders the placeholder) - see
+                                // bugs.md Bug 3b. Resolved here rather than in ReaderScreen so it stays
+                                // decoupled from ArcEntity/NovelEntity, same rationale as novelTitle/arcTitle.
+                                val readerCoverUri = chapter.arcId
+                                    ?.let { arcId -> libraryViewModel.arcs.firstOrNull { it.id == arcId }?.coverUri }
+                                    ?: novel?.coverUri
+                                ReaderScreen(
+                                    chapter = chapter,
+                                    content = content,
+                                    // resolvedTheme, not currentTheme.value directly -
+                                    // ReaderScreen's readingModeFor only maps the three
+                                    // concrete themes (see its own `when`), and SYSTEM_DEFAULT
+                                    // isn't one of them.
+                                    appTheme = resolvedTheme,
+                                    novelTitle = novel?.title,
+                                    arcTitle = arcTitle,
+                                    coverUri = readerCoverUri,
+                                    author = readerAuthor.value,
+                                    onBack = { progress ->
+                                        lifecycleScope.launch {
+                                            saveReadingProgress(novelId, chapterId, progress)
+                                            // Same popUpTo("home") reasoning as NovelDetail's
+                                            // onBack - Reader's Back always went straight to
+                                            // Home regardless of entry path.
+                                            navController.navigate("home") {
+                                                popUpTo("home") { inclusive = false }
+                                                launchSingleTop = true
+                                            }
+                                        }
+                                    },
+                                    onBackToFiction = { progress ->
+                                        if (novel != null) {
+                                            lifecycleScope.launch {
+                                                saveReadingProgress(novelId, chapterId, progress)
+                                                navController.navigate("novelDetail/${novel.id}") {
+                                                    launchSingleTop = true
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onPrevious = previousChapter?.let { prev ->
+                                        { progress: Float ->
+                                            lifecycleScope.launch {
+                                                saveReadingProgress(novelId, chapterId, progress)
+                                                // Replace, not push - Back from chapter 5
+                                                // returns to NovelDetail, not chapter 4,
+                                                // matching pre-NavHost behavior where
+                                                // onPrevious/onNext never touched a back
+                                                // stack because there wasn't one.
+                                                navController.navigate("reader/$novelId/${prev.id}") {
+                                                    popUpTo("reader/{novelId}/{chapterId}") { inclusive = true }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onNext = nextChapter?.let { next ->
+                                        { progress: Float ->
+                                            lifecycleScope.launch {
+                                                saveReadingProgress(novelId, chapterId, progress)
+                                                navController.navigate("reader/$novelId/${next.id}") {
+                                                    popUpTo("reader/{novelId}/{chapterId}") { inclusive = true }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    onAuthorClick = {
+                                        val authorId = readerAuthor.value?.id
+                                        if (authorId != null) {
+                                            navController.navigate("author/$authorId")
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md): `from` is dropped from
+                // what used to be Screen.Author - onBack is now a plain
+                // navController.popBackStack(), since NavController's own back stack
+                // already knows whether the previous entry was "novelDetail/{novelId}"
+                // (tapped from a fiction page byline) or "reader/{novelId}/{chapterId}"
+                // (tapped from the reader's "About the author" card) without this
+                // destination needing to carry that itself.
+                composable(
+                    "author/{authorId}",
+                    arguments = listOf(navArgument("authorId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val authorId = backStackEntry.arguments?.getString("authorId") ?: ""
+                    // Reload whenever the authorId changes (tapping into a different
+                    // author's page while one is already showing isn't a real path today,
+                    // but this keeps the screen correct if it ever is) - not on every
+                    // recomposition.
+                    LaunchedEffect(authorId) {
+                        loadAuthorPage(authorId)
+                    }
+                    val author = authorPageAuthor.value
+                    if (author != null) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            AuthorPageScreen(
+                                author = author,
+                                novels = authorPageNovels,
+                                onBack = { navController.popBackStack() },
+                                onNovelClick = { novel ->
+                                    lifecycleScope.launch {
+                                        libraryViewModel.loadNovelDetails(novel)
+                                        navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
+                                    }
+                                }
                             )
                         }
                     }
