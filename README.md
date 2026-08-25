@@ -4,7 +4,7 @@ A native reading experience for independently published fiction.
 
 ## What it is
 
-ARKarium is built around direct distribution from author to reader.
+ARKarium is built around direct distribution from Rae ARK *author* to his reader.
 
 Content is published as static files and synchronized to the reader's local library. The client handles the reading experience, rather than requiring a permanent platform backend.
 

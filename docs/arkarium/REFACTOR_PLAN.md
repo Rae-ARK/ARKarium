@@ -106,7 +106,7 @@ small - in general each stage below is its own shippable, revertable commit.
 `MainActivity.kt`: 1706 -> 1601 lines. Every call site (`resolveTheme(...)`,
 `colorSchemeFor(...)`, `Screen.Home`, etc.) is unchanged; only the imports moved.
 
-## Phase 2 - state/business logic into ViewModels (Stage 2.1 done, rest not started)
+## Phase 2 - state/business logic into ViewModels (Stages 2.1-2.3 done, 2.4-2.5 not started)
 
 Split the Activity's `mutableStateOf` fields and their surrounding logic into a small
 number of feature-scoped ViewModels backed by `StateFlow`, rather than one
@@ -137,13 +137,34 @@ commit/PR, but the order below is deliberate:
   cross-feature state, so it's the smallest possible proof that the
   Activity -> ViewModel -> service call chain works end to end before tackling
   bigger state.
-- **Stage 2.3 - `LibraryViewModel`.** `novels`, `chapters`, `arcs`, `recentlyRead`,
-  `inProgressNovels`, scan progress/message, and `startScan` (now calling the Stage
-  2.1 functions instead of Activity-private ones). Comes before Sync/Metadata below
-  because both of those read the library's novel list (`SyncViewModel`'s
-  `scanSingleSyncedNovel` path, `MetadataViewModel`'s "apply to novel" step) - giving
-  `LibraryViewModel` a settled shape first means Stages 2.4-2.5 have a real
-  `StateFlow<List<NovelEntity>>` to depend on instead of guessing its eventual shape.
+- **Stage 2.3 - done in this patch - `LibraryViewModel`.** `novels`, `chapters`,
+  `arcs`, `recentlyRead`, `inProgressNovels`, `overriddenChapterIds`/
+  `arcStartChapterIds`, scan progress/message, and `startScan` (now calling the
+  Stage 2.1 functions instead of Activity-private ones). `loadNovelDetails` and
+  `refreshRecentlyRead` moved with it too, even though neither is named in this
+  bullet - they're the only functions that ever write chapters/arcs/
+  overriddenChapterIds/arcStartChapterIds and recentlyRead/inProgressNovels
+  respectively, so once those fields moved here the functions that populate them had
+  to as well (rule 2). `saveChapterEdits` stays on `MainActivity` - it never touches
+  `chapters`/`arcs` directly, only via a `libraryViewModel.loadNovelDetails(novel)`
+  call at the end, same "own the DB write, delegate the refresh" split
+  `checkForUpdates`/`setNotifyEnabled` already use for `novels`. Comes before
+  Sync/Metadata below because both of those read the library's novel list
+  (`SyncViewModel`'s `scanSingleSyncedNovel` path, `MetadataViewModel`'s "apply to
+  novel" step) - giving `LibraryViewModel` a settled shape first means Stages 2.4-2.5
+  have a real list to depend on instead of guessing its eventual shape. One deviation
+  from the plan as originally written: `novels`/`chapters`/`arcs`/`recentlyRead`/
+  `inProgressNovels` are exposed as `SnapshotStateList`s (`mutableStateListOf`), not
+  `StateFlow<List<...>>` - every one of them is mutated incrementally in place
+  (index-set, add, removeAll) by MainActivity and by `LibraryViewModel` itself, which
+  is exactly the shape Compose's snapshot state system is built for; wrapping each
+  mutation in a copy-the-whole-list `StateFlow.update{}` would be strictly more
+  boilerplate for the same behavior (rule 4) - see the class doc comment in
+  `viewmodel/LibraryViewModel.kt` for the full rationale. `scanSingleSyncedNovel`
+  itself is NOT moved in this stage - per the Stage 2.5 note below, it stays on
+  `MainActivity` (reaching into `libraryViewModel.novels` directly) until
+  `SyncViewModel` is ready to take it. `MainActivity.kt`: 1690 -> 1529 lines;
+  `viewmodel/LibraryViewModel.kt`: 225 lines (new).
 - **Stage 2.4 - `MetadataViewModel`.** `metadataSearchState`, `addFictionState`, and
   the fetch/apply-metadata logic, calling `GoogleBooksMetadataProvider` and reading
   `LibraryViewModel`'s novel list. Ordered before Sync since it's the simpler of the
