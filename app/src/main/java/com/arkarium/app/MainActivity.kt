@@ -50,7 +50,6 @@ import com.arkarium.app.ui.SyncProgressDialog
 import com.arkarium.app.ui.SyncResolutionDialog
 import com.arkarium.app.ui.FictionBrowseScreen
 import com.arkarium.app.data.AppDatabase
-import com.arkarium.app.data.ArcEntity
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterOverrideEntity
 import com.arkarium.app.data.GoogleBooksMetadataProvider
@@ -81,6 +80,7 @@ import com.arkarium.app.navigation.SyncResolutionReason
 import com.arkarium.app.navigation.SyncResolutionState
 import com.arkarium.app.ui.theme.colorSchemeFor
 import com.arkarium.app.ui.theme.resolveTheme
+import com.arkarium.app.viewmodel.LibraryViewModel
 import com.arkarium.app.viewmodel.SettingsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
@@ -104,13 +104,12 @@ import java.util.UUID
 
 class MainActivity : ComponentActivity() {
 
-    private val novels = mutableStateListOf<NovelEntity>()
-    private val chapters = mutableStateListOf<ChapterEntity>() // overrides already applied
-    private val arcs = mutableStateListOf<ArcEntity>()
-    private val recentlyRead = mutableStateListOf<NovelEntity>()
-    private val inProgressNovels = mutableStateListOf<NovelEntity>()
-    private val overriddenChapterIds = mutableStateOf<Set<String>>(emptySet())
-    private val arcStartChapterIds = mutableStateOf<Set<String>>(emptySet())
+    // novels/chapters/arcs/recentlyRead/inProgressNovels/overriddenChapterIds/
+    // arcStartChapterIds/scanProgress/scanMessage formerly lived here as Activity
+    // mutableStateOf/mutableStateListOf fields - all now come from libraryViewModel
+    // (Stage 2.3 of Phase 2, see docs/arkarium/REFACTOR_PLAN.md). Every read site
+    // below is unchanged except for the `libraryViewModel.` prefix, since the fields
+    // kept their names.
     // Author of the fiction currently open in the reader, resolved once when entering
     // Screen.Reader (see the two entry points below) rather than looked up reactively
     // per-recomposition - it doesn't change across a Previous/Next hop within the same
@@ -127,8 +126,6 @@ class MainActivity : ComponentActivity() {
     // points) becomes visible. Lives here rather than as a Screen case since it's
     // not a navigable destination - nothing ever sets currentScreen back to it.
     private val showSplash = mutableStateOf(true)
-    private val scanProgress = mutableStateOf<Pair<Int, Int>?>(null)  // (current, total) or null if not scanning
-    private val scanMessage = mutableStateOf("")
     private val metadataSearchState = mutableStateOf<MetadataSearchState>(MetadataSearchState.Idle)
     private val addFictionState = mutableStateOf<AddFictionState>(AddFictionState.Hidden)
     private val syncAllState = mutableStateOf<SyncAllState>(SyncAllState.Idle)
@@ -156,6 +153,10 @@ class MainActivity : ComponentActivity() {
     // above, rather than as a `by viewModels { }` property delegate - prefsManager
     // isn't constructed yet at property-initializer time, before onCreate runs.
     private lateinit var settingsViewModel: SettingsViewModel
+    // Stage 2.3 of Phase 2 (docs/arkarium/REFACTOR_PLAN.md) - the second ViewModel
+    // pulled out of MainActivity. Constructed in onCreate right after db/scanner
+    // (its two dependencies), same pattern as settingsViewModel above.
+    private lateinit var libraryViewModel: LibraryViewModel
     // Stateless, can't throw, needs no Context - constructed eagerly rather than
     // alongside the other services in onCreate's try/catch.
     private val metadataProvider = GoogleBooksMetadataProvider()
@@ -196,8 +197,8 @@ class MainActivity : ComponentActivity() {
                 // (see ScannerImpl's id hash, keyed off root.uri) - clear first so the
                 // reconciliation in startScan's onScanCompleted doesn't have to wait for a
                 // second scan pass to drop the old source's now-stale novels.
-                novels.clear()
-                startScan(DocumentFile.fromTreeUri(this@MainActivity, selectedUri) ?: return@launch)
+                libraryViewModel.novels.clear()
+                libraryViewModel.startScan(DocumentFile.fromTreeUri(this@MainActivity, selectedUri) ?: return@launch)
             }
         }
     }
@@ -271,171 +272,20 @@ class MainActivity : ComponentActivity() {
         val novel = mergeNovelForRescan(scanned, existing, authorsFolderFound)
         db.novelDao().upsert(novel)
         withContext(Dispatchers.Main) {
-            val idx = novels.indexOfFirst { it.id == novel.id }
-            if (idx >= 0) novels[idx] = novel else novels.add(novel)
+            val idx = libraryViewModel.novels.indexOfFirst { it.id == novel.id }
+            if (idx >= 0) libraryViewModel.novels[idx] = novel else libraryViewModel.novels.add(novel)
         }
         scanner.scanChaptersForNovel(novelFolder, novel.id, db, onProgress)
         return novel
     }
 
-    private suspend fun startScan(root: DocumentFile) {
-        // startScan runs unattended on every app launch once a library folder has been
-        // picked once (see the libraryUri.collect below), with no user interaction in
-        // between. ScannerImpl already fails soft on SAF errors (revoked permissions,
-        // deleted folders, etc), but this wraps the whole thing defensively too - a
-        // stray DB exception here should never be allowed to crash the app on startup;
-        // worst case the user sees a stale/partial library and can retry from Settings.
-        // Tracks which novel IDs this scan pass actually found, so onScanCompleted below
-        // can remove DB rows (and their cascaded arcs/chapters/overrides/progress) for
-        // novels whose folder is genuinely gone - see bugs.md Bug 4. A novel that hits
-        // the catch block below and never reaches the upsert is deliberately NOT added
-        // here, matching the same accepted tradeoff scanChaptersForNovel's
-        // seenChapterIds/seenArcIds already make for a single skipped item.
-        val seenNovelIds = mutableSetOf<String>()
-        // Set by onAuthorsDiscovered below, which ScannerImpl.scanRoot fires exactly
-        // once before the per-novel onDiscovered loop starts - so by the time any
-        // onDiscovered call below reads it, it already reflects this scan pass. See
-        // mergeNovelForRescan's authorsFolderFound param.
-        var authorsFolderFound = false
-        try {
-            scanner.scanRoot(root,
-                onDiscovered = { scanned, novelFolder ->
-                    try {
-                        // scanRoot builds a fresh NovelEntity every scan - pageSize and
-                        // readingStatus are always defaults on it, and description/genres/
-                        // publishedDate/author come from this novel's metadata.json if one
-                        // exists (readLocalMetadata in ScannerImpl), null otherwise. Upsert()
-                        // REPLACEs the whole row, so without carrying values over from the
-                        // existing row, a rescan would silently wipe pageSize/readingStatus,
-                        // sync bookkeeping, and - once a remote "Fetch info" lookup has
-                        // actually run for this novel - would let a rescan clobber that
-                        // curated remote data with an empty/stale local metadata.json. See
-                        // mergeNovelForRescan above for the full field-by-field rationale
-                        // (shared with scanSingleSyncedNovel, docs/arkarium/NEXT_FIXES.md #4).
-                        val existing = db.novelDao().findById(scanned.id)
-                        val novel = mergeNovelForRescan(scanned, existing, authorsFolderFound)
-                        db.novelDao().upsert(novel)
-                        seenNovelIds.add(novel.id)
-                        withContext(Dispatchers.Main) {
-                            val idx = novels.indexOfFirst { it.id == novel.id }
-                            if (idx >= 0) novels[idx] = novel else novels.add(novel)
-                        }
-                        // Scan this novel's chapters/arcs using the folder scanRoot already
-                        // resolved, instead of re-listing the root and searching by name again.
-                        scanner.scanChaptersForNovel(novelFolder, novel.id, db) { message ->
-                            withContext(Dispatchers.Main) {
-                                scanMessage.value = "Scanning ${novel.title}: $message"
-                            }
-                        }
-                    } catch (e: Exception) {
-                        withContext(Dispatchers.Main) {
-                            scanMessage.value = "Skipped ${scanned.title}: ${e.message}"
-                        }
-                    }
-                },
-                onAuthorsDiscovered = { discoveredAuthors, found ->
-                    authorsFolderFound = found
-                    // Same diff-and-remove pattern scanChaptersForNovel already uses for
-                    // arcs: upsert everything this scan found under authors/, then drop
-                    // any previously-known author row that scan didn't see this time
-                    // (its authors/<id>.json was deleted or renamed). Only when the
-                    // authors/ folder was actually found this pass - see
-                    // mergeNovelForRescan's authorsFolderFound param for why a
-                    // not-found pass must leave already-stored author rows alone rather
-                    // than treating an empty discoveredAuthors list as "delete them all."
-                    if (found) {
-                        val seenIds = discoveredAuthors.map { it.id }.toSet()
-                        discoveredAuthors.forEach { db.authorDao().upsert(it) }
-                        db.authorDao().all().filter { it.id !in seenIds }.forEach { stale ->
-                            db.authorDao().delete(stale.id)
-                        }
-                    }
-                },
-                onScanCompleted = {
-                    // See bugs.md Bug 4: this used to be a `novels.clear()` at the call
-                    // site in Settings' onRescan, which cleared the UI list *before*
-                    // scanning rather than reconciling it against a completed scan. That
-                    // meant every manual rescan flashed the whole library to empty while
-                    // novels trickled back in one at a time, and - worse - any novel this
-                    // particular pass failed to rediscover (a transient SAF hiccup, the
-                    // user backing out mid-scan, etc) stayed permanently missing from the
-                    // UI even though its row was never touched in the DB. Doing the
-                    // removal here instead, keyed off seenNovelIds and gated on a
-                    // genuine onScanCompleted (never fired on an aborted/partial scan -
-                    // see ScannerImpl.scanRoot), means the UI only ever loses a novel
-                    // when this scan actually confirmed its folder is gone.
-                    //
-                    // See docs/arkarium/NEXT_FIXES.md #2: a synced novel (syncSourceUrl != null)
-                    // whose folder disappeared used to hit this same cascade-delete as a
-                    // purely-local novel, silently dropping the whole novel - reading
-                    // history, overrides, everything - the moment its folder went missing
-                    // for any reason (including a transient one, e.g. mid-switch between
-                    // storage modes). A synced novel's folder can always be re-fetched
-                    // from its relay, so instead of deleting it here, mark it
-                    // MISSING_LOCALLY and leave the row (and the UI list entry) alone -
-                    // the user resolves it explicitly from the novel's detail screen
-                    // (resync, or actually remove it) rather than the scanner deciding
-                    // for them. A purely-local novel (no sync source to re-fetch from)
-                    // keeps the original cascade-delete behavior unchanged.
-                    val stale = db.novelDao().all().filter { it.id !in seenNovelIds }
-                    val staleLocal = stale.filter { it.syncSourceUrl == null }
-                    val staleSynced = stale.filter { it.syncSourceUrl != null && it.syncStatus != SyncStatus.MISSING_LOCALLY.name }
-                    staleLocal.forEach { db.novelDao().delete(it.id) }
-                    staleSynced.forEach { db.novelDao().updateSyncStatus(it.id, SyncStatus.MISSING_LOCALLY.name) }
-                    if (staleLocal.isNotEmpty() || staleSynced.isNotEmpty()) {
-                        withContext(Dispatchers.Main) {
-                            val staleLocalIds = staleLocal.map { it.id }.toSet()
-                            novels.removeAll { it.id in staleLocalIds }
-                            staleSynced.forEach { s ->
-                                val idx = novels.indexOfFirst { it.id == s.id }
-                                if (idx >= 0) novels[idx] = novels[idx].copy(syncStatus = SyncStatus.MISSING_LOCALLY.name)
-                            }
-                        }
-                    }
-                },
-                onProgress = { current, total, message ->
-                    withContext(Dispatchers.Main) {
-                        scanProgress.value = Pair(current, total)
-                        scanMessage.value = message
-                    }
-                }
-            )
-            refreshRecentlyRead()
-            withContext(Dispatchers.Main) {
-                scanProgress.value = null
-                scanMessage.value = ""
-            }
-        } catch (e: Exception) {
-            withContext(Dispatchers.Main) {
-                scanProgress.value = null
-                scanMessage.value = "Library scan failed: ${e.message}"
-            }
-        }
-    }
-
-    // Loads the raw scanned chapters for a novel and applies any saved chapter_overrides
-    // (title/position) on top, so every screen downstream sees the "effective" chapter
-    // list rather than raw scan data.
-    private suspend fun loadNovelDetails(novel: NovelEntity) {
-        val raw = db.chapterDao().forNovel(novel.id)
-        val overrides = db.chapterOverrideDao().forNovel(novel.id)
-        val overridesByChapterId = overrides.associateBy { it.chapterId }
-        val rawIndexById = raw.withIndex().associate { (i, c) -> c.id to i }
-
-        val effective = raw
-            .map { chapter ->
-                val override = overridesByChapterId[chapter.id]
-                if (override?.titleOverride != null) chapter.copy(title = override.titleOverride) else chapter
-            }
-            .sortedBy { chapter -> overridesByChapterId[chapter.id]?.positionOverride ?: rawIndexById[chapter.id] ?: 0 }
-
-        chapters.clear()
-        chapters.addAll(effective)
-        arcs.clear()
-        arcs.addAll(db.arcDao().forNovel(novel.id))
-        overriddenChapterIds.value = overridesByChapterId.keys
-        arcStartChapterIds.value = overrides.filter { it.isArcStart }.map { it.chapterId }.toSet()
-    }
+    // startScan, loadNovelDetails, and refreshRecentlyRead formerly lived here as
+    // Activity-private methods - all three now live on libraryViewModel (Stage 2.3 of
+    // Phase 2, see docs/arkarium/REFACTOR_PLAN.md), unchanged in body except for the
+    // fields they read/write resolving to that class's own novels/chapters/arcs/
+    // recentlyRead/inProgressNovels/scanProgress/scanMessage instead of the
+    // Activity's. Every call site below (`startScan(...)`, `loadNovelDetails(...)`,
+    // `refreshRecentlyRead()`) now calls `libraryViewModel.` + the same name.
 
     // Loads the AuthorEntity + every novel linked to it (NovelDao.byAuthor) for
     // Screen.Author. A missing/unknown authorId (author.json removed since the fiction
@@ -477,7 +327,7 @@ class MainActivity : ComponentActivity() {
                 db.chapterOverrideDao().delete(chapter.id)
             }
         }
-        loadNovelDetails(novel)
+        libraryViewModel.loadNovelDetails(novel)
     }
 
     private suspend fun saveReadingProgress(novelId: String, chapterId: String, progress: Float) {
@@ -490,19 +340,7 @@ class MainActivity : ComponentActivity() {
                 updatedAt = System.currentTimeMillis()
             )
         )
-        refreshRecentlyRead()
-    }
-
-    private suspend fun refreshRecentlyRead() {
-        val ids = db.readingProgressDao().recentNovelIds()
-        val byId = novels.associateBy { it.id }
-        recentlyRead.clear()
-        recentlyRead.addAll(ids.mapNotNull { byId[it] })
-        
-        // Also refresh in-progress novels
-        val inProgress = db.novelDao().byStatus("IN_PROGRESS")
-        inProgressNovels.clear()
-        inProgressNovels.addAll(inProgress)
+        libraryViewModel.refreshRecentlyRead()
     }
 
     // Kicks off a "Fetch info" search for one novel. User-triggered only (see
@@ -535,8 +373,8 @@ class MainActivity : ComponentActivity() {
                     fetchedAt = System.currentTimeMillis()
                 )
                 val updated = db.novelDao().findById(novel.id) ?: return@launch
-                val idx = novels.indexOfFirst { it.id == updated.id }
-                if (idx >= 0) novels[idx] = updated
+                val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
+                if (idx >= 0) libraryViewModel.novels[idx] = updated
                 val screen = currentScreen.value
                 if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
                     currentScreen.value = Screen.NovelDetail(updated)
@@ -586,13 +424,13 @@ class MainActivity : ComponentActivity() {
                 val novelId = UUID.nameUUIDFromBytes(
                     (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
                 ).toString()
-                startScan(libraryRoot)
+                libraryViewModel.startScan(libraryRoot)
                 db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
                 db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis(), folderName)
                 val updated = db.novelDao().findById(novelId)
                 if (updated != null) {
-                    val idx = novels.indexOfFirst { it.id == updated.id }
-                    if (idx >= 0) novels[idx] = updated
+                    val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
+                    if (idx >= 0) libraryViewModel.novels[idx] = updated
                 }
                 addFictionState.value = AddFictionState.Hidden
             } catch (e: Exception) {
@@ -669,8 +507,8 @@ class MainActivity : ComponentActivity() {
                         val updated = db.novelDao().findById(novelId)
                         if (updated != null) {
                             withContext(Dispatchers.Main) {
-                                val idx = novels.indexOfFirst { it.id == updated.id }
-                                if (idx >= 0) novels[idx] = updated
+                                val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
+                                if (idx >= 0) libraryViewModel.novels[idx] = updated
                             }
                         }
                         syncedCount++
@@ -735,11 +573,11 @@ class MainActivity : ComponentActivity() {
                     // (or that this call is a deliberate resolution retry for) no longer
                     // applies - clear it back to ACTIVE rather than leaving a stale status.
                     db.novelDao().updateSyncStatus(novel.id, SyncStatus.ACTIVE.name)
-                    startScan(libraryRoot)
+                    libraryViewModel.startScan(libraryRoot)
                     val updated = db.novelDao().findById(novel.id)
                     if (updated != null) {
-                        val idx = novels.indexOfFirst { it.id == updated.id }
-                        if (idx >= 0) novels[idx] = updated
+                        val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
+                        if (idx >= 0) libraryViewModel.novels[idx] = updated
                         val screen = currentScreen.value
                         if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
                             currentScreen.value = Screen.NovelDetail(updated)
@@ -757,8 +595,8 @@ class MainActivity : ComponentActivity() {
                 val updated = db.novelDao().findById(novel.id)
                 if (updated != null) {
                     withContext(Dispatchers.Main) {
-                        val idx = novels.indexOfFirst { it.id == updated.id }
-                        if (idx >= 0) novels[idx] = updated
+                        val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
+                        if (idx >= 0) libraryViewModel.novels[idx] = updated
                     }
                 }
                 syncCheckState.value = SyncCheckState.Idle
@@ -773,8 +611,8 @@ class MainActivity : ComponentActivity() {
                 val updated = db.novelDao().findById(novel.id)
                 if (updated != null) {
                     withContext(Dispatchers.Main) {
-                        val idx = novels.indexOfFirst { it.id == updated.id }
-                        if (idx >= 0) novels[idx] = updated
+                        val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
+                        if (idx >= 0) libraryViewModel.novels[idx] = updated
                     }
                 }
                 syncCheckState.value = SyncCheckState.Idle
@@ -797,8 +635,8 @@ class MainActivity : ComponentActivity() {
         db.novelDao().updateNotifyNewChapters(novelId, enabled)
         val updated = db.novelDao().findById(novelId) ?: return
         withContext(Dispatchers.Main) {
-            val idx = novels.indexOfFirst { it.id == updated.id }
-            if (idx >= 0) novels[idx] = updated
+            val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
+            if (idx >= 0) libraryViewModel.novels[idx] = updated
             val screen = currentScreen.value
             if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
                 currentScreen.value = Screen.NovelDetail(updated)
@@ -846,7 +684,7 @@ class MainActivity : ComponentActivity() {
             db.novelDao().delete(novel.id)
             db.syncedFileDao().deleteForNovel(novel.id)
             withContext(Dispatchers.Main) {
-                novels.removeAll { it.id == novel.id }
+                libraryViewModel.novels.removeAll { it.id == novel.id }
                 if (currentScreen.value.let { it is Screen.NovelDetail && it.novel.id == novel.id }) {
                     currentScreen.value = Screen.Home
                 }
@@ -864,8 +702,8 @@ class MainActivity : ComponentActivity() {
             val updated = db.novelDao().findById(novel.id)
             if (updated != null) {
                 withContext(Dispatchers.Main) {
-                    val idx = novels.indexOfFirst { it.id == updated.id }
-                    if (idx >= 0) novels[idx] = updated
+                    val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
+                    if (idx >= 0) libraryViewModel.novels[idx] = updated
                     val screen = currentScreen.value
                     if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
                         currentScreen.value = Screen.NovelDetail(updated)
@@ -977,6 +815,8 @@ class MainActivity : ComponentActivity() {
             syncManager = SyncManager(this)
             settingsViewModel = ViewModelProvider(this, SettingsViewModel.factory(prefsManager))
                 .get(SettingsViewModel::class.java)
+            libraryViewModel = ViewModelProvider(this, LibraryViewModel.factory(db, scanner))
+                .get(LibraryViewModel::class.java)
         } catch (e: Throwable) {
             renderCrashScreen(e)
             return
@@ -1013,12 +853,11 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             combine(prefsManager.useCustomFolder, prefsManager.libraryUri) { useCustom, uri -> useCustom to uri }
                 .collect { (useCustom, uri) ->
-                    if (novels.isEmpty()) {
+                    if (libraryViewModel.novels.isEmpty()) {
                         try {
-                            resolveLibraryRoot(this@MainActivity, useCustom, uri)?.let { startScan(it) }
+                            resolveLibraryRoot(this@MainActivity, useCustom, uri)?.let { libraryViewModel.startScan(it) }
                         } catch (e: Exception) {
-                            scanProgress.value = null
-                            scanMessage.value = "Couldn't load your library: ${e.message}"
+                            libraryViewModel.reportScanSetupError("Couldn't load your library: ${e.message}")
                         }
                     }
                 }
@@ -1093,9 +932,9 @@ class MainActivity : ComponentActivity() {
                 // startScan has populated `novels` at all, so this needs to re-run as
                 // novels.size grows too, not just once when the pending id itself is
                 // first set.
-                LaunchedEffect(pendingNotificationNovelId.value, novels.size) {
+                LaunchedEffect(pendingNotificationNovelId.value, libraryViewModel.novels.size) {
                     val novelId = pendingNotificationNovelId.value ?: return@LaunchedEffect
-                    val target = novels.firstOrNull { it.id == novelId } ?: return@LaunchedEffect
+                    val target = libraryViewModel.novels.firstOrNull { it.id == novelId } ?: return@LaunchedEffect
                     currentScreen.value = Screen.NovelDetail(target)
                     pendingNotificationNovelId.value = null
                 }
@@ -1162,11 +1001,11 @@ class MainActivity : ComponentActivity() {
                     when (currentScreen.value) {
                         is Screen.Home -> {
                             HomeScreen(
-                                novels = novels,
-                                inProgressNovels = inProgressNovels,
+                                novels = libraryViewModel.novels,
+                                inProgressNovels = libraryViewModel.inProgressNovels,
                                 onNovelClick = { novel ->
                                     lifecycleScope.launch {
-                                        loadNovelDetails(novel)
+                                        libraryViewModel.loadNovelDetails(novel)
                                         currentScreen.value = Screen.NovelDetail(novel)
                                     }
                                 },
@@ -1184,13 +1023,13 @@ class MainActivity : ComponentActivity() {
                                                 // That was harmless before Stage 3, since ReaderScreen
                                                 // didn't read them; now Previous/Next need the
                                                 // correctly-scoped chapter list to compute neighbors.
-                                                loadNovelDetails(novel)
+                                                libraryViewModel.loadNovelDetails(novel)
                                                 readerAuthor.value = novel.authorId?.let { db.authorDao().findById(it) }
                                                 val chapterContent = contentRepo.getTextContent(chapter.sourcePath)
                                                 currentScreen.value = Screen.Reader(novel.id, chapter, chapterContent.body)
                                             }
                                         } else {
-                                            loadNovelDetails(novel)
+                                            libraryViewModel.loadNovelDetails(novel)
                                             currentScreen.value = Screen.NovelDetail(novel)
                                         }
                                     }
@@ -1224,11 +1063,11 @@ class MainActivity : ComponentActivity() {
                         is Screen.FictionBrowse -> {
                             val browse = currentScreen.value as Screen.FictionBrowse
                             FictionBrowseScreen(
-                                novels = novels,
+                                novels = libraryViewModel.novels,
                                 initialQuery = browse.initialQuery,
                                 onNovelSelected = { novel ->
                                     lifecycleScope.launch {
-                                        loadNovelDetails(novel)
+                                        libraryViewModel.loadNovelDetails(novel)
                                         currentScreen.value = Screen.NovelDetail(novel)
                                     }
                                 },
@@ -1240,15 +1079,15 @@ class MainActivity : ComponentActivity() {
                             val novel = (currentScreen.value as Screen.NovelDetail).novel
                             NovelDetailScreen(
                                 novel = novel,
-                                chapters = chapters,
-                                arcs = arcs,
-                                overriddenChapterIds = overriddenChapterIds.value,
+                                chapters = libraryViewModel.chapters,
+                                arcs = libraryViewModel.arcs,
+                                overriddenChapterIds = libraryViewModel.overriddenChapterIds.value,
                                 onBack = { currentScreen.value = Screen.Home },
                                 onChapterSelected = { chapter ->
                                     lifecycleScope.launch {
                                         // Mark novel as IN_PROGRESS when starting to read
                                         db.novelDao().updateReadingStatus(novel.id, NovelStatus.IN_PROGRESS.name)
-                                        refreshRecentlyRead()
+                                        libraryViewModel.refreshRecentlyRead()
                                         readerAuthor.value = novel.authorId?.let { db.authorDao().findById(it) }
                                         val chapterContent = contentRepo.getTextContent(chapter.sourcePath)
                                         currentScreen.value = Screen.Reader(novel.id, chapter, chapterContent.body)
@@ -1304,16 +1143,16 @@ class MainActivity : ComponentActivity() {
                             // loadNovelDetails() - both paths that create Screen.Reader now call
                             // it first (see onContinueReading/onChapterSelected above), so this is
                             // safe to read directly rather than re-querying the DB here.
-                            val novel = novels.firstOrNull { it.id == reader.novelId }
-                            val currentIndex = chapters.indexOfFirst { it.id == reader.chapter.id }
-                            val previousChapter = chapters.getOrNull(currentIndex - 1).takeIf { currentIndex > 0 }
-                            val nextChapter = chapters.getOrNull(currentIndex + 1).takeIf { currentIndex >= 0 }
-                            val arcTitle = reader.chapter.arcId?.let { arcId -> arcs.firstOrNull { it.id == arcId }?.name }
+                            val novel = libraryViewModel.novels.firstOrNull { it.id == reader.novelId }
+                            val currentIndex = libraryViewModel.chapters.indexOfFirst { it.id == reader.chapter.id }
+                            val previousChapter = libraryViewModel.chapters.getOrNull(currentIndex - 1).takeIf { currentIndex > 0 }
+                            val nextChapter = libraryViewModel.chapters.getOrNull(currentIndex + 1).takeIf { currentIndex >= 0 }
+                            val arcTitle = reader.chapter.arcId?.let { arcId -> libraryViewModel.arcs.firstOrNull { it.id == arcId }?.name }
                             // Arc cover -> fiction cover -> null (renders the placeholder) - see
                             // bugs.md Bug 3b. Resolved here rather than in ReaderScreen so it stays
                             // decoupled from ArcEntity/NovelEntity, same rationale as novelTitle/arcTitle.
                             val readerCoverUri = reader.chapter.arcId
-                                ?.let { arcId -> arcs.firstOrNull { it.id == arcId }?.coverUri }
+                                ?.let { arcId -> libraryViewModel.arcs.firstOrNull { it.id == arcId }?.coverUri }
                                 ?: novel?.coverUri
                             ReaderScreen(
                                 chapter = reader.chapter,
@@ -1371,8 +1210,8 @@ class MainActivity : ComponentActivity() {
                         is Screen.ChapterEditor -> {
                             val novel = (currentScreen.value as Screen.ChapterEditor).novel
                             ChapterEditorScreen(
-                                chapters = chapters,
-                                initialArcStartIds = arcStartChapterIds.value,
+                                chapters = libraryViewModel.chapters,
+                                initialArcStartIds = libraryViewModel.arcStartChapterIds.value,
                                 onSave = { updatedChapters, arcStartIds ->
                                     saveChapterEdits(novel, updatedChapters, arcStartIds)
                                 },
@@ -1397,7 +1236,7 @@ class MainActivity : ComponentActivity() {
                                     onBack = { currentScreen.value = screen.from },
                                     onNovelClick = { novel ->
                                         lifecycleScope.launch {
-                                            loadNovelDetails(novel)
+                                            libraryViewModel.loadNovelDetails(novel)
                                             currentScreen.value = Screen.NovelDetail(novel)
                                         }
                                     }
@@ -1435,17 +1274,17 @@ class MainActivity : ComponentActivity() {
                                     // first so the old source's novels don't linger
                                     // alongside the new source's until the next scan's
                                     // reconciliation pass catches up. Kept on lifecycleScope
-                                    // (not settingsViewModel, which owns no novel state) since
-                                    // novels/startScan belong to the Activity until Stage 2.3
-                                    // (LibraryViewModel) moves them.
+                                    // (not settingsViewModel, which owns no novel state) -
+                                    // novels/startScan now live on libraryViewModel (Stage
+                                    // 2.3, see docs/arkarium/REFACTOR_PLAN.md).
                                     lifecycleScope.launch {
-                                        novels.clear()
+                                        libraryViewModel.novels.clear()
                                         // Turning custom folder ON with nothing picked yet
                                         // resolves to null here by design - leave the
                                         // library empty and let the "Select Folder" button
                                         // below (or EmptyLibraryPrompt on Home) start the
                                         // picker instead of scanning anything.
-                                        resolveLibraryRoot(this@MainActivity, enabled, savedUri.value)?.let { startScan(it) }
+                                        resolveLibraryRoot(this@MainActivity, enabled, savedUri.value)?.let { libraryViewModel.startScan(it) }
                                     }
                                 },
                                 onSelectFolderClick = { pickFolder.launch(null) },
@@ -1459,7 +1298,7 @@ class MainActivity : ComponentActivity() {
                                         // fully repopulates it.
                                         val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
                                         if (root != null) {
-                                            startScan(root)
+                                            libraryViewModel.startScan(root)
                                         } else {
                                             // Custom folder is on but nothing's been picked
                                             // yet - "Rescan" would otherwise silently do
