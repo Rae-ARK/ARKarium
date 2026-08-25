@@ -323,7 +323,7 @@ still needs to travel through the destination itself.
   `onUpdated`/`onApplied` callback parameters added across Stages 2.4/2.5 (or leave
   them as unused no-op defaults if any other caller still wants the notification) once
   their one caller stops needing them.
-- **Stage 3.4 - `Screen.Reader` and `Screen.Author`.** Last, and the only stage that
+- **Stage 3.4 - `Screen.Reader` and `Screen.Author`.Done** Last, and the only stage that
   actually needs `NavController`'s back-stack handling rather than just its routing:
   `Screen.Author(val authorId: String, val from: Screen)` exists purely to remember
   where to `onBack` to (the fiction page byline or the reader's "About the author"

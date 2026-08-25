@@ -7,7 +7,6 @@ package com.arkarium.app.navigation
 // own file makes them independently readable and testable without pulling in the
 // Activity's Compose/lifecycle/Context dependencies.
 
-import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.NovelMetadataCandidate
 
@@ -26,12 +25,22 @@ sealed class Screen {
     // Screen.Author's `from` field (Author hasn't migrated off currentScreen-based
     // routing yet - that's Stage 3.4), just no longer as a currentScreen case itself.
     data class NovelDetail(val novelId: String) : Screen()
-    data class Reader(val novelId: String, val chapter: ChapterEntity, val content: String) : Screen()
+    // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md): carries only novelId/chapterId,
+    // same "resolve it yourself from libraryViewModel" shape Stage 3.3 gave NovelDetail/
+    // ChapterEditor above - the reader/{novelId}/{chapterId} destination looks up the
+    // ChapterEntity and loads its body text itself instead of having either handed in
+    // as Screen payload. No longer constructed anywhere (the NavHost route below is
+    // reached via navController.navigate("reader/...") directly) - kept only so this
+    // sealed class' one remaining exhaustive `when` (MainActivity's now-fully-dead
+    // "legacy" branch) still compiles until Stage 3.5's cleanup removes Screen entirely.
+    data class Reader(val novelId: String, val chapterId: String) : Screen()
     data class ChapterEditor(val novelId: String) : Screen()
-    // Carries the previous screen so onBack can return to wherever the tap into the
-    // author page came from (fiction page byline or chapter page's "About the author"
-    // card) instead of always landing back on Home.
-    data class Author(val authorId: String, val from: Screen) : Screen()
+    // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md): `from` is dropped - it existed
+    // purely so onBack knew whether to return to the fiction page byline or the
+    // reader's "About the author" card, which NavController's own back stack now
+    // handles for free via a plain navController.popBackStack(). Same "no longer
+    // constructed anywhere, kept only for `when` exhaustiveness" status as Reader above.
+    data class Author(val authorId: String) : Screen()
     object Settings : Screen()
     // initialQuery seeds FictionBrowseScreen's own search field - see Home's onSearch
     // below. Previously this was `object FictionBrowse`, so the text typed into Home's
