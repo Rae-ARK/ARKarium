@@ -15,6 +15,15 @@ jobs:
     # settings, so this is stated explicitly rather than assumed.
     permissions:
       contents: write
+    # Without this, the default `run:` shell here is `bash -e {0}` - NOT
+    # `-o pipefail` - so the "Build signed release APK" step's
+    # `./gradlew assembleRelease | tee ...` reports success based on `tee`'s
+    # exit code, not gradlew's. See build.yml's equivalent comment for the
+    # full story - this hit the debug build first, but the same pattern is
+    # here too.
+    defaults:
+      run:
+        shell: bash -o pipefail -e {0}
     # A step's own `if:` condition cannot see the `secrets` context directly
     # (GitHub Actions rejects that at workflow-parse time - "Unrecognized
     # named-value: 'secrets'" - which is exactly the 422 this repo hit trying

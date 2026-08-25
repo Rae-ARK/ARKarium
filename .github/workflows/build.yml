@@ -9,6 +9,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Without this, the default `run:` shell here is `bash -e {0}` - NOT
+    # `-o pipefail` - so any `foo | tee bar.log` step (see "Build with
+    # Gradle" below) reports success based on `tee`'s exit code, not
+    # `foo`'s. That let a real `./gradlew assembleDebug` failure show as a
+    # green check with no APK and no uploaded logs. Setting pipefail job-wide
+    # makes every piped step here fail correctly when the left-hand command does.
+    defaults:
+      run:
+        shell: bash -o pipefail -e {0}
 
     steps:
     - uses: actions/checkout@v4
