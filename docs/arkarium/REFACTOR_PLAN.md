@@ -106,7 +106,7 @@ small - in general each stage below is its own shippable, revertable commit.
 `MainActivity.kt`: 1706 -> 1601 lines. Every call site (`resolveTheme(...)`,
 `colorSchemeFor(...)`, `Screen.Home`, etc.) is unchanged; only the imports moved.
 
-## Phase 2 - state/business logic into ViewModels (Stages 2.1-2.3 done, 2.4-2.5 not started)
+## Phase 2 - state/business logic into ViewModels (Stages 2.1-2.4 done, 2.5 not started)
 
 Split the Activity's `mutableStateOf` fields and their surrounding logic into a small
 number of feature-scoped ViewModels backed by `StateFlow`, rather than one
@@ -165,10 +165,44 @@ commit/PR, but the order below is deliberate:
   `MainActivity` (reaching into `libraryViewModel.novels` directly) until
   `SyncViewModel` is ready to take it. `MainActivity.kt`: 1690 -> 1529 lines;
   `viewmodel/LibraryViewModel.kt`: 225 lines (new).
-- **Stage 2.4 - `MetadataViewModel`.** `metadataSearchState`, `addFictionState`, and
-  the fetch/apply-metadata logic, calling `GoogleBooksMetadataProvider` and reading
-  `LibraryViewModel`'s novel list. Ordered before Sync since it's the simpler of the
-  two remaining ViewModels (one external service, no multi-step resolution states).
+- **Stage 2.4 - done in this patch - `MetadataViewModel`.** `metadataSearchState`,
+  `addFictionState`, and `fetchMetadataFor`/`applyMetadata`, calling
+  `GoogleBooksMetadataProvider` (through the `NovelMetadataProvider` interface it
+  implements - see below) and reading/updating `LibraryViewModel`'s novel list.
+  Ordered before Sync since it's the simpler of the two remaining ViewModels (one
+  external service, no multi-step resolution states). One deviation from the plan as
+  originally written: `addFictionState` moved here (it's named in this bullet), but
+  `addFictionByName` - the function that does most of its writing - did NOT move with
+  it. Unlike `fetchMetadataFor`/`applyMetadata`, `addFictionByName` never touches
+  `GoogleBooksMetadataProvider`; it calls `SyncManager`/`FictionLut` and
+  `libraryViewModel.startScan`, which is Stage 2.5's territory, not this stage's - so
+  moving it here would just relocate Sync logic through a Metadata-named door (rule 1).
+  It stays on `MainActivity` and now writes `metadataViewModel.addFictionState.value`
+  directly, the same "state lives on the ViewModel, an external writer sets it via its
+  public property" shape `MainActivity`'s own `currentScreen` already uses for
+  navigation - not a rule-2 violation, since unlike `chapters`/`overriddenChapterIds`
+  in Stage 2.3, `addFictionState` was never meant to be internal-write-only: even
+  before this stage, `MainActivity`'s own UI callbacks (`onAddFictionClick`, both
+  dialogs' `onDismiss`) wrote it directly from outside the function that owned it.
+  `applyMetadata` also lost one piece of behavior it can no longer own: patching
+  `currentScreen` when the novel just updated is the one currently open in
+  `NovelDetail`, since `currentScreen` is Activity navigation state (Phase 3 hasn't
+  happened yet) and this ViewModel has no business writing it. `applyMetadata` now
+  takes an `onApplied: (NovelEntity) -> Unit = {}` callback - the same
+  report-the-result-via-a-plain-lambda shape `ScannerImpl`'s `onDiscovered`/`onProgress`
+  already use - and `MainActivity`'s call site passes the `currentScreen` patch as that
+  callback, so the net behavior is unchanged. `MetadataViewModel` takes
+  `NovelMetadataProvider` (the interface `GoogleBooksMetadataProvider` implements), not
+  the concrete class - same reasoning as `SettingsViewModel` taking
+  `SettingsPreferences` over `PreferencesManager` - but takes concrete `AppDatabase`
+  and `LibraryViewModel`, matching `LibraryViewModel`'s own precedent of not
+  abstracting Room away; `applyMetadata` (and, unlike `LibraryViewModel`, this stage's
+  `MetadataViewModel` as a whole) is consequently untested at the ViewModel tier for
+  the same reason `LibraryViewModel.startScan` is - no in-memory `AppDatabase` is
+  available in a plain JVM test without Robolectric, which this codebase's testing
+  strategy deliberately doesn't reach for yet (see "Testing strategy going forward"
+  below). `MainActivity.kt`: 1529 -> 1509 lines; `viewmodel/MetadataViewModel.kt`: 125
+  lines (new).
 - **Stage 2.5 - `SyncViewModel`.** `syncAllState`, `syncCheckState`,
   `syncResolutionState`, and the sync/resolution logic against `SyncManager`. Last,
   both because it's the largest remaining slice of Activity state/logic and because

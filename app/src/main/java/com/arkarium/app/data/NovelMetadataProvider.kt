@@ -9,7 +9,7 @@ import java.net.URLEncoder
 
 // One candidate match returned by a metadata search - deliberately separate from
 // NovelEntity so a search result never gets persisted until the user explicitly
-// confirms it (see MainActivity.applyMetadata).
+// confirms it (see MetadataViewModel.applyMetadata).
 data class NovelMetadataCandidate(
     val title: String,
     val authors: List<String>,
