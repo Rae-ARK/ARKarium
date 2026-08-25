@@ -126,6 +126,11 @@ dependencies {
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
+    // ViewModel + viewModelScope, used by SettingsViewModel (Stage 2.2 of Phase 2 -
+    // see docs/arkarium/REFACTOR_PLAN.md) and the ViewModels planned for the rest of
+    // that phase. Not pulled in transitively by lifecycle-runtime-ktx above, which
+    // only covers Lifecycle/LifecycleOwner, not ViewModel itself.
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
 
     // WorkManager - backs the periodic background "new chapter" check (see
     // docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md and data/NewChapterCheckWorker.kt). ktx artifact

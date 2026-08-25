@@ -23,7 +23,28 @@ enum class Theme {
     SYSTEM_DEFAULT
 }
 
-class PreferencesManager(private val context: Context) {
+// The slice of PreferencesManager's surface that SettingsViewModel (Stage 2.2 of
+// docs/arkarium/REFACTOR_PLAN.md's Phase 2) wraps as StateFlows. Pulled out as an
+// interface - rather than SettingsViewModel depending on the concrete
+// PreferencesManager class directly - purely so a JVM unit test can hand it a fake
+// backed by plain MutableStateFlows instead of a real DataStore/Context, matching
+// the plan's testing strategy for Phase 2 ViewModels ("using kotlinx-coroutines-test
+// ... without a real dispatcher or Android framework"). PreferencesManager's other
+// preferences (defaultPageSize, the splash toggles) aren't part of this interface -
+// they don't belong to SettingsViewModel per the plan and stay accessed directly
+// against PreferencesManager, same as before this stage.
+interface SettingsPreferences {
+    val theme: Flow<Theme>
+    val systemDefaultLightVariant: Flow<Theme>
+    val useCustomFolder: Flow<Boolean>
+    val libraryUri: Flow<String?>
+    suspend fun setTheme(theme: Theme)
+    suspend fun setSystemDefaultLightVariant(variant: Theme)
+    suspend fun setUseCustomFolder(enabled: Boolean)
+    suspend fun setLibraryUri(uri: String)
+}
+
+class PreferencesManager(private val context: Context) : SettingsPreferences {
     companion object {
         private val LIBRARY_URI_KEY = stringPreferencesKey("library_uri")
         private val THEME_KEY = stringPreferencesKey("theme")
@@ -59,11 +80,11 @@ class PreferencesManager(private val context: Context) {
         if (e is IOException) emit(emptyPreferences()) else throw e
     }
 
-    val libraryUri: Flow<String?> = safePrefs.map { prefs ->
+    override val libraryUri: Flow<String?> = safePrefs.map { prefs ->
         prefs[LIBRARY_URI_KEY]
     }
 
-    val theme: Flow<Theme> = safePrefs.map { prefs ->
+    override val theme: Flow<Theme> = safePrefs.map { prefs ->
         when (prefs[THEME_KEY]) {
             "DARK" -> Theme.DARK
             "WARM_PAPER" -> Theme.WARM_PAPER
@@ -78,7 +99,7 @@ class PreferencesManager(private val context: Context) {
     // meaningful value; anything else stored here (including DARK, which isn't a
     // valid daytime choice) also falls back to LIGHT rather than propagating a bad
     // value into colorSchemeFor.
-    val systemDefaultLightVariant: Flow<Theme> = safePrefs.map { prefs ->
+    override val systemDefaultLightVariant: Flow<Theme> = safePrefs.map { prefs ->
         when (prefs[SYSTEM_DEFAULT_LIGHT_VARIANT_KEY]) {
             "WARM_PAPER" -> Theme.WARM_PAPER
             else -> Theme.LIGHT
@@ -89,7 +110,7 @@ class PreferencesManager(private val context: Context) {
         prefs[DEFAULT_PAGE_SIZE_KEY] ?: 10
     }
 
-    val useCustomFolder: Flow<Boolean> = safePrefs.map { prefs ->
+    override val useCustomFolder: Flow<Boolean> = safePrefs.map { prefs ->
         prefs[USE_CUSTOM_FOLDER_KEY] ?: false
     }
 
@@ -105,19 +126,19 @@ class PreferencesManager(private val context: Context) {
         prefs[SPLASH_MUSIC_ENABLED_KEY] ?: true
     }
 
-    suspend fun setLibraryUri(uri: String) {
+    override suspend fun setLibraryUri(uri: String) {
         context.dataStore.edit { prefs ->
             prefs[LIBRARY_URI_KEY] = uri
         }
     }
 
-    suspend fun setUseCustomFolder(enabled: Boolean) {
+    override suspend fun setUseCustomFolder(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[USE_CUSTOM_FOLDER_KEY] = enabled
         }
     }
 
-    suspend fun setTheme(theme: Theme) {
+    override suspend fun setTheme(theme: Theme) {
         context.dataStore.edit { prefs ->
             prefs[THEME_KEY] = theme.name
         }
@@ -128,7 +149,7 @@ class PreferencesManager(private val context: Context) {
     // deliberately doesn't validate/throw: `theme` above reads back to LIGHT for
     // any unrecognized value, so a bad write here just self-corrects on next read
     // rather than needing to be guarded against at the call site too.
-    suspend fun setSystemDefaultLightVariant(variant: Theme) {
+    override suspend fun setSystemDefaultLightVariant(variant: Theme) {
         context.dataStore.edit { prefs ->
             prefs[SYSTEM_DEFAULT_LIGHT_VARIANT_KEY] = variant.name
         }

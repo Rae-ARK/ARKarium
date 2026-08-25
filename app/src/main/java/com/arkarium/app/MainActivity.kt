@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
 import androidx.documentfile.provider.DocumentFile
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.arkarium.app.ui.ChapterEditorScreen
 import com.arkarium.app.ui.AuthorPageScreen
@@ -66,7 +67,6 @@ import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.SyncManager
 import com.arkarium.app.data.FictionLut
 import com.arkarium.app.data.relayBaseUrlForSlug
-import com.arkarium.app.data.Theme
 import com.arkarium.app.data.NovelStatus
 import com.arkarium.app.data.SyncStatus
 import com.arkarium.app.data.SourceGoneException
@@ -81,6 +81,7 @@ import com.arkarium.app.navigation.SyncResolutionReason
 import com.arkarium.app.navigation.SyncResolutionState
 import com.arkarium.app.ui.theme.colorSchemeFor
 import com.arkarium.app.ui.theme.resolveTheme
+import com.arkarium.app.viewmodel.SettingsViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -93,6 +94,13 @@ import java.util.UUID
 // now live in ui/theme/AppTheme.kt - see docs/arkarium/REFACTOR_PLAN.md. Only the
 // imports above changed; every call site below is unchanged since the types/functions
 // kept their names.
+//
+// currentTheme/currentSystemDefaultLightVariant/useCustomFolder/savedUri formerly
+// lived here as an Activity mutableStateOf field (the first two) or a per-composition
+// collectAsState() local (the last two) - both now come from settingsViewModel
+// (Stage 2.2 of Phase 2, see docs/arkarium/REFACTOR_PLAN.md). Every read site below
+// (`currentTheme.value`, `useCustomFolder.value`, etc.) is unchanged, since
+// settingsViewModel's StateFlows are collected under those same local names.
 
 class MainActivity : ComponentActivity() {
 
@@ -119,11 +127,6 @@ class MainActivity : ComponentActivity() {
     // points) becomes visible. Lives here rather than as a Screen case since it's
     // not a navigable destination - nothing ever sets currentScreen back to it.
     private val showSplash = mutableStateOf(true)
-    private val currentTheme = mutableStateOf(Theme.LIGHT)
-    // Only meaningful while currentTheme is SYSTEM_DEFAULT and the system is
-    // currently in its light/day state - see resolveTheme() and PreferencesManager's
-    // systemDefaultLightVariant doc comment.
-    private val currentSystemDefaultLightVariant = mutableStateOf(Theme.LIGHT)
     private val scanProgress = mutableStateOf<Pair<Int, Int>?>(null)  // (current, total) or null if not scanning
     private val scanMessage = mutableStateOf("")
     private val metadataSearchState = mutableStateOf<MetadataSearchState>(MetadataSearchState.Idle)
@@ -147,6 +150,12 @@ class MainActivity : ComponentActivity() {
     private lateinit var prefsManager: PreferencesManager
     private lateinit var contentRepo: TextChapterContentRepository
     private lateinit var syncManager: SyncManager
+    // Stage 2.2 of Phase 2 (docs/arkarium/REFACTOR_PLAN.md) - the first ViewModel
+    // pulled out of MainActivity. Constructed in onCreate right after prefsManager
+    // (its only dependency), same lateinit-set-in-onCreate pattern as the services
+    // above, rather than as a `by viewModels { }` property delegate - prefsManager
+    // isn't constructed yet at property-initializer time, before onCreate runs.
+    private lateinit var settingsViewModel: SettingsViewModel
     // Stateless, can't throw, needs no Context - constructed eagerly rather than
     // alongside the other services in onCreate's try/catch.
     private val metadataProvider = GoogleBooksMetadataProvider()
@@ -176,7 +185,11 @@ class MainActivity : ComponentActivity() {
                 // (see SettingsScreen) - persisting it true here too is just defensive:
                 // it keeps this the single source of truth for "which folder did the user
                 // pick" even if some future caller ever launches pickFolder before the
-                // toggle has been flipped.
+                // toggle has been flipped. Kept as direct, awaited prefsManager suspend
+                // calls (not settingsViewModel.setUseCustomFolder/setLibraryUri, which
+                // fire-and-forget into their own viewModelScope launch) so both writes
+                // are guaranteed to land, in order, before novels.clear()/startScan below
+                // run in this same coroutine - unchanged from pre-Stage-2.2 behavior.
                 prefsManager.setUseCustomFolder(true)
                 prefsManager.setLibraryUri(selectedUri.toString())
                 // Switching to a newly-picked folder mints entirely different novel IDs
@@ -962,6 +975,8 @@ class MainActivity : ComponentActivity() {
             prefsManager = PreferencesManager(this)
             contentRepo = TextChapterContentRepository(this)
             syncManager = SyncManager(this)
+            settingsViewModel = ViewModelProvider(this, SettingsViewModel.factory(prefsManager))
+                .get(SettingsViewModel::class.java)
         } catch (e: Throwable) {
             renderCrashScreen(e)
             return
@@ -1009,21 +1024,11 @@ class MainActivity : ComponentActivity() {
                 }
         }
 
-        // Watch theme preference
-        lifecycleScope.launch {
-            prefsManager.theme.collect { theme ->
-                currentTheme.value = theme
-            }
-        }
-
-        // Watch the System Default sub-preference too - a separate DataStore key (see
-        // PreferencesManager) and so a separate collect(), same "own launch per
-        // preference" pattern already used for theme/libraryUri/useCustomFolder above.
-        lifecycleScope.launch {
-            prefsManager.systemDefaultLightVariant.collect { variant ->
-                currentSystemDefaultLightVariant.value = variant
-            }
-        }
+        // Theme and its System Default sub-preference are no longer watched here -
+        // settingsViewModel's currentTheme/currentSystemDefaultLightVariant StateFlows
+        // (Stage 2.2 of Phase 2, see docs/arkarium/REFACTOR_PLAN.md) already collect
+        // prefsManager.theme/systemDefaultLightVariant themselves, scoped to
+        // viewModelScope instead of lifecycleScope.
 
         // Everything from here down (status-bar theming, HomeScreen and its new
         // empty-library state, etc.) is new UI code that runs on literally every cold
@@ -1049,6 +1054,11 @@ class MainActivity : ComponentActivity() {
             // onCreate the way currentTheme/currentSystemDefaultLightVariant are
             // collected would miss the system flipping while the app stays open.
             val systemInDarkTheme = isSystemInDarkTheme()
+            // Read here (rather than down with savedUri/useCustomFolder below) since
+            // resolvedTheme, computed immediately below, needs them before
+            // MaterialTheme{} even opens.
+            val currentTheme = settingsViewModel.currentTheme.collectAsState()
+            val currentSystemDefaultLightVariant = settingsViewModel.currentSystemDefaultLightVariant.collectAsState()
             val resolvedTheme = resolveTheme(
                 currentTheme.value,
                 currentSystemDefaultLightVariant.value,
@@ -1067,8 +1077,8 @@ class MainActivity : ComponentActivity() {
                 // which are siblings of Surface{}, not descendants of that Column - can also
                 // resolve a library root for "Add fiction from URL" / "Check for updates"
                 // without re-collecting these flows a second time.
-                val savedUri = prefsManager.libraryUri.collectAsState(initial = null)
-                val useCustomFolder = prefsManager.useCustomFolder.collectAsState(initial = false)
+                val savedUri = settingsViewModel.savedUri.collectAsState()
+                val useCustomFolder = settingsViewModel.useCustomFolder.collectAsState()
                 // Splash-screen behavior toggles (see SettingsScreen's "Splash Screen"
                 // section) - collected here too, same reasoning as savedUri/useCustomFolder
                 // above, and both default to true to match PreferencesManager's own default.
@@ -1401,24 +1411,34 @@ class MainActivity : ComponentActivity() {
                                 useCustomFolder = useCustomFolder.value,
                                 hasCustomFolderSelected = savedUri.value != null,
                                 systemDefaultLightVariant = currentSystemDefaultLightVariant.value,
-                                onThemeSelected = { theme ->
-                                    lifecycleScope.launch {
-                                        prefsManager.setTheme(theme)
-                                    }
-                                },
+                                // Routed through settingsViewModel (Stage 2.2, see
+                                // docs/arkarium/REFACTOR_PLAN.md) rather than calling
+                                // prefsManager.setTheme/setSystemDefaultLightVariant/
+                                // setUseCustomFolder directly - settingsViewModel is now the
+                                // single owner of writes to this state, matching the
+                                // Activity -> ViewModel -> service call chain the stage exists
+                                // to prove. Fire-and-forget (settingsViewModel's setters launch
+                                // their own viewModelScope coroutine) is safe for these three:
+                                // nothing downstream reads the write back before it lands -
+                                // onThemeSelected/onSystemDefaultLightVariantSelected have no
+                                // downstream at all, and onUseCustomFolderToggle's
+                                // resolveLibraryRoot call below already takes `enabled`
+                                // directly rather than re-reading useCustomFolder.value.
+                                onThemeSelected = { theme -> settingsViewModel.setTheme(theme) },
                                 onSystemDefaultLightVariantSelected = { variant ->
-                                    lifecycleScope.launch {
-                                        prefsManager.setSystemDefaultLightVariant(variant)
-                                    }
+                                    settingsViewModel.setSystemDefaultLightVariant(variant)
                                 },
                                 onUseCustomFolderToggle = { enabled ->
+                                    settingsViewModel.setUseCustomFolder(enabled)
+                                    // Switching sources mints different novel IDs (see
+                                    // ScannerImpl's id hash, keyed off root.uri) - clear
+                                    // first so the old source's novels don't linger
+                                    // alongside the new source's until the next scan's
+                                    // reconciliation pass catches up. Kept on lifecycleScope
+                                    // (not settingsViewModel, which owns no novel state) since
+                                    // novels/startScan belong to the Activity until Stage 2.3
+                                    // (LibraryViewModel) moves them.
                                     lifecycleScope.launch {
-                                        prefsManager.setUseCustomFolder(enabled)
-                                        // Switching sources mints different novel IDs (see
-                                        // ScannerImpl's id hash, keyed off root.uri) - clear
-                                        // first so the old source's novels don't linger
-                                        // alongside the new source's until the next scan's
-                                        // reconciliation pass catches up.
                                         novels.clear()
                                         // Turning custom folder ON with nothing picked yet
                                         // resolves to null here by design - leave the
