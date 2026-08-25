@@ -106,7 +106,7 @@ small - in general each stage below is its own shippable, revertable commit.
 `MainActivity.kt`: 1706 -> 1601 lines. Every call site (`resolveTheme(...)`,
 `colorSchemeFor(...)`, `Screen.Home`, etc.) is unchanged; only the imports moved.
 
-## Phase 2 - state/business logic into ViewModels (not yet started)
+## Phase 2 - state/business logic into ViewModels (Stage 2.1 done, rest not started)
 
 Split the Activity's `mutableStateOf` fields and their surrounding logic into a small
 number of feature-scoped ViewModels backed by `StateFlow`, rather than one
@@ -114,14 +114,22 @@ number of feature-scoped ViewModels backed by `StateFlow`, rather than one
 Unlike Phase 1, these stages aren't fully independent - each is still its own
 commit/PR, but the order below is deliberate:
 
-- **Stage 2.1 - pure functions first, no ViewModel yet.** Move `mergeNovelForRescan`
-  and `resolveLibraryRoot` out of `MainActivity` into a plain file of top-level
-  functions (e.g. `data/LibraryScan.kt`), same shape as Phase 1's `resolveTheme` move.
-  `resolveLibraryRoot` only touches `Context` to build a `DocumentFile`, so it takes
-  that as a parameter rather than becoming a method on anything. This is the lowest-
-  risk stage - a mechanical, behavior-preserving move like all of Phase 1 - and it
-  unblocks unit tests for `mergeNovelForRescan`'s field-by-field merge rules before
-  any ViewModel wiring exists to get in the way (rule 3).
+- **Stage 2.1 - done in this patch - pure functions first, no ViewModel yet.**
+  `mergeNovelForRescan` and `resolveLibraryRoot` moved out of `MainActivity` into
+  `data/LibraryScan.kt` as plain top-level functions, same shape as Phase 1's
+  `resolveTheme` move. `resolveLibraryRoot` only ever touched `Context` to build a
+  `DocumentFile`, so it now takes `context` as an explicit parameter instead of
+  relying on an Activity's implicit `this` - every call site inside
+  `MainActivity` passes `this@MainActivity` (several sites are inside
+  `lifecycleScope.launch { }`/Composable lambdas, where a bare `this` would resolve
+  to the wrong receiver). `mergeNovelForRescan`'s signature is unchanged. This was
+  the lowest-risk stage - a mechanical, behavior-preserving move like all of Phase 1 -
+  and it unblocks unit tests for `mergeNovelForRescan`'s field-by-field merge rules
+  before any ViewModel wiring exists to get in the way (rule 3): see
+  `LibraryScanTest`, covering the no-existing-row passthrough, the pageSize/
+  readingStatus carry-over, the remote-vs-local description/genres precedence, the
+  `authorsFolderFound` fallback, and the sync-bookkeeping carry-over.
+  `MainActivity.kt`: 1726 -> 1670 lines.
 - **Stage 2.2 - `SettingsViewModel`.** `currentTheme`, `currentSystemDefaultLightVariant`,
   `useCustomFolder`, `savedUri` - thin, mostly a `StateFlow`-shaped wrapper around
   `PreferencesManager`'s existing surface (or an extension of it). Done first among
