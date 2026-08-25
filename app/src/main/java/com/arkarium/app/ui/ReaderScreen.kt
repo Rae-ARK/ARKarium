@@ -22,7 +22,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.Brightness7
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -158,6 +160,9 @@ fun ReaderScreen(
     // since neither of those two are persisted across chapters/sessions either.
     val fontFamilyChoice = remember { mutableStateOf(ReaderFontFamily.SERIF) }
     val readingMode = remember { mutableStateOf(readingModeFor(appTheme)) }
+    // Read-aloud. See Tts.kt - one engine instance persists for the whole reading
+    // session (including across Previous/Next), same reuse behavior as the state above.
+    val tts = rememberChapterTts()
     val showControls = remember { mutableStateOf(true) }
     // Separate from showControls: showControls is the tap-anywhere immersive toggle
     // for the top bar + progress readout, but font/spacing/mode were only reachable
@@ -178,6 +183,11 @@ fun ReaderScreen(
     // whenever the chapter actually changes.
     LaunchedEffect(chapter.id) {
         scrollState.scrollTo(0)
+        // Otherwise Previous/Next would keep reading the outgoing chapter's remaining
+        // queued chunks over the top of the newly-loaded one, since the engine (and its
+        // queue) persists across chapter navigation - see rememberChapterTts's doc
+        // comment on why it isn't torn down and recreated here.
+        tts.stop()
     }
 
     fun currentProgress(): Float {
@@ -229,6 +239,23 @@ fun ReaderScreen(
                 navigationIcon = {
                     IconButton(onClick = { onBack(currentProgress()) }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                    }
+                },
+                // Only shown once the engine's finished initializing successfully - see
+                // ChapterTtsState.isAvailable's doc comment. Toggles between reading the
+                // current chapter body from the top and stopping mid-read; there's no
+                // pause/resume since Android's TextToSpeech doesn't expose a true pause,
+                // only stop.
+                actions = {
+                    if (tts.isAvailable) {
+                        IconButton(onClick = {
+                            if (tts.isSpeaking) tts.stop() else tts.speak(content)
+                        }) {
+                            Icon(
+                                if (tts.isSpeaking) Icons.Filled.Stop else Icons.Filled.PlayArrow,
+                                contentDescription = if (tts.isSpeaking) "Stop reading aloud" else "Read chapter aloud"
+                            )
+                        }
                     }
                 },
                 modifier = Modifier.background(backgroundColor)
@@ -449,11 +476,43 @@ fun ReaderScreen(
                     )
                 }
 
+                // Read-aloud speed control. Only shown once the engine's available -
+                // same gating as the TopAppBar play/stop button, since a speed slider
+                // for a feature the device can't run would be a dead control. Applies
+                // immediately via ChapterTtsState.setRate even mid-read: Android's
+                // TextToSpeech picks up a new rate on the next queued utterance, so a
+                // change here takes effect at the next chunk boundary rather than
+                // requiring a stop/restart.
+                if (tts.isAvailable) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Speed:", style = MaterialTheme.typography.labelSmall, color = textColor)
+                        Slider(
+                            value = tts.speechRate,
+                            onValueChange = { tts.setRate(it) },
+                            valueRange = 0.5f..2.5f,
+                            steps = 7,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp)
+                        )
+                        Text(
+                            "${String.format("%.1f", tts.speechRate)}x",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textColor,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+                }
+
                 // Font family toggle. Same segmented-Surface pattern as the Mode row
                 // below it, so it reads as "another control in this family" rather than
                 // a bolted-on addition. Each segment's label is rendered in the font it
-                // selects, so the choice previews itself instead of just naming itself.
-                Row(
+                // selects, so the choice previews itself instead of just naming itself.                Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp),
