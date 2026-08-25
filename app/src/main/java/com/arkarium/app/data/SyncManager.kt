@@ -453,20 +453,26 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         // Replace-on-write, matching docs/arkarium/SYNC_MVP.md §3 ("no delta/binary patching,
         // whole-file replace on any mismatch") rather than trying to patch in place.
         dir.findFile(fileName)?.delete()
-        // Always application/octet-stream here, deliberately NOT guessMimeType(fileName)
-        // (e.g. "application/json" for a .json file) - DocumentFile.createFile ultimately
-        // calls DocumentsContract.createDocument(), and several SAF DocumentsProvider
-        // implementations (including the default external-storage/app-private-storage
-        // ones this app writes synced files into) append the extension implied by the
-        // MIME type onto the display name whenever their own "does it already have this
-        // extension?" check doesn't recognize it - even when fileName already ends in
-        // that exact extension. That turned "metadata.json" into "metadata.json.json" on
-        // disk, silently, with nothing surfacing an error - the file existed, just under
-        // a name none of ScannerImpl's *.json lookups (readLocalMetadata, authors/*.json
-        // in scanAuthorsFolder) will ever match. octet-stream carries no extension
-        // mapping for the provider to "helpfully" apply, so the exact fileName we pass -
-        // extension and all - is what actually lands on disk.
-        val newFile = dir.createFile("application/octet-stream", fileName)
+        // Deliberately NOT guessMimeType(fileName) (e.g. "application/json" for a .json
+        // file) and NOT "application/octet-stream" either - DocumentFile.createFile
+        // ultimately calls DocumentsContract.createDocument(), and several SAF
+        // DocumentsProvider implementations (including the default
+        // external-storage/app-private-storage ones this app writes synced files into)
+        // append the extension implied by the MIME type onto the display name whenever
+        // their own "does it already have this extension?" check doesn't recognize it -
+        // even when fileName already ends in that exact extension. That turned
+        // "metadata.json" into "metadata.json.json" on disk with a guessed mimeType.
+        // Switching to "application/octet-stream" was an earlier attempt to dodge that,
+        // on the theory that octet-stream has no extension mapping for a provider to
+        // apply - but Android's default MIME table *does* map application/octet-stream
+        // to "bin" (it's the standard fallback mapping, same one used for unknown
+        // downloads), so providers were still appending an extension, just ".bin"
+        // instead of ".json" - e.g. "metadata.json" landing on disk as
+        // "metadata.json.bin", again matching none of ScannerImpl's lookups. "*/*" has
+        // no reverse entry in MimeTypeMap at all, so there's nothing for any provider to
+        // "helpfully" apply - the exact fileName we pass, extension and all, is what
+        // actually lands on disk.
+        val newFile = dir.createFile("*/*", fileName)
             ?: throw IOException("Could not create file $fileName")
         context.contentResolver.openOutputStream(newFile.uri)?.use { it.write(bytes) }
             ?: throw IOException("Could not open $fileName for writing")
