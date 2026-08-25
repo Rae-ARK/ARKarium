@@ -340,14 +340,31 @@ still needs to travel through the destination itself.
   set once on screen entry) moves to a `LaunchedEffect(novelId)` keyed off the route
   argument, the same pattern `Screen.Author`'s own `LaunchedEffect(screen.authorId)`
   already uses.
-- **Stage 3.5 - cleanup.** Delete `navigation/AppState.kt`'s `Screen` sealed class, the
-  `currentScreen`/`showSplash` interplay's now-dead branches, and any
-  `this@MainActivity`-scoped navigation helpers Stages 3.1-3.4 left orphaned once every
-  case routes through `NavHost`. `MetadataSearchState`/`AddFictionState`/
-  `SyncAllState`/`SyncCheckState`/`SyncResolutionState` stay in `AppState.kt`
-  unchanged - they drive dialogs layered over the content, not `Screen` destinations,
-  so they're outside this migration's scope regardless of which mechanism routes the
-  screen underneath them.
+- **Stage 3.5 - done in this patch - cleanup.** Deleted `navigation/AppState.kt`'s
+  `Screen` sealed class entirely, along with `MainActivity`'s `currentScreen` field, the
+  `composable("legacy") { when (currentScreen.value) { else -> {} } }` destination it
+  only existed to drive (dead since Stage 3.4 - nothing constructed a `Screen` or wrote
+  `currentScreen.value` to reach it anymore), and every `currentScreen.value = Screen.X`
+  write that used to sit next to a `navController.navigate(...)` call (`onBrowseClick`,
+  `onSettingsClick`, `onSearch`, `onSelectFolderClick`, `FictionBrowse`'s `onBack`, and
+  `Settings`'s `onBack`) - `NavController`'s own back stack was already the thing every
+  read site actually relied on. `showSplash` was checked against the "and `showSplash`
+  interplay's now-dead branches" phrasing above and kept as-is: it gates the one-time
+  splash screen, which was never a `Screen` case or `NavHost` destination to begin with
+  (see its own doc comment), so there was no dead branch there to remove - only its
+  comment's stale "wherever currentScreen already points" phrasing needed updating to
+  refer to `NavHost`'s back stack instead. No `this@MainActivity`-scoped navigation
+  helpers were left orphaned by Stages 3.1-3.4 to remove.
+  `MetadataSearchState`/`AddFictionState`/`SyncAllState`/`SyncCheckState`/
+  `SyncResolutionState` stay in `AppState.kt` unchanged, as planned - they drive dialogs
+  layered over `NavHost`'s content, not `Screen` destinations, so they were always
+  outside this migration's scope. `MainActivity.kt`: 1454 -> 1428 lines;
+  `navigation/AppState.kt`: 106 -> 72 lines.
+
+Phase 3 is now complete: every destination routes through `NavController`/`NavHost`, and
+the hand-rolled `Screen` sealed class plus the `currentScreen: MutableState<Screen>` +
+`when` block it existed to support - the thing this phase's opening paragraph identified
+as needing to go - are gone.
 Every stage keeps `Screen`'s *content* (which composable renders, with which data)
 identical to today - only how the destination is reached and how far back "Back"
 goes changes. None of the four services or five Stage-2 ViewModels change in this

@@ -70,7 +70,6 @@ import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.SyncManager
 import com.arkarium.app.data.NovelStatus
 import com.arkarium.app.data.TextChapterContentRepository
-import com.arkarium.app.navigation.Screen
 import com.arkarium.app.navigation.MetadataSearchState
 import com.arkarium.app.navigation.AddFictionState
 import com.arkarium.app.navigation.SyncAllState
@@ -89,12 +88,24 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-// Screen (navigation destinations) and the *SearchState/*State dialog-driving sealed
-// classes formerly declared here now live in navigation/AppState.kt; the color-scheme
-// helpers (warmPaperColorScheme, colorSchemeFor, resolveTheme) formerly declared here
-// now live in ui/theme/AppTheme.kt - see docs/arkarium/REFACTOR_PLAN.md. Only the
-// imports above changed; every call site below is unchanged since the types/functions
-// kept their names.
+// The *SearchState/*State dialog-driving sealed classes formerly declared here now live
+// in navigation/AppState.kt; the color-scheme helpers (warmPaperColorScheme,
+// colorSchemeFor, resolveTheme) formerly declared here now live in ui/theme/AppTheme.kt -
+// see docs/arkarium/REFACTOR_PLAN.md. Only the imports above changed; every call site
+// below is unchanged since the types/functions kept their names.
+//
+// Screen (navigation destinations) and this Activity's own currentScreen field - along
+// with the "legacy" NavHost destination and the now-fully-dead `when (currentScreen.value)`
+// branch inside it - were deleted in Stage 3.5 (see docs/arkarium/REFACTOR_PLAN.md).
+// Stages 3.1-3.4 had already migrated every real destination onto its own NavController
+// route ("home", "novelDetail/{novelId}", "reader/{novelId}/{chapterId}", etc.); by the
+// end of Stage 3.4 nothing constructed a Screen or read currentScreen.value to decide
+// what to show anymore, so both were pure dead weight kept alive only for a `when`
+// exhaustiveness check on a branch that could never compose. Every entry point that used
+// to write `currentScreen.value = Screen.X` alongside a `navController.navigate(...)` call
+// now just does the navigate - NavController's own back stack and current-destination
+// tracking are the single source of truth for "what's showing" from Stage 3.1 onward, the
+// same conclusion Stage 3.4's `from`-field removal already reached for Screen.Author.
 //
 // currentTheme/currentSystemDefaultLightVariant/useCustomFolder/savedUri formerly
 // lived here as an Activity mutableStateOf field (the first two) or a per-composition
@@ -143,11 +154,10 @@ class MainActivity : ComponentActivity() {
     // same "state lives in the Activity, screen just renders it" pattern as chapters/arcs.
     private val authorPageAuthor = mutableStateOf<AuthorEntity?>(null)
     private val authorPageNovels = mutableStateListOf<NovelEntity>()
-    private val currentScreen = mutableStateOf<Screen>(Screen.Home)
     // Gates the branded splash (see SplashScreen.kt) shown for a moment on every
-    // cold launch before the real UI (Home, or wherever currentScreen already
-    // points) becomes visible. Lives here rather than as a Screen case since it's
-    // not a navigable destination - nothing ever sets currentScreen back to it.
+    // cold launch before the real UI (Home, or wherever NavHost's back stack already
+    // points) becomes visible. Lives here rather than as a NavHost destination since
+    // it's not a navigable one - nothing ever navigates back to it.
     private val showSplash = mutableStateOf(true)
     // Set when a "new chapter" notification is tapped (see onNewIntent/handleNotificationIntent
     // below) and read by the LaunchedEffect in renderMainContent that navigates to it -
@@ -567,10 +577,9 @@ class MainActivity : ComponentActivity() {
                 // Stage 3.1 (see docs/arkarium/REFACTOR_PLAN.md): a single NavController
                 // hoisted here, at the top of the composable tree, same placement
                 // "Migrate Jetpack Navigation to Navigation Compose" recommends for the
-                // top-level App composable. Only Settings/PrivacyPolicy/TermsAndConditions/
-                // AboutMe route through it for now (see the "legacy" NavHost destination
-                // below) - every other Screen case still routes through currentScreen's
-                // manual `when` block until later Stage 3.x's migrate them too.
+                // top-level App composable. Every destination below routes through it as
+                // of Stage 3.4; Stage 3.5 removed the manual currentScreen/Screen fallback
+                // this comment used to describe.
                 val navController = rememberNavController()
                 // Hoisted above the splash/Surface split (rather than declared inside the
                 // Column below, where they used to live) so the sync dialogs further down -
@@ -663,23 +672,15 @@ class MainActivity : ComponentActivity() {
                     color = colorScheme.background,
                     contentColor = colorScheme.onBackground
                 ) {
-                // Stage 3.1-3.2 (see docs/arkarium/REFACTOR_PLAN.md): NavHost scaffolding.
-                // "legacy" is every Screen case that hasn't been migrated off manual
-                // currentScreen routing yet - it just wraps the old when-block verbatim,
-                // still switching on currentScreen.value exactly as before. "home" and
-                // "fictionBrowse" (Stage 3.2) and Settings/PrivacyPolicy/
-                // TermsAndConditions/AboutMe (Stage 3.1) get their own fixed routes
-                // below; only NovelDetail/Reader/ChapterEditor/Author still route
-                // through "legacy" now.
+                // Stage 3.1-3.4 (see docs/arkarium/REFACTOR_PLAN.md): every destination
+                // now routes through NavHost - the manual currentScreen/Screen `when`
+                // block, and the "legacy" destination that wrapped it, were removed in
+                // Stage 3.5.
                 NavHost(
                     navController = navController,
-                    // Stage 3.2 (see docs/arkarium/REFACTOR_PLAN.md): Home becomes the
-                    // NavHost's own startDestination, replacing currentScreen's
-                    // mutableStateOf<Screen>(Screen.Home) default as the thing that
-                    // actually decides what's on screen first. currentScreen still
-                    // defaults to Screen.Home (unchanged) and stays in sync below purely
-                    // for bookkeeping - nothing reads it to decide whether "home" is
-                    // showing anymore.
+                    // Stage 3.2 (see docs/arkarium/REFACTOR_PLAN.md): Home is the
+                    // NavHost's own startDestination - the thing that actually decides
+                    // what's on screen first.
                     startDestination = "home",
                     modifier = Modifier.fillMaxSize()
                 ) {
@@ -732,16 +733,13 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onBrowseClick = {
-                                currentScreen.value = Screen.FictionBrowse()
                                 navController.navigate("fictionBrowse")
                             },
                             onSettingsClick = {
-                                currentScreen.value = Screen.Settings
                                 navController.navigate("settings")
                             },
                             onSearch = { query ->
                                 if (query.isNotEmpty()) {
-                                    currentScreen.value = Screen.FictionBrowse(initialQuery = query)
                                     navController.navigate("fictionBrowse?initialQuery=${Uri.encode(query)}")
                                 }
                             },
@@ -751,7 +749,6 @@ class MainActivity : ComponentActivity() {
                             // it just routes to Settings, the single place "Use custom
                             // folder" and the SAF picker now live.
                             onSelectFolderClick = {
-                                currentScreen.value = Screen.Settings
                                 navController.navigate("settings")
                             },
                             onAddFictionClick = { metadataViewModel.addFictionState.value = AddFictionState.EnteringName },
@@ -786,32 +783,10 @@ class MainActivity : ComponentActivity() {
                                 }
                             },
                             onBack = {
-                                currentScreen.value = Screen.Home
                                 navController.popBackStack()
                             }
                         )
                     }
-                }
-
-                composable("legacy") {
-                Column(
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    // Stage 3.4 (see docs/arkarium/REFACTOR_PLAN.md) migrated the last two
-                    // real cases this `when` still handled - Reader and Author - to their
-                    // own "reader/{novelId}/{chapterId}"/"author/{authorId}" NavHost routes
-                    // below, the same way Stage 3.1-3.3 migrated every other Screen case
-                    // before them. Every entry point into what used to be "legacy" now
-                    // navigates the NavController directly instead of writing
-                    // currentScreen.value, so this branch should never actually compose for
-                    // any case anymore - "legacy" itself, and this now-fully-dead `when`,
-                    // are left in place only because removing them is Stage 3.5's job
-                    // (deleting Screen entirely, currentScreen, and every branch that only
-                    // existed to route through it), not this stage's.
-                    when (currentScreen.value) {
-                        else -> {}
-                    }
-                }
                 }
 
                 // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md): the first stage that
@@ -840,9 +815,9 @@ class MainActivity : ComponentActivity() {
                         // The novel this route pointed to is no longer in the library -
                         // most likely SyncResolutionDialog's onRemoveFromLibrary below just
                         // deleted it via syncViewModel.resolveByRemovingFromLibrary. That
-                        // used to need an explicit onRemoved callback checking whether
-                        // currentScreen was showing the just-removed novel and patching it
-                        // back to Home; now that this destination resolves its own novel
+                        // used to need an explicit onRemoved callback checking whether the
+                        // just-removed novel was the one on screen and patching it back to
+                        // Home; now that this destination resolves its own novel
                         // from libraryViewModel.novels instead of carrying one as Screen
                         // payload, the removal is enough on its own - the next
                         // recomposition sees a null novel here, and this LaunchedEffect just
@@ -1221,7 +1196,6 @@ class MainActivity : ComponentActivity() {
                             onAboutMe = { navController.navigate("about_me") },
                             onBack = {
                                 navController.popBackStack()
-                                currentScreen.value = Screen.Home
                             }
                         )
                     }
