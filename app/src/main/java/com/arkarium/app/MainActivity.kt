@@ -53,7 +53,6 @@ import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterOverrideEntity
 import com.arkarium.app.data.GoogleBooksMetadataProvider
-import com.arkarium.app.data.mergeNovelForRescan
 import com.arkarium.app.data.resolveLibraryRoot
 import com.arkarium.app.data.ReadingProgressEntity
 import com.arkarium.app.data.ScannerImpl
@@ -63,12 +62,7 @@ import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.SyncManager
-import com.arkarium.app.data.FictionLut
-import com.arkarium.app.data.relayBaseUrlForSlug
 import com.arkarium.app.data.NovelStatus
-import com.arkarium.app.data.SyncStatus
-import com.arkarium.app.data.SourceGoneException
-import com.arkarium.app.data.MissingLocalFolderException
 import com.arkarium.app.data.TextChapterContentRepository
 import com.arkarium.app.navigation.Screen
 import com.arkarium.app.navigation.MetadataSearchState
@@ -82,6 +76,7 @@ import com.arkarium.app.ui.theme.resolveTheme
 import com.arkarium.app.viewmodel.LibraryViewModel
 import com.arkarium.app.viewmodel.MetadataViewModel
 import com.arkarium.app.viewmodel.SettingsViewModel
+import com.arkarium.app.viewmodel.SyncViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -104,9 +99,18 @@ import java.util.UUID
 //
 // metadataSearchState/addFictionState and fetchMetadataFor/applyMetadata formerly
 // lived here too - all four now come from metadataViewModel (Stage 2.4 of Phase 2,
-// see docs/arkarium/REFACTOR_PLAN.md). addFictionByName - the other writer of
-// addFictionState - stays here (it's Sync logic, not Metadata logic) and now writes
-// metadataViewModel.addFictionState.value directly.
+// see docs/arkarium/REFACTOR_PLAN.md).
+//
+// syncAllState/syncCheckState/syncResolutionState and the sync/resolution logic
+// against SyncManager - scanSingleSyncedNovel, addFictionByName, syncAllRaeArkNovels,
+// checkForUpdates, and the three resolveXxx actions - formerly lived here too. All of
+// it now comes from syncViewModel (Stage 2.5 of Phase 2, the last of the four
+// ViewModels the plan calls for - see docs/arkarium/REFACTOR_PLAN.md and
+// SyncViewModel's own doc comment for why addFictionByName moved here rather than
+// staying with the addFictionState it writes). Every place this file used to patch
+// currentScreen directly inside one of those functions now does it via a callback
+// passed to syncViewModel instead, the same onApplied shape applyMetadata above
+// already established.
 
 class MainActivity : ComponentActivity() {
 
@@ -132,9 +136,6 @@ class MainActivity : ComponentActivity() {
     // points) becomes visible. Lives here rather than as a Screen case since it's
     // not a navigable destination - nothing ever sets currentScreen back to it.
     private val showSplash = mutableStateOf(true)
-    private val syncAllState = mutableStateOf<SyncAllState>(SyncAllState.Idle)
-    private val syncCheckState = mutableStateOf<SyncCheckState>(SyncCheckState.Idle)
-    private val syncResolutionState = mutableStateOf<SyncResolutionState>(SyncResolutionState.Idle)
     // Set when a "new chapter" notification is tapped (see onNewIntent/handleNotificationIntent
     // below) and read by the LaunchedEffect in renderMainContent that navigates to it -
     // null the rest of the time. Kept as Activity state rather than acted on directly
@@ -166,6 +167,11 @@ class MainActivity : ComponentActivity() {
     // (one of its two dependencies, alongside db), same pattern as libraryViewModel
     // itself.
     private lateinit var metadataViewModel: MetadataViewModel
+    // Stage 2.5 of Phase 2 (docs/arkarium/REFACTOR_PLAN.md) - the fourth and last
+    // ViewModel pulled out of MainActivity. Constructed in onCreate right after
+    // metadataViewModel (one of its dependencies, alongside db/scanner/syncManager/
+    // libraryViewModel), same pattern as the other three.
+    private lateinit var syncViewModel: SyncViewModel
 
     // Only ever launched from a "Notify me when new chapters are available" toggle
     // being switched on (see NovelDetailScreen's onToggleNotify wiring below) - API <
@@ -218,72 +224,9 @@ class MainActivity : ComponentActivity() {
     // see e.g. pickFolder's existing `DocumentFile.fromTreeUri(this@MainActivity,
     // ...)` above for the same pattern already in use).
 
-    // Scoped counterpart to startScan (see docs/arkarium/NEXT_FIXES.md #4): runs the exact same
-    // discover -> merge -> upsert -> scanChaptersForNovel sequence startScan's
-    // onDiscovered callback runs per-novel, but for exactly one already-known folder,
-    // via ScannerImpl.scanSingleNovel instead of a full scanRoot() pass. Used by
-    // syncAllRaeArkNovels so syncing fiction M into a library of N-1 other synced
-    // novels doesn't re-list and re-fingerprint all N-1 of them on every iteration.
-    // Deliberately does NOT do startScan's stale-novel reconciliation (that requires
-    // seeing every folder in one pass, which is exactly what this method avoids) - the
-    // library's next full scan (e.g. next app launch) still catches anything that
-    // needs it.
-    private suspend fun scanSingleSyncedNovel(
-        libraryRoot: DocumentFile,
-        novelFolder: DocumentFile,
-        onProgress: suspend (message: String) -> Unit = {}
-    ): NovelEntity {
-        // Captured by the onAuthorsDiscovered callback below (fired before
-        // scanSingleNovel returns) so it's available down here for mergeNovelForRescan
-        // - see that callback's own comment and ScannerImpl.scanRoot's doc comment on
-        // the same flag.
-        var authorsFolderFound = false
-        val onAuthorsDiscovered: suspend (List<AuthorEntity>, Boolean) -> Unit = { discoveredAuthors, found ->
-            authorsFolderFound = found
-            // See startScan's matching callback: only touch the authors table when
-            // this pass actually found authors/ - an empty discoveredAuthors list
-            // from a not-found folder must never be read as "delete every known
-            // author."
-            if (found) {
-                val seenIds = discoveredAuthors.map { it.id }.toSet()
-                discoveredAuthors.forEach { db.authorDao().upsert(it) }
-                db.authorDao().all().filter { it.id !in seenIds }.forEach { stale ->
-                    db.authorDao().delete(stale.id)
-                }
-            }
-        }
-        var scanned = scanner.scanSingleNovel(
-            root = libraryRoot,
-            novelFolder = novelFolder,
-            onAuthorsDiscovered = onAuthorsDiscovered
-        )
-        val existing = db.novelDao().findById(scanned.id)
-        // mergeNovelForRescan's authorsFolderFound fallback only ever runs when
-        // `existing` is non-null - it short-circuits with `if (existing == null)
-        // return scanned` before ever looking at the flag. So a brand-new novel
-        // (this is its very first scan, no row to fall back to) gets zero benefit
-        // from that resilience fix: if this pass didn't see authors/ - e.g. the
-        // authors/<id>.json this fiction's sync just wrote hasn't surfaced in a SAF
-        // listFiles() call yet - authorId is baked in as null the moment this row is
-        // inserted, and nothing will ever re-scan just this one novel again to fix
-        // it (only the next full startScan() would). One immediate retry gives that
-        // transient listing gap a chance to resolve before the row is ever created.
-        if (existing == null && !authorsFolderFound) {
-            scanned = scanner.scanSingleNovel(
-                root = libraryRoot,
-                novelFolder = novelFolder,
-                onAuthorsDiscovered = onAuthorsDiscovered
-            )
-        }
-        val novel = mergeNovelForRescan(scanned, existing, authorsFolderFound)
-        db.novelDao().upsert(novel)
-        withContext(Dispatchers.Main) {
-            val idx = libraryViewModel.novels.indexOfFirst { it.id == novel.id }
-            if (idx >= 0) libraryViewModel.novels[idx] = novel else libraryViewModel.novels.add(novel)
-        }
-        scanner.scanChaptersForNovel(novelFolder, novel.id, db, onProgress)
-        return novel
-    }
+    // scanSingleSyncedNovel formerly lived here too (see docs/arkarium/NEXT_FIXES.md
+    // #4) - it now lives on syncViewModel alongside syncAllRaeArkNovels, its only
+    // caller (Stage 2.5 of Phase 2, see docs/arkarium/REFACTOR_PLAN.md).
 
     // startScan, loadNovelDetails, and refreshRecentlyRead formerly lived here as
     // Activity-private methods - all three now live on libraryViewModel (Stage 2.3 of
@@ -349,244 +292,13 @@ class MainActivity : ComponentActivity() {
         libraryViewModel.refreshRecentlyRead()
     }
 
-    // Kicks off "Add fiction" end to end (see docs/arkarium/SYNC_MVP.md §4/Stage 3, and the
-    // later move to single-origin name lookup): resolves the typed name to a slug via
-    // FictionLut, builds the one relay's URL for it, downloads every file the relay's
-    // manifest.json lists into a fresh folder under the active library root, then runs
-    // the exact same startScan() pass every other novel goes through so the new folder
-    // is discovered the normal way - no separate "remote novel" render path. The
-    // folder's eventual novel id isn't known until that scan assigns it, so this
-    // recomputes ScannerImpl's own id formula
-    // (UUID.nameUUIDFromBytes(root.uri + ":" + folder.uri)) rather than guessing, and
-    // only attaches the sync bookkeeping (SyncedFileEntity rows, NovelDao.updateSyncState)
-    // once the scan has actually run and that id is confirmed to exist.
-    private fun addFictionByName(name: String, libraryRoot: DocumentFile) {
-        val slug = FictionLut.lookup(this, name)
-        if (slug == null) {
-            metadataViewModel.addFictionState.value = AddFictionState.Error("Couldn't find a fiction called \"$name\".")
-            return
-        }
-        val url = relayBaseUrlForSlug(slug)
-        metadataViewModel.addFictionState.value = AddFictionState.InProgress("Fetching manifest...")
-        lifecycleScope.launch {
-            try {
-                // `name` (the user-typed fiction name that resolved to this slug) becomes
-                // the actual on-disk folder name - see SyncManager.downloadInitial's doc
-                // comment on why that's now safe to do (folder identity for sync no
-                // longer comes from this name once the novel exists).
-                val (folderName, outcome) = syncManager.downloadInitial(url, libraryRoot, name) { message ->
-                    withContext(Dispatchers.Main) {
-                        metadataViewModel.addFictionState.value = AddFictionState.InProgress(message)
-                    }
-                }
-                withContext(Dispatchers.Main) {
-                    metadataViewModel.addFictionState.value = AddFictionState.InProgress("Adding to your library...")
-                }
-                val folder = libraryRoot.findFile(folderName)
-                    ?: throw java.io.IOException("The downloaded fiction folder went missing before it could be scanned")
-                val novelId = UUID.nameUUIDFromBytes(
-                    (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
-                ).toString()
-                libraryViewModel.startScan(libraryRoot)
-                db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
-                db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis(), folderName)
-                val updated = db.novelDao().findById(novelId)
-                if (updated != null) {
-                    val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
-                    if (idx >= 0) libraryViewModel.novels[idx] = updated
-                }
-                metadataViewModel.addFictionState.value = AddFictionState.Hidden
-            } catch (e: Exception) {
-                metadataViewModel.addFictionState.value = AddFictionState.Error("Couldn't add this fiction: ${e.message}")
-            }
-        }
-    }
-
-    // "Sync all Rae ARK's novels" (EmptyLibraryPrompt's primary first-run action, see
-    // HomeScreen.kt). Downloads every fiction FictionLut.allEntries lists, one after
-    // another, reusing exactly the same per-fiction download/persist steps as
-    // addFictionByName above - this is just that same flow run in a loop with one
-    // shared progress dialog instead of one dialog per fiction.
-    //
-    // Two differences from the original version (see docs/arkarium/NEXT_FIXES.md #4 and #2):
-    //
-    // - Each iteration now calls scanSingleSyncedNovel (scoped to just the one
-    //   just-downloaded folder) instead of a full startScan() pass. The old version's
-    //   full-rescan-per-iteration was O(M x N) SAF directory listings for M fictions
-    //   being synced into a library of N - every already-synced novel got re-listed
-    //   and re-fingerprinted on every single loop iteration, not just the one that
-    //   actually changed. This keeps the same "show up as it finishes" UX (each
-    //   fiction is still discovered and added to `novels` the moment its own download
-    //   completes) without paying for a full-library rescan per fiction.
-    // - A SourceGoneException for one fiction (the relay 404s on its manifest - e.g. a
-    //   stale FictionLut entry) no longer aborts the whole batch. It's reported and
-    //   skipped, and the batch continues with the next fiction - a single stale/removed
-    //   entry shouldn't block every other fiction from syncing. Any other exception
-    //   (a real relay/network problem) still stops the batch, same as before, so a
-    //   genuine outage isn't masked by "finished anyway."
-    private fun syncAllRaeArkNovels(libraryRoot: DocumentFile) {
-        val entries = FictionLut.allEntries(this)
-        if (entries.isEmpty()) {
-            syncAllState.value = SyncAllState.Error("No fictions are listed to sync.")
-            return
-        }
-        syncAllState.value = SyncAllState.InProgress("Starting...")
-        lifecycleScope.launch {
-            val skipped = mutableListOf<String>()
-            var syncedCount = 0
-            try {
-                for ((index, entry) in entries.withIndex()) {
-                    val (displayName, slug) = entry
-                    val url = relayBaseUrlForSlug(slug)
-                    withContext(Dispatchers.Main) {
-                        syncAllState.value =
-                            SyncAllState.InProgress("${index + 1}/${entries.size}: Fetching \"$displayName\"...")
-                    }
-                    try {
-                        // `displayName` (from FictionLut.allEntries) becomes the actual
-                        // on-disk folder name, same as addFictionByName above.
-                        val (folderName, outcome) = syncManager.downloadInitial(url, libraryRoot, displayName) { message ->
-                            withContext(Dispatchers.Main) {
-                                syncAllState.value =
-                                    SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message")
-                            }
-                        }
-                        val folder = libraryRoot.findFile(folderName)
-                            ?: throw java.io.IOException("\"$displayName\" went missing before it could be scanned")
-                        val novelId = UUID.nameUUIDFromBytes(
-                            (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
-                        ).toString()
-                        // Scoped scan of just this fiction's folder (see docs/arkarium/NEXT_FIXES.md
-                        // #4) - shows up in the library as soon as it's done, same as
-                        // before, without re-scanning every other already-synced novel.
-                        scanSingleSyncedNovel(libraryRoot, folder) { message ->
-                            withContext(Dispatchers.Main) {
-                                syncAllState.value =
-                                    SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message")
-                            }
-                        }
-                        db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
-                        db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis(), folderName)
-                        val updated = db.novelDao().findById(novelId)
-                        if (updated != null) {
-                            withContext(Dispatchers.Main) {
-                                val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
-                                if (idx >= 0) libraryViewModel.novels[idx] = updated
-                            }
-                        }
-                        syncedCount++
-                    } catch (e: SourceGoneException) {
-                        // This one fiction isn't served here anymore (stale LUT entry, or
-                        // the author removed it) - report and move on rather than blocking
-                        // every other fiction in the batch behind it.
-                        skipped.add(displayName)
-                    }
-                }
-                val summary = StringBuilder("Synced $syncedCount novel(s).")
-                if (skipped.isNotEmpty()) {
-                    summary.append(" Skipped (source unavailable): ${skipped.joinToString(", ")}.")
-                }
-                syncAllState.value = SyncAllState.Done(summary.toString())
-            } catch (e: Exception) {
-                syncAllState.value = SyncAllState.Error("Sync stopped: ${e.message}")
-            }
-        }
-    }
-
-    // Re-syncs an already-added fiction against its relay (see docs/arkarium/SYNC_MVP.md, Stage
-    // 3). SyncManager.sync's SyncOutcome.files is documented as the complete new file
-    // set, not a delta (see SyncManager.kt) - so on a real change this replaces
-    // SyncedFileEntity wholesale rather than patching it, and only re-runs startScan
-    // when something actually changed, so an "already up to date" check stays a single
-    // manifest fetch instead of paying for a full rescan every time (docs/arkarium/SYNC_MVP.md
-    // "Future considerations" #5).
-    // `allowRecreateMissingFolder` is only ever true when the user has explicitly
-    // confirmed it via the sync-resolution dialog (see syncResolutionState below) -
-    // an automatic/background-triggered call always leaves it false, so a missing
-    // local folder surfaces as a NeedsResolution prompt instead of a silent
-    // redownload (see docs/arkarium/NEXT_FIXES.md #2 and SyncManager.sync's own doc comment).
-    private fun checkForUpdates(
-        novel: NovelEntity,
-        libraryRoot: DocumentFile,
-        allowRecreateMissingFolder: Boolean = false
-    ) {
-        syncCheckState.value = SyncCheckState.InProgress(novel, "Checking for updates...")
-        lifecycleScope.launch {
-            try {
-                val sourceUrl = novel.syncSourceUrl
-                    ?: throw IllegalStateException("This novel has no sync source")
-                val knownFiles = db.syncedFileDao().forNovel(novel.id)
-                val outcome = syncManager.sync(novel, libraryRoot, knownFiles, allowRecreateMissingFolder) { message ->
-                    withContext(Dispatchers.Main) {
-                        syncCheckState.value = SyncCheckState.InProgress(novel, message)
-                    }
-                }
-                if (outcome.changed) {
-                    db.syncedFileDao().deleteForNovel(novel.id)
-                    db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novel.id) })
-                    // outcome.folderName is always set on this branch (see SyncManager.sync -
-                    // it's only ever null on the early "already up to date" return, which
-                    // can't be true here since outcome.changed is true). The fallback chain
-                    // is just defense-in-depth against DocumentFile.name's nullable type.
-                    db.novelDao().updateSyncState(
-                        novel.id, sourceUrl, outcome.newVersion, System.currentTimeMillis(),
-                        outcome.folderName ?: novel.syncFolderName ?: SyncManager.slugForUrl(sourceUrl)
-                    )
-                    // This resync succeeded, so whatever made the novel MISSING_LOCALLY
-                    // (or that this call is a deliberate resolution retry for) no longer
-                    // applies - clear it back to ACTIVE rather than leaving a stale status.
-                    db.novelDao().updateSyncStatus(novel.id, SyncStatus.ACTIVE.name)
-                    libraryViewModel.startScan(libraryRoot)
-                    val updated = db.novelDao().findById(novel.id)
-                    if (updated != null) {
-                        val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
-                        if (idx >= 0) libraryViewModel.novels[idx] = updated
-                        val screen = currentScreen.value
-                        if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
-                            currentScreen.value = Screen.NovelDetail(updated)
-                        }
-                    }
-                }
-                syncCheckState.value = SyncCheckState.Done(
-                    novel,
-                    if (outcome.changed) "Updated to the latest version." else "Already up to date."
-                )
-            } catch (e: MissingLocalFolderException) {
-                // See docs/arkarium/NEXT_FIXES.md #2: don't silently redownload and don't silently
-                // drop the novel either - ask the user via syncResolutionState.
-                db.novelDao().updateSyncStatus(novel.id, SyncStatus.MISSING_LOCALLY.name)
-                val updated = db.novelDao().findById(novel.id)
-                if (updated != null) {
-                    withContext(Dispatchers.Main) {
-                        val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
-                        if (idx >= 0) libraryViewModel.novels[idx] = updated
-                    }
-                }
-                syncCheckState.value = SyncCheckState.Idle
-                syncResolutionState.value = SyncResolutionState.NeedsResolution(
-                    updated ?: novel, SyncResolutionReason.MISSING_LOCALLY
-                )
-            } catch (e: SourceGoneException) {
-                // See docs/arkarium/NEXT_FIXES.md #2: distinguishable from a generic network
-                // failure so the prompt can say what's actually true - the source is
-                // gone, not just unreachable right now. Local content stays readable.
-                db.novelDao().updateSyncStatus(novel.id, SyncStatus.SOURCE_GONE.name)
-                val updated = db.novelDao().findById(novel.id)
-                if (updated != null) {
-                    withContext(Dispatchers.Main) {
-                        val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
-                        if (idx >= 0) libraryViewModel.novels[idx] = updated
-                    }
-                }
-                syncCheckState.value = SyncCheckState.Idle
-                syncResolutionState.value = SyncResolutionState.NeedsResolution(
-                    updated ?: novel, SyncResolutionReason.SOURCE_GONE
-                )
-            } catch (e: Exception) {
-                syncCheckState.value = SyncCheckState.Error(novel, "Sync failed: ${e.message}")
-            }
-        }
-    }
+    // addFictionByName, syncAllRaeArkNovels, and checkForUpdates formerly lived here
+    // too - all three now live on syncViewModel (Stage 2.5 of Phase 2, see
+    // docs/arkarium/REFACTOR_PLAN.md and SyncViewModel's own doc comment), unchanged
+    // in body except for the fields/services they read/write resolving to that
+    // class's own state/constructor dependencies instead of the Activity's, and
+    // checkForUpdates' currentScreen patch on a successful resync now happening via
+    // an `onUpdated` callback passed in from each call site below instead of inline.
 
     // Backs NovelDetailScreen's "Notify me when new chapters are available" toggle
     // (see docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md). The actual permission gate lives in the
@@ -624,57 +336,14 @@ class MainActivity : ComponentActivity() {
         handleNotificationIntent(intent)
     }
 
-    // Resolution actions offered from SyncResolutionDialog once checkForUpdates hits a
-    // MissingLocalFolderException or SourceGoneException (see above and
-    // docs/arkarium/NEXT_FIXES.md #2). All three are explicit, user-triggered choices - none of
-    // them ever fire automatically.
-
-    // "Sync again": the user has confirmed they want the folder recreated and the
-    // fiction redownloaded from scratch - re-runs checkForUpdates with
-    // allowRecreateMissingFolder = true, the one path that's allowed to recreate a
-    // missing folder.
-    private fun resolveMissingFolderBySyncing(novel: NovelEntity, libraryRoot: DocumentFile) {
-        syncResolutionState.value = SyncResolutionState.Idle
-        checkForUpdates(novel, libraryRoot, allowRecreateMissingFolder = true)
-    }
-
-    // "Remove from library": the user confirms the deletion they'd otherwise have had
-    // done to them silently by the old stale-removal cascade - same NovelDao.delete
-    // cascade (arcs/chapters/overrides/progress/synced_files all cascade away with it).
-    private fun resolveByRemovingFromLibrary(novel: NovelEntity) {
-        syncResolutionState.value = SyncResolutionState.Idle
-        lifecycleScope.launch {
-            db.novelDao().delete(novel.id)
-            db.syncedFileDao().deleteForNovel(novel.id)
-            withContext(Dispatchers.Main) {
-                libraryViewModel.novels.removeAll { it.id == novel.id }
-                if (currentScreen.value.let { it is Screen.NovelDetail && it.novel.id == novel.id }) {
-                    currentScreen.value = Screen.Home
-                }
-            }
-        }
-    }
-
-    // "Unlink": only offered for SOURCE_GONE. Drops the sync relationship (this novel
-    // reverts to a plain local one) without touching any local content - there's
-    // nothing left to sync against, but everything already downloaded keeps working.
-    private fun resolveSourceGoneByUnlinking(novel: NovelEntity) {
-        syncResolutionState.value = SyncResolutionState.Idle
-        lifecycleScope.launch {
-            db.novelDao().unlinkSyncSource(novel.id)
-            val updated = db.novelDao().findById(novel.id)
-            if (updated != null) {
-                withContext(Dispatchers.Main) {
-                    val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
-                    if (idx >= 0) libraryViewModel.novels[idx] = updated
-                    val screen = currentScreen.value
-                    if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
-                        currentScreen.value = Screen.NovelDetail(updated)
-                    }
-                }
-            }
-        }
-    }
+    // resolveMissingFolderBySyncing/resolveByRemovingFromLibrary/
+    // resolveSourceGoneByUnlinking - the three resolution actions SyncResolutionDialog
+    // offers once checkForUpdates hits a MissingLocalFolderException or
+    // SourceGoneException (see docs/arkarium/NEXT_FIXES.md #2) - formerly lived here
+    // too. All three now live on syncViewModel alongside the syncResolutionState they
+    // drive (Stage 2.5 of Phase 2, see docs/arkarium/REFACTOR_PLAN.md), each now
+    // taking an `onUpdated`/`onRemoved` callback where it used to patch currentScreen
+    // directly - see SyncResolutionDialog's call site below for how each is wired.
 
     // Shared fallback UI for anything that throws before/while the real screen renders.
     // Pulled out so BOTH the service-construction guard, the setContent guard, and the
@@ -784,6 +453,10 @@ class MainActivity : ComponentActivity() {
                 this,
                 MetadataViewModel.factory(db, GoogleBooksMetadataProvider(), libraryViewModel)
             ).get(MetadataViewModel::class.java)
+            syncViewModel = ViewModelProvider(
+                this,
+                SyncViewModel.factory(application, db, scanner, syncManager, libraryViewModel, metadataViewModel)
+            ).get(SyncViewModel::class.java)
         } catch (e: Throwable) {
             renderCrashScreen(e)
             return
@@ -1018,9 +691,9 @@ class MainActivity : ComponentActivity() {
                                 onSyncAllClick = {
                                     val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
                                     if (root != null) {
-                                        syncAllRaeArkNovels(root)
+                                        syncViewModel.syncAllRaeArkNovels(root)
                                     } else {
-                                        syncAllState.value =
+                                        syncViewModel.syncAllState.value =
                                             SyncAllState.Error("No library folder is set up yet - pick one in Settings first.")
                                     }
                                 }
@@ -1076,7 +749,12 @@ class MainActivity : ComponentActivity() {
                                 onSyncClick = if (novel.syncSourceUrl != null) {
                                     {
                                         resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)?.let { root ->
-                                            checkForUpdates(novel, root)
+                                            syncViewModel.checkForUpdates(novel, root) { updated ->
+                                                val screen = currentScreen.value
+                                                if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
+                                                    currentScreen.value = Screen.NovelDetail(updated)
+                                                }
+                                            }
                                         }
                                     }
                                 } else null,
@@ -1380,7 +1058,7 @@ class MainActivity : ComponentActivity() {
                             onConfirm = { name ->
                                 val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
                                 if (root != null) {
-                                    addFictionByName(name, root)
+                                    syncViewModel.addFictionByName(name, root)
                                 } else {
                                     metadataViewModel.addFictionState.value =
                                         AddFictionState.Error("No library folder is set up yet - pick one in Settings first.")
@@ -1406,7 +1084,7 @@ class MainActivity : ComponentActivity() {
                             onConfirm = { name ->
                                 val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
                                 if (root != null) {
-                                    addFictionByName(name, root)
+                                    syncViewModel.addFictionByName(name, root)
                                 } else {
                                     metadataViewModel.addFictionState.value =
                                         AddFictionState.Error("No library folder is set up yet - pick one in Settings first.")
@@ -1421,7 +1099,7 @@ class MainActivity : ComponentActivity() {
                 // action, see HomeScreen.kt / syncAllRaeArkNovels above). Reuses
                 // SyncProgressDialog, same as the per-novel "Check for updates" dialog
                 // below - just with "Rae ARK's novels" standing in for a single title.
-                when (val state = syncAllState.value) {
+                when (val state = syncViewModel.syncAllState.value) {
                     SyncAllState.Idle -> {}
                     is SyncAllState.InProgress -> {
                         SyncProgressDialog(
@@ -1438,7 +1116,7 @@ class MainActivity : ComponentActivity() {
                             isLoading = false,
                             message = state.message,
                             errorMessage = null,
-                            onDismiss = { syncAllState.value = SyncAllState.Idle }
+                            onDismiss = { syncViewModel.syncAllState.value = SyncAllState.Idle }
                         )
                     }
                     is SyncAllState.Error -> {
@@ -1447,12 +1125,12 @@ class MainActivity : ComponentActivity() {
                             isLoading = false,
                             message = "",
                             errorMessage = state.message,
-                            onDismiss = { syncAllState.value = SyncAllState.Idle }
+                            onDismiss = { syncViewModel.syncAllState.value = SyncAllState.Idle }
                         )
                     }
                 }
 
-                when (val state = syncCheckState.value) {
+                when (val state = syncViewModel.syncCheckState.value) {
                     SyncCheckState.Idle -> {}
                     is SyncCheckState.InProgress -> {
                         SyncProgressDialog(
@@ -1469,7 +1147,7 @@ class MainActivity : ComponentActivity() {
                             isLoading = false,
                             message = state.message,
                             errorMessage = null,
-                            onDismiss = { syncCheckState.value = SyncCheckState.Idle }
+                            onDismiss = { syncViewModel.syncCheckState.value = SyncCheckState.Idle }
                         )
                     }
                     is SyncCheckState.Error -> {
@@ -1478,7 +1156,7 @@ class MainActivity : ComponentActivity() {
                             isLoading = false,
                             message = "",
                             errorMessage = state.message,
-                            onDismiss = { syncCheckState.value = SyncCheckState.Idle }
+                            onDismiss = { syncViewModel.syncCheckState.value = SyncCheckState.Idle }
                         )
                     }
                 }
@@ -1486,7 +1164,7 @@ class MainActivity : ComponentActivity() {
                 // See docs/arkarium/NEXT_FIXES.md #2 - offered whenever checkForUpdates hits a
                 // missing-local-folder or source-gone situation, in place of silently
                 // resolving either one.
-                when (val state = syncResolutionState.value) {
+                when (val state = syncViewModel.syncResolutionState.value) {
                     SyncResolutionState.Idle -> {}
                     is SyncResolutionState.NeedsResolution -> {
                         SyncResolutionDialog(
@@ -1494,12 +1172,30 @@ class MainActivity : ComponentActivity() {
                             isMissingLocally = state.reason == SyncResolutionReason.MISSING_LOCALLY,
                             onSyncAgain = {
                                 resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)?.let { root ->
-                                    resolveMissingFolderBySyncing(state.novel, root)
+                                    syncViewModel.resolveMissingFolderBySyncing(state.novel, root) { updated ->
+                                        val screen = currentScreen.value
+                                        if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
+                                            currentScreen.value = Screen.NovelDetail(updated)
+                                        }
+                                    }
                                 }
                             },
-                            onRemoveFromLibrary = { resolveByRemovingFromLibrary(state.novel) },
-                            onUnlink = { resolveSourceGoneByUnlinking(state.novel) },
-                            onDismiss = { syncResolutionState.value = SyncResolutionState.Idle }
+                            onRemoveFromLibrary = {
+                                syncViewModel.resolveByRemovingFromLibrary(state.novel) { removed ->
+                                    if (currentScreen.value.let { it is Screen.NovelDetail && it.novel.id == removed.id }) {
+                                        currentScreen.value = Screen.Home
+                                    }
+                                }
+                            },
+                            onUnlink = {
+                                syncViewModel.resolveSourceGoneByUnlinking(state.novel) { updated ->
+                                    val screen = currentScreen.value
+                                    if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
+                                        currentScreen.value = Screen.NovelDetail(updated)
+                                    }
+                                }
+                            },
+                            onDismiss = { syncViewModel.syncResolutionState.value = SyncResolutionState.Idle }
                         )
                     }
                 }
