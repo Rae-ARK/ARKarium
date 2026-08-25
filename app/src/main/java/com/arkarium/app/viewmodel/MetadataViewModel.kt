@@ -64,22 +64,16 @@ class MetadataViewModel(
         }
     }
 
-    // Moved from MainActivity (Stage 2.4), with one shape change: the original also
-    // patched MainActivity's own `currentScreen` when the novel being viewed in
-    // NovelDetail was the one just updated, so the screen reflected the new info
-    // immediately without navigating away and back. currentScreen is Activity
-    // navigation state (Phase 3 - NavHost migration - hasn't happened yet), so this
-    // ViewModel has no business writing it directly; `onApplied` is the same
-    // "report the result back to the caller via a plain lambda" shape ScannerImpl's
-    // onDiscovered/onProgress callbacks already use elsewhere in this codebase; the
-    // updated novel is only ever passed to it once the DB write and the
-    // libraryViewModel.novels patch have both already landed. MainActivity's call site
-    // is the one place that still touches currentScreen for this flow.
-    fun applyMetadata(
-        novel: NovelEntity,
-        candidate: NovelMetadataCandidate,
-        onApplied: (NovelEntity) -> Unit = {}
-    ) {
+    // Moved from MainActivity (Stage 2.4). Originally also patched MainActivity's own
+    // `currentScreen` when the novel being viewed in NovelDetail was the one just
+    // updated, via an `onApplied` callback (the same "report the result back to the
+    // caller via a plain lambda" shape ScannerImpl's onDiscovered/onProgress callbacks
+    // already use elsewhere) - Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md) removed
+    // that parameter: NovelDetail is now a "novelDetail/{novelId}" route that resolves
+    // its own NovelEntity from libraryViewModel.novels on every recomposition, so the
+    // `novels` patch below is enough on its own for it to reflect the new info, with
+    // nothing left needing a callback into currentScreen.
+    fun applyMetadata(novel: NovelEntity, candidate: NovelMetadataCandidate) {
         viewModelScope.launch {
             try {
                 db.novelDao().updateMetadata(
@@ -95,7 +89,6 @@ class MetadataViewModel(
                 val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
                 if (idx >= 0) libraryViewModel.novels[idx] = updated
                 metadataSearchState.value = MetadataSearchState.Idle
-                onApplied(updated)
             } catch (e: Exception) {
                 metadataSearchState.value = MetadataSearchState.Error(novel, "Couldn't save the fetched info: ${e.message}")
             }

@@ -302,15 +302,15 @@ class SyncViewModel(
         }
     }
 
-    // Moved from MainActivity (Stage 2.5), with one shape change: the original also
-    // patched MainActivity's own `currentScreen` on a successful resync, when the
-    // novel being viewed in NovelDetail was the one just updated, so the screen
-    // reflected the new chapters immediately without navigating away and back.
-    // currentScreen is Activity navigation state (Phase 3 hasn't happened yet), so
-    // this ViewModel has no business writing it - `onUpdated` is the same
+    // Moved from MainActivity (Stage 2.5). Originally also patched MainActivity's own
+    // `currentScreen` on a successful resync, when the novel being viewed in
+    // NovelDetail was the one just updated, via an `onUpdated` callback (the same
     // report-the-result-via-a-plain-lambda shape MetadataViewModel.applyMetadata's
-    // `onApplied` already uses for the identical reason, and MainActivity's call
-    // sites are the ones that still touch currentScreen for this flow.
+    // `onApplied` used for the identical reason) - Stage 3.3 (see
+    // docs/arkarium/REFACTOR_PLAN.md) removed that parameter: NovelDetail is now a
+    // "novelDetail/{novelId}" route that resolves its own NovelEntity from
+    // libraryViewModel.novels on every recomposition, so the `novels` patch below is
+    // enough on its own, with nothing left needing a callback into currentScreen.
     //
     // Re-syncs an already-added fiction against its relay (see docs/arkarium/SYNC_MVP.md, Stage
     // 3). SyncManager.sync's SyncOutcome.files is documented as the complete new file
@@ -327,8 +327,7 @@ class SyncViewModel(
     fun checkForUpdates(
         novel: NovelEntity,
         libraryRoot: DocumentFile,
-        allowRecreateMissingFolder: Boolean = false,
-        onUpdated: (NovelEntity) -> Unit = {}
+        allowRecreateMissingFolder: Boolean = false
     ) {
         syncCheckState.value = SyncCheckState.InProgress(novel, "Checking for updates...")
         viewModelScope.launch {
@@ -361,7 +360,6 @@ class SyncViewModel(
                     if (updated != null) {
                         val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
                         if (idx >= 0) libraryViewModel.novels[idx] = updated
-                        onUpdated(updated)
                     }
                 }
                 syncCheckState.value = SyncCheckState.Done(
@@ -408,34 +406,32 @@ class SyncViewModel(
     // Resolution actions offered from SyncResolutionDialog once checkForUpdates hits a
     // MissingLocalFolderException or SourceGoneException (see above and
     // docs/arkarium/NEXT_FIXES.md #2). All three are explicit, user-triggered choices - none of
-    // them ever fire automatically. Moved from MainActivity (Stage 2.5); each gained a
-    // callback where the original touched currentScreen, for the same reason
-    // checkForUpdates' onUpdated above did.
+    // them ever fire automatically. Moved from MainActivity (Stage 2.5); each originally
+    // gained a callback where the original touched currentScreen, for the same reason
+    // checkForUpdates' onUpdated above did - Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md)
+    // removed all three: a resync/unlink's `novels` patch is picked up on its own by the
+    // "novelDetail/{novelId}" route these can fire on top of, and a removal resolves to
+    // a null novel there, which that route's own logic already sends back to Home for.
 
     // "Sync again": the user has confirmed they want the folder recreated and the
     // fiction redownloaded from scratch - re-runs checkForUpdates with
     // allowRecreateMissingFolder = true, the one path that's allowed to recreate a
     // missing folder.
-    fun resolveMissingFolderBySyncing(
-        novel: NovelEntity,
-        libraryRoot: DocumentFile,
-        onUpdated: (NovelEntity) -> Unit = {}
-    ) {
+    fun resolveMissingFolderBySyncing(novel: NovelEntity, libraryRoot: DocumentFile) {
         syncResolutionState.value = SyncResolutionState.Idle
-        checkForUpdates(novel, libraryRoot, allowRecreateMissingFolder = true, onUpdated = onUpdated)
+        checkForUpdates(novel, libraryRoot, allowRecreateMissingFolder = true)
     }
 
     // "Remove from library": the user confirms the deletion they'd otherwise have had
     // done to them silently by the old stale-removal cascade - same NovelDao.delete
     // cascade (arcs/chapters/overrides/progress/synced_files all cascade away with it).
-    fun resolveByRemovingFromLibrary(novel: NovelEntity, onRemoved: (NovelEntity) -> Unit = {}) {
+    fun resolveByRemovingFromLibrary(novel: NovelEntity) {
         syncResolutionState.value = SyncResolutionState.Idle
         viewModelScope.launch {
             db.novelDao().delete(novel.id)
             db.syncedFileDao().deleteForNovel(novel.id)
             withContext(Dispatchers.Main) {
                 libraryViewModel.novels.removeAll { it.id == novel.id }
-                onRemoved(novel)
             }
         }
     }
@@ -443,7 +439,7 @@ class SyncViewModel(
     // "Unlink": only offered for SOURCE_GONE. Drops the sync relationship (this novel
     // reverts to a plain local one) without touching any local content - there's
     // nothing left to sync against, but everything already downloaded keeps working.
-    fun resolveSourceGoneByUnlinking(novel: NovelEntity, onUpdated: (NovelEntity) -> Unit = {}) {
+    fun resolveSourceGoneByUnlinking(novel: NovelEntity) {
         syncResolutionState.value = SyncResolutionState.Idle
         viewModelScope.launch {
             db.novelDao().unlinkSyncSource(novel.id)
@@ -452,7 +448,6 @@ class SyncViewModel(
                 withContext(Dispatchers.Main) {
                     val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
                     if (idx >= 0) libraryViewModel.novels[idx] = updated
-                    onUpdated(updated)
                 }
             }
         }

@@ -113,9 +113,12 @@ import java.util.UUID
 // ViewModels the plan calls for - see docs/arkarium/REFACTOR_PLAN.md and
 // SyncViewModel's own doc comment for why addFictionByName moved here rather than
 // staying with the addFictionState it writes). Every place this file used to patch
-// currentScreen directly inside one of those functions now does it via a callback
-// passed to syncViewModel instead, the same onApplied shape applyMetadata above
-// already established.
+// currentScreen directly inside one of those functions used to do it via an
+// onApplied/onUpdated callback passed to metadataViewModel/syncViewModel instead;
+// Stage 3.3 of Phase 3 (see docs/arkarium/REFACTOR_PLAN.md) removed all of those
+// callbacks once NovelDetail became a "novelDetail/{novelId}" route that resolves its
+// own NovelEntity from libraryViewModel.novels, making the currentScreen patch each one
+// existed for unnecessary.
 
 class MainActivity : ComponentActivity() {
 
@@ -310,17 +313,17 @@ class MainActivity : ComponentActivity() {
     // toggle's onToggleNotify callback below (which calls this directly when already
     // granted, or via notificationPermission's result callback otherwise) - this
     // function itself just persists the change and refreshes in-memory state, same
-    // "update DB then patch `novels`/currentScreen" pattern checkForUpdates uses.
+    // "update DB then patch `novels`" pattern checkForUpdates uses. Used to also patch
+    // currentScreen when NovelDetail was showing the toggled novel; Stage 3.3 (see
+    // docs/arkarium/REFACTOR_PLAN.md) made that unnecessary - the "novelDetail/{novelId}"
+    // route now resolves its novel from libraryViewModel.novels on every recomposition,
+    // so patching that list here is enough on its own.
     private suspend fun setNotifyEnabled(novelId: String, enabled: Boolean) {
         db.novelDao().updateNotifyNewChapters(novelId, enabled)
         val updated = db.novelDao().findById(novelId) ?: return
         withContext(Dispatchers.Main) {
             val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
             if (idx >= 0) libraryViewModel.novels[idx] = updated
-            val screen = currentScreen.value
-            if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
-                currentScreen.value = Screen.NovelDetail(updated)
-            }
         }
     }
 
@@ -588,15 +591,14 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(pendingNotificationNovelId.value, libraryViewModel.novels.size) {
                     val novelId = pendingNotificationNovelId.value ?: return@LaunchedEffect
                     val target = libraryViewModel.novels.firstOrNull { it.id == novelId } ?: return@LaunchedEffect
-                    currentScreen.value = Screen.NovelDetail(target)
-                    // Stage 3.2 (see docs/arkarium/REFACTOR_PLAN.md): Screen.NovelDetail
-                    // still routes through the "legacy" NavHost destination, but a cold
+                    // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md): NovelDetail is now
+                    // its own "novelDetail/{novelId}" route rather than "legacy" - a cold
                     // start from a notification tap begins on "home" (the NavHost's
-                    // startDestination) - without this, currentScreen.value would flip to
-                    // NovelDetail while the NavHost stayed parked on "home", showing the
-                    // library instead of the tapped novel. launchSingleTop avoids stacking
-                    // a duplicate "legacy" entry if this ever fires while already there.
-                    navController.navigate("legacy") { launchSingleTop = true }
+                    // startDestination), so without this the NavHost would stay parked on
+                    // "home", showing the library instead of the tapped novel.
+                    // launchSingleTop avoids stacking a duplicate entry if this ever fires
+                    // while already there.
+                    navController.navigate("novelDetail/${target.id}") { launchSingleTop = true }
                     pendingNotificationNovelId.value = null
                 }
 
@@ -684,12 +686,12 @@ class MainActivity : ComponentActivity() {
                             onNovelClick = { novel ->
                                 lifecycleScope.launch {
                                     libraryViewModel.loadNovelDetails(novel)
-                                    currentScreen.value = Screen.NovelDetail(novel)
-                                    // NovelDetail still routes through "legacy" (Stage 3.3
-                                    // migrates it) - launchSingleTop avoids piling up a new
-                                    // "legacy" back-stack entry every time Home is revisited
-                                    // and a novel is tapped again.
-                                    navController.navigate("legacy") { launchSingleTop = true }
+                                    // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md):
+                                    // NovelDetail is now its own route, keyed by novelId -
+                                    // launchSingleTop avoids piling up a new back-stack
+                                    // entry every time Home is revisited and a novel is
+                                    // tapped again.
+                                    navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
                                 }
                             },
                             onContinueReading = { novel ->
@@ -714,8 +716,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     } else {
                                         libraryViewModel.loadNovelDetails(novel)
-                                        currentScreen.value = Screen.NovelDetail(novel)
-                                        navController.navigate("legacy") { launchSingleTop = true }
+                                        navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
                                     }
                                 }
                             },
@@ -770,8 +771,7 @@ class MainActivity : ComponentActivity() {
                             onNovelSelected = { novel ->
                                 lifecycleScope.launch {
                                     libraryViewModel.loadNovelDetails(novel)
-                                    currentScreen.value = Screen.NovelDetail(novel)
-                                    navController.navigate("legacy") { launchSingleTop = true }
+                                    navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
                                 }
                             },
                             onBack = {
@@ -791,92 +791,16 @@ class MainActivity : ComponentActivity() {
                         // (see docs/arkarium/REFACTOR_PLAN.md) moved them out to their own
                         // "home"/"fictionBrowse" NavHost routes, since both screens'
                         // content already comes entirely from libraryViewModel, not from
-                        // the Screen payload. Every entry point into "legacy" from those
-                        // two routes now navigates the NavController explicitly instead of
-                        // just writing currentScreen.value, so this branch should never
-                        // actually compose while currentScreen is either - kept only so
-                        // the `when` stays exhaustive over all of `Screen`.
-                        is Screen.Home, is Screen.FictionBrowse -> {}
-
-                        is Screen.NovelDetail -> {
-                            val novel = (currentScreen.value as Screen.NovelDetail).novel
-                            NovelDetailScreen(
-                                novel = novel,
-                                chapters = libraryViewModel.chapters,
-                                arcs = libraryViewModel.arcs,
-                                overriddenChapterIds = libraryViewModel.overriddenChapterIds.value,
-                                onBack = {
-                                    currentScreen.value = Screen.Home
-                                    // NovelDetail always went straight back to Home
-                                    // regardless of how it was reached (direct from Home,
-                                    // or via FictionBrowse) - popUpTo("home", inclusive =
-                                    // false) preserves that exact behavior by collapsing
-                                    // whatever's on top of "home" back down to it, rather
-                                    // than a plain popBackStack() which would only undo the
-                                    // single most recent hop.
-                                    navController.navigate("home") {
-                                        popUpTo("home") { inclusive = false }
-                                        launchSingleTop = true
-                                    }
-                                },
-                                onChapterSelected = { chapter ->
-                                    lifecycleScope.launch {
-                                        // Mark novel as IN_PROGRESS when starting to read
-                                        db.novelDao().updateReadingStatus(novel.id, NovelStatus.IN_PROGRESS.name)
-                                        libraryViewModel.refreshRecentlyRead()
-                                        readerAuthor.value = novel.authorId?.let { db.authorDao().findById(it) }
-                                        val chapterContent = contentRepo.getTextContent(chapter.sourcePath)
-                                        currentScreen.value = Screen.Reader(novel.id, chapter, chapterContent.body)
-                                    }
-                                },
-                                onResizePages = { pageSize ->
-                                    lifecycleScope.launch {
-                                        db.novelDao().updatePageSize(novel.id, pageSize)
-                                    }
-                                },
-                                onEditClick = { currentScreen.value = Screen.ChapterEditor(novel) },
-                                onFetchInfoClick = { metadataViewModel.fetchMetadataFor(novel) },
-                                onAuthorClick = {
-                                    val authorId = novel.authorId
-                                    if (authorId != null) {
-                                        currentScreen.value = Screen.Author(authorId, from = currentScreen.value)
-                                    }
-                                },
-                                onSyncClick = if (novel.syncSourceUrl != null) {
-                                    {
-                                        resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)?.let { root ->
-                                            syncViewModel.checkForUpdates(novel, root) { updated ->
-                                                val screen = currentScreen.value
-                                                if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
-                                                    currentScreen.value = Screen.NovelDetail(updated)
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else null,
-                                notifyEnabled = novel.notifyNewChapters,
-                                onToggleNotify = if (novel.syncSourceUrl != null) {
-                                    { enabled ->
-                                        // Only turning it ON ever needs the runtime permission -
-                                        // turning it off just persists false regardless, same as
-                                        // any other permission-gated toggle. API < 33 doesn't have
-                                        // a POST_NOTIFICATIONS runtime prompt to show at all
-                                        // (granted at install time there), so this only branches
-                                        // on Tiramisu+.
-                                        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                                            ContextCompat.checkSelfPermission(
-                                                this@MainActivity, Manifest.permission.POST_NOTIFICATIONS
-                                            ) != PackageManager.PERMISSION_GRANTED
-                                        ) {
-                                            pendingNotifyToggleNovelId = novel.id
-                                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-                                        } else {
-                                            lifecycleScope.launch { setNotifyEnabled(novel.id, enabled) }
-                                        }
-                                    }
-                                } else null
-                            )
-                        }
+                        // the Screen payload. NovelDetail and ChapterEditor moved out the
+                        // same way in Stage 3.3, to "novelDetail/{novelId}"/
+                        // "chapterEditor/{novelId}" below. Every entry point into "legacy"
+                        // from any of those four routes now navigates the NavController
+                        // explicitly instead of just writing currentScreen.value, so none
+                        // of these branches should ever actually compose while
+                        // currentScreen holds one - kept only so the `when` stays
+                        // exhaustive over all of `Screen`.
+                        is Screen.Home, is Screen.FictionBrowse,
+                        is Screen.NovelDetail, is Screen.ChapterEditor -> {}
 
                         is Screen.Reader -> {
                             val reader = currentScreen.value as Screen.Reader
@@ -924,7 +848,16 @@ class MainActivity : ComponentActivity() {
                                     if (novel != null) {
                                         lifecycleScope.launch {
                                             saveReadingProgress(reader.novelId, reader.chapter.id, progress)
-                                            currentScreen.value = Screen.NovelDetail(novel)
+                                            // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md):
+                                            // NovelDetail is now its own route, keyed by
+                                            // novelId, rather than a "legacy" case switched
+                                            // to via currentScreen - reaching it from here
+                                            // (still "legacy", Reader hasn't migrated yet -
+                                            // that's Stage 3.4) needs an explicit push, same
+                                            // as every other entry point into it.
+                                            navController.navigate("novelDetail/${novel.id}") {
+                                                launchSingleTop = true
+                                            }
                                         }
                                     }
                                 },
@@ -955,18 +888,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        is Screen.ChapterEditor -> {
-                            val novel = (currentScreen.value as Screen.ChapterEditor).novel
-                            ChapterEditorScreen(
-                                chapters = libraryViewModel.chapters,
-                                initialArcStartIds = libraryViewModel.arcStartChapterIds.value,
-                                onSave = { updatedChapters, arcStartIds ->
-                                    saveChapterEdits(novel, updatedChapters, arcStartIds)
-                                },
-                                onBack = { currentScreen.value = Screen.NovelDetail(novel) }
-                            )
-                        }
-
                         is Screen.Author -> {
                             val screen = currentScreen.value as Screen.Author
                             // Reload whenever the authorId changes (tapping into a
@@ -981,11 +902,28 @@ class MainActivity : ComponentActivity() {
                                 AuthorPageScreen(
                                     author = author,
                                     novels = authorPageNovels,
-                                    onBack = { currentScreen.value = screen.from },
+                                    onBack = {
+                                        val from = screen.from
+                                        if (from is Screen.NovelDetail) {
+                                            // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md):
+                                            // NovelDetail no longer has a "legacy" case to
+                                            // switch currentScreen back to - entering Author
+                                            // from it (below, and in NovelDetailScreen's own
+                                            // onAuthorClick) pushes a real "legacy" back-stack
+                                            // entry on top of "novelDetail/{novelId}" instead
+                                            // of reusing the current one (unlike entering
+                                            // Author from Reader, which stays on the same
+                                            // "legacy" entry - see the `else` branch), so
+                                            // popping back here returns to it correctly.
+                                            navController.popBackStack()
+                                        } else {
+                                            currentScreen.value = from
+                                        }
+                                    },
                                     onNovelClick = { novel ->
                                         lifecycleScope.launch {
                                             libraryViewModel.loadNovelDetails(novel)
-                                            currentScreen.value = Screen.NovelDetail(novel)
+                                            navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
                                         }
                                     }
                                 )
@@ -1006,6 +944,151 @@ class MainActivity : ComponentActivity() {
                         is Screen.TermsAndConditions, is Screen.AboutMe -> {}
                     }
                 }
+                }
+
+                // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md): the first stage that
+                // changes a Screen case's shape instead of just relocating it - NovelDetail
+                // and ChapterEditor now take a novelId route argument (same
+                // "fictionBrowse?initialQuery={initialQuery}" pattern Stage 3.2 already
+                // proved for a scalar argument) and resolve the NovelEntity themselves via
+                // libraryViewModel.novels.firstOrNull { it.id == novelId }, the same lookup
+                // Screen.Reader's composable already used for readerAuthor/chapter
+                // neighbors - rather than having a full NovelEntity handed in as Screen
+                // payload. That's what makes the onApplied/onUpdated callbacks Stages
+                // 2.4/2.5 added to MetadataViewModel.applyMetadata and
+                // SyncViewModel.checkForUpdates/resolveMissingFolderBySyncing/
+                // resolveSourceGoneByUnlinking unnecessary (see those call sites below and
+                // in the sync-dialog handlers further down) - libraryViewModel patching its
+                // own `novels` SnapshotStateList, which every one of those functions already
+                // does, is now enough on its own for this composable to recompose with the
+                // new data.
+                composable(
+                    "novelDetail/{novelId}",
+                    arguments = listOf(navArgument("novelId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val novelId = backStackEntry.arguments?.getString("novelId") ?: ""
+                    val novel = libraryViewModel.novels.firstOrNull { it.id == novelId }
+                    if (novel == null) {
+                        // The novel this route pointed to is no longer in the library -
+                        // most likely SyncResolutionDialog's onRemoveFromLibrary below just
+                        // deleted it via syncViewModel.resolveByRemovingFromLibrary. That
+                        // used to need an explicit onRemoved callback checking whether
+                        // currentScreen was showing the just-removed novel and patching it
+                        // back to Home; now that this destination resolves its own novel
+                        // from libraryViewModel.novels instead of carrying one as Screen
+                        // payload, the removal is enough on its own - the next
+                        // recomposition sees a null novel here, and this LaunchedEffect just
+                        // leaves for Home instead of trying to render nothing.
+                        LaunchedEffect(novelId) {
+                            navController.navigate("home") {
+                                popUpTo("home") { inclusive = false }
+                                launchSingleTop = true
+                            }
+                        }
+                    } else {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            NovelDetailScreen(
+                                novel = novel,
+                                chapters = libraryViewModel.chapters,
+                                arcs = libraryViewModel.arcs,
+                                overriddenChapterIds = libraryViewModel.overriddenChapterIds.value,
+                                onBack = {
+                                    // NovelDetail always went straight back to Home
+                                    // regardless of how it was reached (direct from Home,
+                                    // FictionBrowse, or an author's byline) - popUpTo("home",
+                                    // inclusive = false) preserves that exact behavior by
+                                    // collapsing whatever's on top of "home" back down to
+                                    // it, rather than a plain popBackStack() which would
+                                    // only undo the single most recent hop.
+                                    navController.navigate("home") {
+                                        popUpTo("home") { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onChapterSelected = { chapter ->
+                                    lifecycleScope.launch {
+                                        // Mark novel as IN_PROGRESS when starting to read
+                                        db.novelDao().updateReadingStatus(novel.id, NovelStatus.IN_PROGRESS.name)
+                                        libraryViewModel.refreshRecentlyRead()
+                                        readerAuthor.value = novel.authorId?.let { db.authorDao().findById(it) }
+                                        val chapterContent = contentRepo.getTextContent(chapter.sourcePath)
+                                        currentScreen.value = Screen.Reader(novel.id, chapter, chapterContent.body)
+                                        // Reader hasn't migrated off "legacy" yet (Stage
+                                        // 3.4) - reaching it from here needs an explicit
+                                        // push, same as Home/FictionBrowse's own entry
+                                        // points into Reader.
+                                        navController.navigate("legacy") { launchSingleTop = true }
+                                    }
+                                },
+                                onResizePages = { pageSize ->
+                                    lifecycleScope.launch {
+                                        db.novelDao().updatePageSize(novel.id, pageSize)
+                                    }
+                                },
+                                onEditClick = { navController.navigate("chapterEditor/${novel.id}") },
+                                onFetchInfoClick = { metadataViewModel.fetchMetadataFor(novel) },
+                                onAuthorClick = {
+                                    val authorId = novel.authorId
+                                    if (authorId != null) {
+                                        currentScreen.value = Screen.Author(authorId, from = Screen.NovelDetail(novel.id))
+                                        // Author hasn't migrated off "legacy" yet (Stage
+                                        // 3.4) - reaching it from here needs an explicit
+                                        // push (unlike Reader's own onAuthorClick, which
+                                        // stays on the same "legacy" entry it's already on).
+                                        navController.navigate("legacy") { launchSingleTop = true }
+                                    }
+                                },
+                                onSyncClick = if (novel.syncSourceUrl != null) {
+                                    {
+                                        resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)?.let { root ->
+                                            syncViewModel.checkForUpdates(novel, root)
+                                        }
+                                    }
+                                } else null,
+                                notifyEnabled = novel.notifyNewChapters,
+                                onToggleNotify = if (novel.syncSourceUrl != null) {
+                                    { enabled ->
+                                        // Only turning it ON ever needs the runtime permission -
+                                        // turning it off just persists false regardless, same as
+                                        // any other permission-gated toggle. API < 33 doesn't have
+                                        // a POST_NOTIFICATIONS runtime prompt to show at all
+                                        // (granted at install time there), so this only branches
+                                        // on Tiramisu+.
+                                        if (enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                            ContextCompat.checkSelfPermission(
+                                                this@MainActivity, Manifest.permission.POST_NOTIFICATIONS
+                                            ) != PackageManager.PERMISSION_GRANTED
+                                        ) {
+                                            pendingNotifyToggleNovelId = novel.id
+                                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                        } else {
+                                            lifecycleScope.launch { setNotifyEnabled(novel.id, enabled) }
+                                        }
+                                    }
+                                } else null
+                            )
+                        }
+                    }
+                }
+
+                composable(
+                    "chapterEditor/{novelId}",
+                    arguments = listOf(navArgument("novelId") { type = NavType.StringType })
+                ) { backStackEntry ->
+                    val novelId = backStackEntry.arguments?.getString("novelId") ?: ""
+                    val novel = libraryViewModel.novels.firstOrNull { it.id == novelId }
+                    if (novel != null) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            ChapterEditorScreen(
+                                chapters = libraryViewModel.chapters,
+                                initialArcStartIds = libraryViewModel.arcStartChapterIds.value,
+                                onSave = { updatedChapters, arcStartIds ->
+                                    saveChapterEdits(novel, updatedChapters, arcStartIds)
+                                },
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+                    }
                 }
 
                 composable("settings") {
@@ -1144,19 +1227,14 @@ class MainActivity : ComponentActivity() {
                             isLoading = false,
                             errorMessage = null,
                             candidates = state.candidates,
+                            // The currently-open "novelDetail/{novelId}" route (if this is
+                            // the novel it's showing) picks up the new info on its own,
+                            // via the libraryViewModel.novels patch applyMetadata already
+                            // does - Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md) dropped
+                            // the onApplied callback this call site used to pass to also
+                            // patch currentScreen for the same reason.
                             onCandidateSelected = { candidate ->
-                                metadataViewModel.applyMetadata(state.novel, candidate) { updated ->
-                                    // Refreshes the currently-open NovelDetail screen, if this
-                                    // is the novel it's showing, so the new info appears
-                                    // immediately without navigating away and back - see
-                                    // MetadataViewModel.applyMetadata's doc comment for why this
-                                    // callback (rather than the ViewModel itself) is what
-                                    // touches currentScreen.
-                                    val screen = currentScreen.value
-                                    if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
-                                        currentScreen.value = Screen.NovelDetail(updated)
-                                    }
-                                }
+                                metadataViewModel.applyMetadata(state.novel, candidate)
                             },
                             onDismiss = { metadataViewModel.metadataSearchState.value = MetadataSearchState.Idle }
                         )
@@ -1296,42 +1374,26 @@ class MainActivity : ComponentActivity() {
                 when (val state = syncViewModel.syncResolutionState.value) {
                     SyncResolutionState.Idle -> {}
                     is SyncResolutionState.NeedsResolution -> {
+                        // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md) dropped all three
+                        // onUpdated/onRemoved callbacks these three resolve* calls used to
+                        // take: the "novelDetail/{novelId}" route this dialog can fire on
+                        // top of resolves its novel from libraryViewModel.novels on every
+                        // recomposition, so a resync/unlink's `novels` patch is picked up
+                        // on its own, and a removal resolves to a null novel there, which
+                        // that route's own LaunchedEffect already sends back to Home for.
                         SyncResolutionDialog(
                             novelTitle = state.novel.title,
                             isMissingLocally = state.reason == SyncResolutionReason.MISSING_LOCALLY,
                             onSyncAgain = {
                                 resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)?.let { root ->
-                                    syncViewModel.resolveMissingFolderBySyncing(state.novel, root) { updated ->
-                                        val screen = currentScreen.value
-                                        if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
-                                            currentScreen.value = Screen.NovelDetail(updated)
-                                        }
-                                    }
+                                    syncViewModel.resolveMissingFolderBySyncing(state.novel, root)
                                 }
                             },
                             onRemoveFromLibrary = {
-                                syncViewModel.resolveByRemovingFromLibrary(state.novel) { removed ->
-                                    if (currentScreen.value.let { it is Screen.NovelDetail && it.novel.id == removed.id }) {
-                                        currentScreen.value = Screen.Home
-                                        // Same popUpTo("home") reasoning as NovelDetail's
-                                        // own onBack - this dialog can fire while NovelDetail
-                                        // (the "legacy" route) is showing the just-removed
-                                        // novel, which needs to land back on "home" the same
-                                        // way a normal Back tap from that screen would.
-                                        navController.navigate("home") {
-                                            popUpTo("home") { inclusive = false }
-                                            launchSingleTop = true
-                                        }
-                                    }
-                                }
+                                syncViewModel.resolveByRemovingFromLibrary(state.novel)
                             },
                             onUnlink = {
-                                syncViewModel.resolveSourceGoneByUnlinking(state.novel) { updated ->
-                                    val screen = currentScreen.value
-                                    if (screen is Screen.NovelDetail && screen.novel.id == updated.id) {
-                                        currentScreen.value = Screen.NovelDetail(updated)
-                                    }
-                                }
+                                syncViewModel.resolveSourceGoneByUnlinking(state.novel)
                             },
                             onDismiss = { syncViewModel.syncResolutionState.value = SyncResolutionState.Idle }
                         )

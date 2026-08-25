@@ -13,9 +13,21 @@ import com.arkarium.app.data.NovelMetadataCandidate
 
 sealed class Screen {
     object Home : Screen()
-    data class NovelDetail(val novel: NovelEntity) : Screen()
+    // Stage 3.3 (see docs/arkarium/REFACTOR_PLAN.md): carries only novelId, not a full
+    // NovelEntity. NovelDetail and ChapterEditor are the first two Screen cases whose
+    // destination resolves its own data (via `libraryViewModel.novels.firstOrNull { it.id
+    // == novelId }`, same lookup Reader's composable already used for readerAuthor/chapter
+    // neighbors) instead of having it handed in as a payload - which is what let Stage
+    // 2.4/2.5's onApplied/onUpdated callbacks (MetadataViewModel.applyMetadata,
+    // SyncViewModel.checkForUpdates/resolveMissingFolderBySyncing/
+    // resolveSourceGoneByUnlinking) drop the currentScreen-patching they existed for: a
+    // ViewModel patching its own `novels` SnapshotStateList is now enough on its own for
+    // the destination to recompose with the new data. Still used as a plain data value by
+    // Screen.Author's `from` field (Author hasn't migrated off currentScreen-based
+    // routing yet - that's Stage 3.4), just no longer as a currentScreen case itself.
+    data class NovelDetail(val novelId: String) : Screen()
     data class Reader(val novelId: String, val chapter: ChapterEntity, val content: String) : Screen()
-    data class ChapterEditor(val novel: NovelEntity) : Screen()
+    data class ChapterEditor(val novelId: String) : Screen()
     // Carries the previous screen so onBack can return to wherever the tap into the
     // author page came from (fiction page byline or chapter page's "About the author"
     // card) instead of always landing back on Home.
