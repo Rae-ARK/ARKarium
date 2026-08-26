@@ -8,8 +8,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.arkarium.app.data.PreferencesManager
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 // Android's TextToSpeech.speak() silently truncates (or on some engines rejects
 // outright) input longer than TextToSpeech.getMaxSpeechInputLength() - around 4000
@@ -146,32 +150,66 @@ class ChapterTtsState internal constructor() {
 fun rememberChapterTts(): ChapterTtsState {
     val context = LocalContext.current
     val state = remember { ChapterTtsState() }
+    // Stage 3.3 of docs/arkarium/SETTINGS_REDESIGN.md: seeds this session's starting
+    // rate/pitch from the settings/tts defaults (Stage 3.1's keys) instead of the
+    // hardcoded 1.0f/implicit-default this composable used before. Direct
+    // PreferencesManager access, same as everywhere else those four keys are read -
+    // see SETTINGS_REDESIGN.md's "Open questions" for why TTS defaults don't get a
+    // ViewModel of their own.
+    val prefsManager = remember { PreferencesManager(context) }
+    val coroutineScope = rememberCoroutineScope()
 
     DisposableEffect(Unit) {
-        val engine = TextToSpeech(context) { status ->
-            state.isAvailable = status == TextToSpeech.SUCCESS
+        var engine: TextToSpeech? = null
+
+        // Reading the defaults is a suspend call (DataStore's Flow.first()), so engine
+        // construction moves inside this coroutine rather than happening synchronously
+        // in the DisposableEffect body as before. TextToSpeech(context) {...}'s own
+        // init callback was already asynchronous, so this just adds one more (already
+        // in-memory/cached, effectively instant) suspension ahead of it - a chapter
+        // opened in that brief window sees isAvailable == false, same as it already
+        // could while waiting on the engine's own init callback.
+        val job = coroutineScope.launch {
+            val defaultRate = prefsManager.ttsDefaultRate.first()
+            val defaultPitch = prefsManager.ttsPitch.first()
+
+            // Seeds the session's starting rate. The pill's live setRate() during
+            // reading still only touches this in-memory value, same as before this
+            // stage - see SETTINGS_REDESIGN.md's last "Open question".
+            state.speechRate = defaultRate
+
+            engine = TextToSpeech(context) { status ->
+                state.isAvailable = status == TextToSpeech.SUCCESS
+                // Pitch has no pill/mid-session control (unlike rate), so it's only
+                // ever applied here, once, at engine init - see SETTINGS_REDESIGN.md
+                // §2 for why pitch doesn't get the same live-adjustment treatment.
+                if (status == TextToSpeech.SUCCESS) {
+                    engine?.setPitch(defaultPitch)
+                }
+            }
+            engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) {}
+
+                override fun onDone(utteranceId: String?) {
+                    state.onUtteranceFinished(utteranceId)
+                }
+
+                @Deprecated("Deprecated in Java, but still the callback older API levels invoke")
+                override fun onError(utteranceId: String?) {
+                    state.onUtteranceFinished(utteranceId)
+                }
+
+                override fun onError(utteranceId: String?, errorCode: Int) {
+                    state.onUtteranceFinished(utteranceId)
+                }
+            })
+            state.engine = engine
         }
-        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) {}
-
-            override fun onDone(utteranceId: String?) {
-                state.onUtteranceFinished(utteranceId)
-            }
-
-            @Deprecated("Deprecated in Java, but still the callback older API levels invoke")
-            override fun onError(utteranceId: String?) {
-                state.onUtteranceFinished(utteranceId)
-            }
-
-            override fun onError(utteranceId: String?, errorCode: Int) {
-                state.onUtteranceFinished(utteranceId)
-            }
-        })
-        state.engine = engine
 
         onDispose {
-            engine.stop()
-            engine.shutdown()
+            job.cancel()
+            engine?.stop()
+            engine?.shutdown()
             state.engine = null
         }
     }

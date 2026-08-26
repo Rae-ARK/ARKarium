@@ -6,8 +6,9 @@
 > splits its own Phase 3 into 3.1-3.5 rather than one big navigation swap:
 > smallest/lowest-risk slice first, each one independently reviewable.
 > Stage 3.0 (docs only), **Stage 3.1** (the four `PreferencesManager` keys,
-> no UI yet), and **Stage 3.2** (`TtsSettingsScreen.kt`'s controls + the
-> link-out engine row) are done. This patch is **Stage 3.2**.
+> no UI yet), **Stage 3.2** (`TtsSettingsScreen.kt`'s controls + the
+> link-out engine row), and **Stage 3.3** (wiring `rememberChapterTts()` to
+> the new rate/pitch defaults) are done. This patch is **Stage 3.3**.
 
 ## Current state
 
@@ -213,14 +214,19 @@ continuation of that one.
     changing these controls updates the stored preference and the screen
     reflects it, but nothing in `Tts.kt` reads that preference yet, so
     reader-facing TTS behavior is still unchanged until Stage 3.3.
-  - **Stage 3.3 - wire `rememberChapterTts()` to the new defaults.** Its
-    `TextToSpeech(context) { ... }` init callback reads `tts_default_rate`
-    and `tts_pitch` and seeds `ChapterTtsState`'s initial `speechRate` and
-    calls `setPitch(...)` with them, replacing the hardcoded `1.0f`/implicit
-    default. This is the actual bug fix the design doc's "Current state"
-    section flags. The pill's live `setRate()` mid-session is untouched -
-    it still only affects that session, never writes back to
-    `tts_default_rate`.
+  - **Stage 3.3 - done.** Wired `rememberChapterTts()` to the new defaults.
+    Reading `tts_default_rate`/`tts_pitch` is a suspend call
+    (`Flow.first()`), so engine construction moved from the
+    `DisposableEffect` body into a `rememberCoroutineScope()`-launched
+    coroutine: it reads both defaults, seeds `ChapterTtsState.speechRate`
+    from `tts_default_rate` directly (picked up by the existing
+    `speakNextChunk()`/`setRate()` machinery unchanged), then constructs
+    the `TextToSpeech(context) { ... }` engine and calls
+    `setPitch(tts_pitch)` on it once inside that init callback, replacing
+    the hardcoded `1.0f`/implicit default. This is the actual bug fix the
+    design doc's "Current state" section flags. The pill's live
+    `setRate()` mid-session is untouched - it still only affects that
+    session, never writes back to `tts_default_rate`.
   - **Stage 3.4 - auto-continue.** `ChapterTtsState.onUtteranceFinished`
     checks `tts_auto_continue`; when true, calls `ReaderScreen`'s existing
     next-chapter navigation (same lookup `Screen.Reader`'s
