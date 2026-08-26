@@ -88,9 +88,9 @@ object LegalContent {
         ),
         LegalSection(
             "Changes to this policy",
-            "ARKarium is open-source and under active development. This policy may " +
-                "be updated alongside the app; the project's GitHub repository is " +
-                "the source of truth for the current version.",
+            "ARKarium is under active development. This policy may be updated " +
+                "alongside the app; the project's official repository is the source " +
+                "of truth for the current version.",
             icon = Icons.Filled.Update
         )
     )
@@ -118,17 +118,27 @@ object LegalContent {
             icon = Icons.Filled.Folder
         ),
         LegalSection(
-            "License",
-            "ARKarium is licensed under the GNU General Public License v3.0 (GPLv3). " +
-                "The full license text ships with the project's source and is available " +
-                "on the GitHub repository.",
+            "Ownership and license",
+            // Was previously (incorrectly) GPLv3 - a leftover from the project's
+            // earlier "ARKster" naming/scaffolding, never updated when the project
+            // went proprietary. This must always match README.md's own copyright
+            // notice exactly ("All rights reserved... proprietary") - the two are
+            // the same legal claim made in two places, and having them disagree is
+            // worse than either one alone. If the project's actual license ever
+            // changes, update both together.
+            "ARKarium is proprietary software. Copyright \u00A9 2026 Rae-ARK. All " +
+                "rights reserved. No permission is granted to copy, modify, " +
+                "distribute, sublicense, or otherwise use this software or its " +
+                "source code, in whole or in part, without prior written permission " +
+                "from the copyright holder.",
             icon = Icons.Filled.Description
         ),
         LegalSection(
             "No warranty",
             "ARKarium is provided \"as is\", without warranty of any kind, express or " +
-                "implied, to the maximum extent permitted by applicable law - consistent " +
-                "with the GPLv3 license it's distributed under. Use it at your own risk.",
+                "implied, including but not limited to warranties of merchantability, " +
+                "fitness for a particular purpose, or non-infringement, to the maximum " +
+                "extent permitted by applicable law. Use it at your own risk.",
             icon = Icons.Filled.VerifiedUser
         ),
         LegalSection(
