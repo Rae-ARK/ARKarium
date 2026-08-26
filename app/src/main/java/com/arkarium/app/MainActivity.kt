@@ -597,6 +597,16 @@ class MainActivity : ComponentActivity() {
                 // above, and both default to true to match PreferencesManager's own default.
                 val splashAnimationEnabled = prefsManager.splashAnimationEnabled.collectAsState(initial = true)
                 val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = true)
+                // TTS default-settings state (docs/arkarium/SETTINGS_REDESIGN.md, Stage
+                // 3.2) - collected here too, same reasoning as savedUri/useCustomFolder
+                // above. Initial values match PreferencesManager's own fallbacks (see
+                // ttsDefaultRate/ttsPitch/ttsAutoContinue/ttsKeepScreenOn) so the
+                // settings/tts screen doesn't flash a different value on first
+                // composition while the real read is still in flight.
+                val ttsDefaultRate = prefsManager.ttsDefaultRate.collectAsState(initial = 1.0f)
+                val ttsPitch = prefsManager.ttsPitch.collectAsState(initial = 1.0f)
+                val ttsAutoContinue = prefsManager.ttsAutoContinue.collectAsState(initial = false)
+                val ttsKeepScreenOn = prefsManager.ttsKeepScreenOn.collectAsState(initial = false)
 
                 // Navigates to whichever novel a "new chapter" notification was tapped
                 // for (see handleNotificationIntent/onNewIntent and
@@ -1246,7 +1256,39 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/tts") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        TtsSettingsScreen(onBack = { navController.popBackStack() })
+                        // Stage 3.2 of docs/arkarium/SETTINGS_REDESIGN.md: direct
+                        // PreferencesManager access hoisted at the Activity, same
+                        // pattern settings/splash above already uses - no
+                        // TtsSettingsViewModel. UI-and-persistence only; nothing in
+                        // Tts.kt reads these keys yet (Stages 3.3-3.5), so this just
+                        // updates the stored preference and reflects it back.
+                        TtsSettingsScreen(
+                            ttsDefaultRate = ttsDefaultRate.value,
+                            ttsPitch = ttsPitch.value,
+                            ttsAutoContinue = ttsAutoContinue.value,
+                            ttsKeepScreenOn = ttsKeepScreenOn.value,
+                            onDefaultRateChange = { rate ->
+                                lifecycleScope.launch {
+                                    prefsManager.setTtsDefaultRate(rate)
+                                }
+                            },
+                            onPitchChange = { pitch ->
+                                lifecycleScope.launch {
+                                    prefsManager.setTtsPitch(pitch)
+                                }
+                            },
+                            onAutoContinueToggle = { enabled ->
+                                lifecycleScope.launch {
+                                    prefsManager.setTtsAutoContinue(enabled)
+                                }
+                            },
+                            onKeepScreenOnToggle = { enabled ->
+                                lifecycleScope.launch {
+                                    prefsManager.setTtsKeepScreenOn(enabled)
+                                }
+                            },
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                 }
 
