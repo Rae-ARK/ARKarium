@@ -4,10 +4,9 @@
 > verbatim). **Stage 3** (the new TTS settings page) is in progress and is
 > itself split into sub-stages 3.1-3.5 below, same reason `REFACTOR_PLAN.md`
 > splits its own Phase 3 into 3.1-3.5 rather than one big navigation swap:
-> smallest/lowest-risk slice first, each one independently reviewable. This
-> patch is **Stage 3.0** - docs only, no `app/src` changes - and resolves
-> the two open questions that were blocking Stage 3 from starting (engine
-> picker, ViewModel ownership; see "Open questions" below).
+> smallest/lowest-risk slice first, each one independently reviewable.
+> Stage 3.0 (docs only) and **Stage 3.1** (the four `PreferencesManager` keys
+> below, no UI yet) are done. This patch is **Stage 3.1**.
 
 ## Current state
 
@@ -180,16 +179,23 @@ continuation of that one.
     resolving the engine-picker and ViewModel-ownership open questions that
     were blocking 3.1 from starting (see "Open questions" below). No
     `app/src` changes.
-  - **Stage 3.1 - `PreferencesManager` keys, no UI yet.** Add the four
-    keys in the table above (`tts_default_rate`, `tts_pitch`,
+  - **Stage 3.1 - done.** `PreferencesManager` keys, no UI yet. Added the
+    four keys in the table above (`tts_default_rate`, `tts_pitch`,
     `tts_auto_continue`, `tts_keep_screen_on`) with their DataStore
     read/write plumbing, same shape as the existing
     `splashAnimationEnabled`/`splashMusicEnabled` keys. Nothing reads them
     yet - `rememberChapterTts()` still hardcodes `1.0f`/no explicit pitch,
     `ChapterTtsState.onUtteranceFinished` still just drops `isSpeaking`.
     Purely additive, so there's nothing for `TtsSettingsScreen.kt` or
-    `MainActivity` to wire against yet - this stage is `PreferencesManager`
-    plus its own tests only, not `TtsSettingsScreen.kt`.
+    `MainActivity` to wire against yet. No dedicated unit tests added in
+    this stage: unlike `theme`/`useCustomFolder`/`libraryUri`, these four
+    aren't behind the `SettingsPreferences` interface `SettingsViewModelTest.kt`
+    fakes (per the resolved ViewModel-ownership question, they're plain
+    `PreferencesManager` reads/writes with no ViewModel in front), and
+    `PreferencesManager` itself takes a real `Context` with no Robolectric
+    or instrumentation test infra in this project yet to exercise that -
+    same reason `splashAnimationEnabled`/`splashMusicEnabled` have no tests
+    of their own today. Stage 4 covers this.
   - **Stage 3.2 - `TtsSettingsScreen.kt` controls + a link-out engine
     row.** Build the actual controls: a rate slider, a pitch slider, an
     auto-continue switch, a keep-screen-on switch (same `Row` +
