@@ -2,33 +2,27 @@ package com.arkarium.app.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.KeyboardArrowRight
-import androidx.compose.material3.Button
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.arkarium.app.BuildConfig
-import com.arkarium.app.data.Theme
 
-// A single tappable "goes to its own page" settings row - used for Privacy
-// Policy / Terms & Conditions, both of which just navigate to a
-// LegalDocumentScreen rather than doing anything inline on this screen.
+// A single tappable "goes to its own page" settings row - used for every entry
+// on this screen now (Theme/Library/Splash/TTS as of Stage 1, see
+// docs/arkarium/SETTINGS_REDESIGN.md; Privacy Policy/Terms/About Me already
+// worked this way before that doc existed).
 @Composable
 private fun LegalRow(label: String, onClick: () -> Unit) {
     androidx.compose.foundation.layout.Row(
@@ -48,35 +42,23 @@ private fun LegalRow(label: String, onClick: () -> Unit) {
     }
 }
 
+// Stage 1 of docs/arkarium/SETTINGS_REDESIGN.md: this screen stops rendering
+// any control itself (Theme radio group, Library switch/buttons, Splash
+// switches all used to live here inline) and becomes a pure index of rows,
+// each navigating to its own destination - the same LegalRow pattern Privacy
+// Policy/Terms/About Me already used, just applied to all seven entries
+// instead of three. The actual Theme/Library/Splash controls still exist
+// verbatim in MainActivity's "settings" call site for one more stage; they
+// move into settings/theme, settings/library, settings/splash's own screens
+// in Stage 2, which is also when this screen's callback params below get
+// threaded one level deeper instead of terminating here.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    currentTheme: Theme,
-    // Whether the scanner reads from a user-picked SAF folder (true) or the app's own
-    // private storage (false, the default - see MainActivity.resolveLibraryRoot). This
-    // replaces the old `hasLibrary` flag: the library now always "exists" in the default
-    // case (there's always a folder to scan), so the meaningful question isn't "is a
-    // library configured" anymore, it's "which source is active."
-    useCustomFolder: Boolean,
-    // Whether a custom folder has actually been picked yet - only consulted while
-    // useCustomFolder is true, to decide between "Select Folder" and "Change Folder".
-    hasCustomFolderSelected: Boolean = false,
-    // Only consulted while currentTheme == Theme.SYSTEM_DEFAULT - which of the two
-    // non-dark themes System Default should behave as during the day (it always
-    // behaves as Dark at night regardless of this choice). See PreferencesManager's
-    // systemDefaultLightVariant doc comment.
-    systemDefaultLightVariant: Theme = Theme.LIGHT,
-    onThemeSelected: (Theme) -> Unit,
-    onSystemDefaultLightVariantSelected: (Theme) -> Unit = {},
-    onUseCustomFolderToggle: (Boolean) -> Unit,
-    onSelectFolderClick: () -> Unit,
-    onRescan: () -> Unit,
-    // Splash-screen behavior (see PreferencesManager.splashAnimationEnabled /
-    // splashMusicEnabled) - both default to true, independent of each other.
-    splashAnimationEnabled: Boolean = true,
-    splashMusicEnabled: Boolean = true,
-    onSplashAnimationToggle: (Boolean) -> Unit = {},
-    onSplashMusicToggle: (Boolean) -> Unit = {},
+    onThemeClick: () -> Unit,
+    onLibraryClick: () -> Unit,
+    onSplashClick: () -> Unit,
+    onTtsClick: () -> Unit,
     onPrivacyPolicy: () -> Unit,
     onTermsAndConditions: () -> Unit,
     onAboutMe: () -> Unit,
@@ -93,172 +75,30 @@ fun SettingsScreen(
         )
 
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Theme", modifier = Modifier.padding(bottom = 8.dp))
-            listOf(Theme.LIGHT, Theme.DARK, Theme.WARM_PAPER, Theme.SYSTEM_DEFAULT).forEach { theme ->
-                Row(modifier = Modifier.fillMaxWidth()) {
-                    RadioButton(
-                        selected = currentTheme == theme,
-                        onClick = { onThemeSelected(theme) }
-                    )
-                    Text(
-                        theme.name.replace("_", " "),
-                        modifier = Modifier.align(Alignment.CenterVertically)
-                    )
-                }
+            LegalRow(label = "Theme", onClick = onThemeClick)
+            LegalRow(label = "Library", onClick = onLibraryClick)
+            LegalRow(label = "Splash Screen", onClick = onSplashClick)
+            LegalRow(label = "Text-to-Speech", onClick = onTtsClick)
 
-                // System Default's own daytime-look sub-choice - indented under its
-                // parent option, same "reveal on select" pattern useCustomFolder's
-                // Select/Change Folder button below already uses. Only shown right
-                // under SYSTEM_DEFAULT's own row (not e.g. after every row) so it
-                // reads as belonging to that one option rather than floating loose.
-                if (theme == Theme.SYSTEM_DEFAULT && currentTheme == Theme.SYSTEM_DEFAULT) {
-                    Column(modifier = Modifier.padding(start = 40.dp, bottom = 4.dp)) {
-                        Text(
-                            "Daytime look",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                        listOf(Theme.LIGHT, Theme.WARM_PAPER).forEach { variant ->
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                RadioButton(
-                                    selected = systemDefaultLightVariant == variant,
-                                    onClick = { onSystemDefaultLightVariantSelected(variant) }
-                                )
-                                Text(
-                                    variant.name.replace("_", " "),
-                                    modifier = Modifier.align(Alignment.CenterVertically)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            Divider(modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
 
-            Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
-
-            Text("Library", modifier = Modifier.padding(bottom = 8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // weight(1f) is load-bearing here, not cosmetic: an unweighted Column in a
-                // Row is measured with loose (unbounded) width, so this description text -
-                // long enough to need wrapping - never actually wraps against the space
-                // left for it. It just claims however much width it wants and pushes the
-                // Switch out past the screen edge instead of sitting next to it. Weighting
-                // the Column forces it to share the Row with the Switch and wrap within
-                // its share, which is what makes the Switch reliably visible/tappable.
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 12.dp)
-                ) {
-                    Text("Use custom folder")
-                    Text(
-                        if (useCustomFolder) {
-                            "Reading from a folder you picked."
-                        } else {
-                            "Reading from ARKarium's own storage. Drop novel " +
-                                "folders into the app's Android/data folder, or " +
-                                "turn this on to pick a folder yourself."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-                Switch(checked = useCustomFolder, onCheckedChange = onUseCustomFolderToggle)
-            }
-
-            if (useCustomFolder) {
-                Button(
-                    onClick = onSelectFolderClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                ) {
-                    Text(if (hasCustomFolderSelected) "Change Folder" else "Select Folder")
-                }
-            }
-
-            Button(
-                onClick = onRescan,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-            ) {
-                Text("Rescan Library")
-            }
-
-            Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
-
-            Text("Splash Screen", modifier = Modifier.padding(bottom = 8.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // weight(1f) here for the same reason as the "Use custom folder"
-                // row above - forces the description to wrap within its share of
-                // the Row instead of pushing the Switch off-screen.
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 12.dp)
-                ) {
-                    Text("Animation")
-                    Text(
-                        "Lines converge into the ARKarium mark on launch. Turn " +
-                            "off for a plain, faster fade-in instead.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-                Switch(checked = splashAnimationEnabled, onCheckedChange = onSplashAnimationToggle)
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 12.dp)
-                ) {
-                    Text("Animation music")
-                    Text(
-                        "Plays a short guitar chord alongside the launch animation.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                }
-                Switch(checked = splashMusicEnabled, onCheckedChange = onSplashMusicToggle)
-            }
-
-            Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
-
-            Text("Legal", modifier = Modifier.padding(bottom = 8.dp))
             LegalRow(label = "Privacy Policy", onClick = onPrivacyPolicy)
             LegalRow(label = "Terms & Conditions", onClick = onTermsAndConditions)
 
-            Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
+            Divider(modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
 
             // Opens the author's site in-app via WebViewScreen (see MainActivity's
             // Screen.AboutMe case) rather than sending the reader out to a browser.
             LegalRow(label = "About Me", onClick = onAboutMe)
 
-            Divider(modifier = Modifier.padding(top = 24.dp, bottom = 12.dp))
+            Divider(modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
 
             // BuildConfig.VERSION_NAME is generated from app/build.gradle.kts'
             // defaultConfig.versionName - the single source of truth for the app's
             // version. This is the only place in the running app's normal UI that
-            // shows it; the crash screens in MainActivity read the same field.
+            // shows it; the crash screens in MainActivity read the same field. Stays
+            // on the index page per SETTINGS_REDESIGN.md §1 - it's not really "a
+            // setting," so it doesn't get promoted to its own sub-page.
             Text(
                 "ARKarium v${BuildConfig.VERSION_NAME}",
                 style = MaterialTheme.typography.bodySmall,

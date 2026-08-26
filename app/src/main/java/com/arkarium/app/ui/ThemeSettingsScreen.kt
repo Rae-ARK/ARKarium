@@ -1,0 +1,47 @@
+package com.arkarium.app.ui
+
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+
+// Stage 1 (docs/arkarium/SETTINGS_REDESIGN.md, "navigation scaffolding") -
+// destination for the new "settings/theme" route, wired up in MainActivity's
+// NavHost alongside this file. Deliberately a thin wrapper for now: the
+// Theme radio group (and its System Default "daytime look" sub-choice)
+// still renders inline on MainActivity's "settings" composable this stage,
+// same as before this doc. Stage 2 moves that control code into this file
+// verbatim and wires the currentTheme/onThemeSelected params this screen
+// will need then - not yet, to keep this patch to scaffolding only.
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ThemeSettingsScreen(onBack: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        TopAppBar(
+            title = { Text("Theme") },
+            navigationIcon = {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
+                }
+            }
+        )
+
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Theme controls move here in Stage 2.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+            )
+        }
+    }
+}
