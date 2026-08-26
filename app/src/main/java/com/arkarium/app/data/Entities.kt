@@ -172,6 +172,47 @@ data class ReadingProgressEntity(
     @ColumnInfo(name = "updated_at") val updatedAt: Long
 )
 
+// One row per (chapter, calendar day) a chapter was read to completion (see
+// ReadingStats.isCompletionThreshold and MainActivity.saveReadingProgress, the only
+// writer). Backs the Home screen's "reading stats" card - streak length and "chapters
+// read this week" - added specifically because it's a cheap way to encourage habitual
+// return visits to serialized content (readers coming back daily to keep a streak
+// alive), without needing any new user-facing setting or opt-in.
+//
+// primaryKeys is (chapter_id, read_date) rather than a synthetic id: re-reading (or
+// re-finishing, via Previous/Next) the same chapter repeatedly in one sitting should
+// log one event for that day, not one per navigation action - onConflict=REPLACE on
+// the same key just refreshes read_at instead of inserting a duplicate row. Reading
+// the *same* chapter again on a *different* day is a new key (different read_date)
+// and does get its own row - which is exactly what the streak calculation needs to
+// see that day as active.
+@Entity(
+    tableName = "chapter_read_events",
+    primaryKeys = ["chapter_id", "read_date"],
+    foreignKeys = [
+        ForeignKey(entity = ChapterEntity::class, parentColumns = ["id"], childColumns = ["chapter_id"], onDelete = ForeignKey.CASCADE)
+    ]
+)
+data class ChapterReadEventEntity(
+    @ColumnInfo(name = "chapter_id") val chapterId: String,
+    // Denormalized off ChapterEntity.novelId - kept here too (rather than joining
+    // through chapters for every stats query) since the only two queries this table
+    // ever needs to answer (ReadingStats: "how many rows since date X", "which
+    // distinct days have any row") don't care about novel_id at all yet, but a
+    // future "per-novel streak" feature would, and it's a free column to add now
+    // versus a schema migration + join rewrite later.
+    @ColumnInfo(name = "novel_id") val novelId: String,
+    // Local calendar day this chapter was (most recently) finished on, "yyyy-MM-dd"
+    // (see ReadingStats.dayKey) - the dedup key alongside chapter_id, and also
+    // exactly the granularity streak/weekly-count math needs. Plain string, not a
+    // TypeConverter'd LocalDate: minSdk 24 predates java.time and this project has
+    // no desugaring configured (see AppDatabase.kt), and ISO yyyy-MM-dd strings
+    // already sort/compare correctly with plain `>=`/`ORDER BY`, so a real date type
+    // buys nothing here.
+    @ColumnInfo(name = "read_date") val readDate: String,
+    @ColumnInfo(name = "read_at") val readAt: Long
+)
+
 @Entity(tableName = "scan_fingerprints",
     foreignKeys = [
         ForeignKey(entity = NovelEntity::class, parentColumns = ["id"], childColumns = ["novel_id"], onDelete = ForeignKey.CASCADE)

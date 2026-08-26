@@ -62,9 +62,11 @@ import com.arkarium.app.ui.FictionBrowseScreen
 import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterOverrideEntity
+import com.arkarium.app.data.ChapterReadEventEntity
 import com.arkarium.app.data.GoogleBooksMetadataProvider
 import com.arkarium.app.data.resolveLibraryRoot
 import com.arkarium.app.data.ReadingProgressEntity
+import com.arkarium.app.data.ReadingStats
 import com.arkarium.app.data.ScannerImpl
 import com.arkarium.app.data.NewChapterCheckWorker
 import com.arkarium.app.data.NewChapterNotifier
@@ -316,6 +318,27 @@ class MainActivity : ComponentActivity() {
                 updatedAt = System.currentTimeMillis()
             )
         )
+        // Reading-stats streak/weekly-count (see ChapterReadEventEntity's doc
+        // comment) only cares about chapters actually finished, not every scroll
+        // position update - COMPLETION_THRESHOLD gates that. Every caller of
+        // saveReadingProgress already only invokes it once, on leaving a chapter
+        // (Back/Back-to-fiction/Previous/Next), so there's no risk of this logging
+        // several events for one chapter-read the way a per-scroll-tick save would.
+        // The actual stats recompute happens below via refreshRecentlyRead (which
+        // always calls refreshReadingStats too), so a plain progress update that
+        // doesn't cross the threshold still gets its "Continue Reading" ordering
+        // refreshed without redundantly re-querying stats that haven't changed.
+        if (progress >= ReadingStats.COMPLETION_THRESHOLD) {
+            val now = System.currentTimeMillis()
+            db.chapterReadEventDao().upsert(
+                ChapterReadEventEntity(
+                    chapterId = chapterId,
+                    novelId = novelId,
+                    readDate = ReadingStats.dayKey(now),
+                    readAt = now
+                )
+            )
+        }
         libraryViewModel.refreshRecentlyRead()
     }
 
@@ -703,6 +726,8 @@ class MainActivity : ComponentActivity() {
                         HomeScreen(
                             novels = libraryViewModel.novels,
                             inProgressNovels = libraryViewModel.inProgressNovels,
+                            streakDays = libraryViewModel.readingStreakDays.value,
+                            chaptersReadThisWeek = libraryViewModel.chaptersReadThisWeek.value,
                             onNovelClick = { novel ->
                                 lifecycleScope.launch {
                                     libraryViewModel.loadNovelDetails(novel)

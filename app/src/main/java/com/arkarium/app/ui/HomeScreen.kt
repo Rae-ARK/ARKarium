@@ -23,6 +23,8 @@ import androidx.compose.ui.draw.clip
 import coil.compose.AsyncImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LibraryAdd
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -55,6 +57,14 @@ import com.arkarium.app.data.NovelEntity
 fun HomeScreen(
     novels: List<NovelEntity>,
     inProgressNovels: List<NovelEntity>,
+    // Reading-stats card (see ChapterReadEventEntity's doc comment for why this
+    // exists) - both default to 0 rather than being nullable/optional, since
+    // LibraryViewModel's backing state itself always starts at 0 rather than
+    // "not loaded yet," and a genuinely brand-new reader with zero history should
+    // see "0 chapters this week" rather than the card being hidden outright (see
+    // ReadingStatsCard below for why it stays visible even at zero).
+    streakDays: Int = 0,
+    chaptersReadThisWeek: Int = 0,
     onNovelClick: (NovelEntity) -> Unit = {},
     onContinueReading: (NovelEntity) -> Unit = {},
     onBrowseClick: () -> Unit = {},
@@ -152,6 +162,17 @@ fun HomeScreen(
                     // active-state suggestions area even though `active` is always false here
                     // (there's no default value for this overload) - nothing to show, so empty.
                     content = {}
+                )
+            }
+
+            // Reading stats (streak + chapters this week) - see ReadingStatsCard.
+            // Placed right under search, above Featured, so it's the first thing a
+            // returning reader sees on Home - the moment it's most likely to
+            // actually nudge a same-day return visit.
+            item {
+                ReadingStatsCard(
+                    streakDays = streakDays,
+                    chaptersReadThisWeek = chaptersReadThisWeek
                 )
             }
 
@@ -417,6 +438,92 @@ fun FeaturedSection(
             }
         }
     }
+}
+
+@Composable
+fun ReadingStatsCard(
+    streakDays: Int,
+    chaptersReadThisWeek: Int
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ReadingStatItem(
+                icon = Icons.Filled.LocalFireDepartment,
+                // Always shown, even at 0 - a visible "0 day streak" is what turns
+                // this into a habit-forming nudge in the first place ("get this to
+                // 1"), whereas hiding the card until some activity exists would
+                // only ever reinforce reading for people who were already reading
+                // regularly.
+                value = streakDays.toString(),
+                // "day streak" reads fine ungrammatically-pluralized ("1 day
+                // streak", "3 day streak") since "streak" itself isn't the thing
+                // being counted - unlike "chapters" below, which does need the
+                // singular/plural split.
+                label = "day streak"
+            )
+            ReadingStatDivider()
+            ReadingStatItem(
+                icon = Icons.Filled.MenuBook,
+                value = chaptersReadThisWeek.toString(),
+                label = if (chaptersReadThisWeek == 1) "chapter this week" else "chapters this week"
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReadingStatItem(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    value: String,
+    label: String
+) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(
+                icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(start = 6.dp)
+            )
+        }
+        Text(
+            label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+// A thin vertical rule between the two stats, the same idea as a divider in a list
+// but oriented for a horizontal row - keeps the two numbers from reading as one
+// run-on stat when they sit this close together.
+@Composable
+private fun ReadingStatDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(36.dp)
+            .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f))
+    )
 }
 
 @Composable

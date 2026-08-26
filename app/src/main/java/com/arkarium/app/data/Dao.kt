@@ -236,6 +236,25 @@ interface ReadingProgressDao {
 }
 
 @Dao
+interface ChapterReadEventDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(event: ChapterReadEventEntity)
+
+    // "Chapters read this week" - `sinceDate` is a "yyyy-MM-dd" key (see
+    // ReadingStats.dayKey); plain string >= works because ISO dates sort
+    // lexicographically the same as chronologically.
+    @Query("SELECT COUNT(*) FROM chapter_read_events WHERE read_date >= :sinceDate")
+    suspend fun countSince(sinceDate: String): Int
+
+    // Every distinct day with at least one completed chapter - the raw input
+    // ReadingStats.currentStreakDays walks backward from today over. Order doesn't
+    // matter to that function (it does its own set lookup), so this doesn't bother
+    // sorting.
+    @Query("SELECT DISTINCT read_date FROM chapter_read_events")
+    suspend fun distinctReadDates(): List<String>
+}
+
+@Dao
 interface ScanFingerprintDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(fingerprint: ScanFingerprintEntity)
