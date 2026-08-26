@@ -5,8 +5,9 @@
 > itself split into sub-stages 3.1-3.5 below, same reason `REFACTOR_PLAN.md`
 > splits its own Phase 3 into 3.1-3.5 rather than one big navigation swap:
 > smallest/lowest-risk slice first, each one independently reviewable.
-> Stage 3.0 (docs only) and **Stage 3.1** (the four `PreferencesManager` keys
-> below, no UI yet) are done. This patch is **Stage 3.1**.
+> Stage 3.0 (docs only), **Stage 3.1** (the four `PreferencesManager` keys,
+> no UI yet), and **Stage 3.2** (`TtsSettingsScreen.kt`'s controls + the
+> link-out engine row) are done. This patch is **Stage 3.2**.
 
 ## Current state
 
@@ -196,8 +197,8 @@ continuation of that one.
     or instrumentation test infra in this project yet to exercise that -
     same reason `splashAnimationEnabled`/`splashMusicEnabled` have no tests
     of their own today. Stage 4 covers this.
-  - **Stage 3.2 - `TtsSettingsScreen.kt` controls + a link-out engine
-    row.** Build the actual controls: a rate slider, a pitch slider, an
+  - **Stage 3.2 - done.** `TtsSettingsScreen.kt` controls + a link-out engine
+    row. Build the actual controls: a rate slider, a pitch slider, an
     auto-continue switch, a keep-screen-on switch (same `Row` +
     label/description + control shape `SplashSettingsScreen.kt` already
     uses for its two switches), each reading/writing one Stage 3.1 key via
