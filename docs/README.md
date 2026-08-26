@@ -19,7 +19,8 @@ codebase, this is what you read and what you keep updated.
 - [`SETTINGS_REDESIGN.md`](arkarium/SETTINGS_REDESIGN.md) — one-page-per-option
   Settings redesign plan, plus a new Text-to-Speech settings page for TTS
   controls that don't belong in the reader's Reader Preferences pill.
-  Stage 0 (design only) - see the doc for the staged rollout.
+  Stages 0-2 done; Stage 3 (the TTS page) in progress, split into
+  sub-stages 3.1-3.5 - see the doc for the staged rollout.
 
 ## `reference/arkster/` — predecessor project, historical reference only
 
