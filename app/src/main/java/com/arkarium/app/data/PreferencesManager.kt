@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.catch
@@ -66,6 +67,17 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         // (repeat launches, sound in a quiet/public setting, etc.).
         private val SPLASH_ANIMATION_ENABLED_KEY = booleanPreferencesKey("splash_animation_enabled")
         private val SPLASH_MUSIC_ENABLED_KEY = booleanPreferencesKey("splash_music_enabled")
+
+        // TTS default-settings keys (see docs/arkarium/SETTINGS_REDESIGN.md, Stage 3.1).
+        // Added ahead of TtsSettingsScreen.kt (Stage 3.2) and ahead of anything in
+        // Tts.kt actually reading them (Stages 3.3-3.5) - purely additive, nothing
+        // downstream consults these yet. Same flat-key shape as the splash toggles
+        // above rather than a wrapped ViewModel: see SETTINGS_REDESIGN.md's "Open
+        // questions" section for why TTS defaults don't get their own ViewModel.
+        private val TTS_DEFAULT_RATE_KEY = floatPreferencesKey("tts_default_rate")
+        private val TTS_PITCH_KEY = floatPreferencesKey("tts_pitch")
+        private val TTS_AUTO_CONTINUE_KEY = booleanPreferencesKey("tts_auto_continue")
+        private val TTS_KEEP_SCREEN_ON_KEY = booleanPreferencesKey("tts_keep_screen_on")
     }
 
     // libraryUri.collect() and theme.collect() run unattended in MainActivity.onCreate,
@@ -126,6 +138,37 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         prefs[SPLASH_MUSIC_ENABLED_KEY] ?: true
     }
 
+    // Seeds ChapterTtsState's initial speechRate once rememberChapterTts() is wired
+    // to it (Stage 3.3) - not read anywhere yet. Default 1.0f matches the hardcoded
+    // rate ChapterTtsState uses today, so wiring this up later is a no-op for anyone
+    // who hasn't visited settings/tts. The pill's live setRate() during a session
+    // never writes back here - see SETTINGS_REDESIGN.md's last "Open question".
+    val ttsDefaultRate: Flow<Float> = safePrefs.map { prefs ->
+        prefs[TTS_DEFAULT_RATE_KEY] ?: 1.0f
+    }
+
+    // Applied once at TTS engine init (Stage 3.3), no pill exposure - see
+    // SETTINGS_REDESIGN.md §2 for why pitch doesn't get a mid-session control the
+    // way rate does. Default 1.0f is TextToSpeech's own neutral pitch.
+    val ttsPitch: Flow<Float> = safePrefs.map { prefs ->
+        prefs[TTS_PITCH_KEY] ?: 1.0f
+    }
+
+    // Off by default - auto-advancing to the next chapter on read-aloud completion
+    // is a behavior change from today's "stop at chapter end", so this stays opt-in
+    // until a reader turns it on at settings/tts (Stage 3.4 wires the actual
+    // navigation call).
+    val ttsAutoContinue: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[TTS_AUTO_CONTINUE_KEY] ?: false
+    }
+
+    // Off by default, same reasoning as ttsAutoContinue above - keeping the screen
+    // on while TTS speaks (Stage 3.5) is a battery-life tradeoff a reader should opt
+    // into rather than get silently.
+    val ttsKeepScreenOn: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[TTS_KEEP_SCREEN_ON_KEY] ?: false
+    }
+
     override suspend fun setLibraryUri(uri: String) {
         context.dataStore.edit { prefs ->
             prefs[LIBRARY_URI_KEY] = uri
@@ -170,6 +213,30 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     suspend fun setSplashMusicEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[SPLASH_MUSIC_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun setTtsDefaultRate(rate: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[TTS_DEFAULT_RATE_KEY] = rate
+        }
+    }
+
+    suspend fun setTtsPitch(pitch: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[TTS_PITCH_KEY] = pitch
+        }
+    }
+
+    suspend fun setTtsAutoContinue(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[TTS_AUTO_CONTINUE_KEY] = enabled
+        }
+    }
+
+    suspend fun setTtsKeepScreenOn(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[TTS_KEEP_SCREEN_ON_KEY] = enabled
         }
     }
 }
