@@ -1,5 +1,9 @@
 package com.arkarium.app.ui
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.WindowManager
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -37,7 +41,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -48,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.LineHeightStyle
@@ -58,6 +65,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
+import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.Theme
 
 enum class ReadingMode {
@@ -111,6 +119,18 @@ private fun readingModeFor(theme: Theme): ReadingMode = when (theme) {
     // resolveTheme()) before it ever reaches here - this branch only exists to keep
     // the `when` exhaustive over Theme's full set of entries.
     Theme.SYSTEM_DEFAULT -> ReadingMode.LIGHT
+}
+
+// Compose's LocalContext.current isn't guaranteed to be the Activity itself - it can be
+// a ContextWrapper (e.g. a ContextThemeWrapper) sitting in front of one - so this walks
+// up to find the real Activity instead of assuming a direct cast holds. Used below
+// (Stage 3.5 of SETTINGS_REDESIGN.md) to reach the reader's window for
+// FLAG_KEEP_SCREEN_ON; a silent no-op (window stays null, flag never set) is a safer
+// failure mode here than crashing on a bad cast.
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -174,6 +194,30 @@ fun ReaderScreen(
     // gates this on autoContinueEnabled (off by default), so onChapterFinished being
     // set here is not itself a behavior change until a reader opts in on settings/tts.
     tts.onChapterFinished = { onNext?.invoke(1f) }
+    // Stage 3.5 of docs/arkarium/SETTINGS_REDESIGN.md: keeps the screen on for exactly
+    // the duration of active read-aloud, gated by tts_keep_screen_on (off by default,
+    // same reasoning as auto-continue above). Direct PreferencesManager access, same
+    // pattern as everywhere else these four TTS keys are read - see
+    // SETTINGS_REDESIGN.md's "Open questions" for why TTS settings don't get a
+    // ViewModel of their own. TTS is specifically a screen-off-friendly use case
+    // (listening, not reading) that the rest of the reader isn't, so this ties the flag
+    // to tts.isSpeaking rather than to the reader screen merely being open.
+    val context = LocalContext.current
+    val prefsManager = remember { PreferencesManager(context) }
+    val keepScreenOnEnabled by prefsManager.ttsKeepScreenOn.collectAsState(initial = false)
+    DisposableEffect(keepScreenOnEnabled, tts.isSpeaking) {
+        val window = context.findActivity()?.window
+        if (keepScreenOnEnabled && tts.isSpeaking) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        // Runs both when either key above changes again (read-aloud stops, or the
+        // setting is toggled) and on final disposal (leaving ReaderScreen) - so the
+        // flag never outlives read-aloud finishing or the reader screen itself, with no
+        // separate cleanup path needed for "still speaking when the reader is closed."
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
     val showControls = remember { mutableStateOf(true) }
     // Separate from showControls: showControls is the tap-anywhere immersive toggle
     // for the top bar + progress readout, but font/spacing/mode were only reachable
