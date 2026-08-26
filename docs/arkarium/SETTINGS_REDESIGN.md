@@ -1,11 +1,13 @@
 # Settings redesign - one page per option, plus a TTS settings page
 
-> **Status:** Design doc only. **Stage 0** of the plan below (see "Staged
-> rollout") - no `app/src` changes in this patch. Written before touching
-> code on purpose, same reason `REFACTOR_PLAN.md` stages each Phase as its
-> own reviewable step: the page split and the TTS/pill boundary are both
-> judgment calls worth settling on paper first, since they decide what
-> Stage 2+ actually builds.
+> **Status:** Stages 0-2 done (index page, Theme/Library/Splash extracted
+> verbatim). **Stage 3** (the new TTS settings page) is in progress and is
+> itself split into sub-stages 3.1-3.5 below, same reason `REFACTOR_PLAN.md`
+> splits its own Phase 3 into 3.1-3.5 rather than one big navigation swap:
+> smallest/lowest-risk slice first, each one independently reviewable. This
+> patch is **Stage 3.0** - docs only, no `app/src` changes - and resolves
+> the two open questions that were blocking Stage 3 from starting (engine
+> picker, ViewModel ownership; see "Open questions" below).
 
 ## Current state
 
@@ -133,15 +135,19 @@ mapping is a `NovelDetail`-scoped concern (it's data about *that novel's
 cast*), not a global app setting, so it belongs on a different screen
 entirely and isn't part of this redesign.
 
-### New `PreferencesManager` keys (added in Stage 3, not this patch)
+### New `PreferencesManager` keys (added in Stage 3.1)
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
 | `tts_default_rate` | `floatPreferencesKey` | `1.0f` | Seeds `ChapterTtsState.speechRate`; pill still overrides per-session. |
 | `tts_pitch` | `floatPreferencesKey` | `1.0f` | Applied once at engine init. |
-| `tts_engine_package` | `stringPreferencesKey` | `null` = system default | Only added if the on-page engine picker (vs. link-out) is the direction taken - see open questions. |
 | `tts_auto_continue` | `booleanPreferencesKey` | `false` | Advances to next chapter on last-chunk completion. |
 | `tts_keep_screen_on` | `booleanPreferencesKey` | `false` | Ties to `FLAG_KEEP_SCREEN_ON` while `tts.isSpeaking`. |
+
+No `tts_engine_package` key: the engine-picker open question below resolved
+to link-out, not an on-page picker, so there's no app-owned engine choice to
+persist - the system's own Text-to-speech output setting already persists
+whatever engine the reader picks there.
 
 `datastore-preferences:1.0.0` (already a dependency, see
 `app/build.gradle.kts`) has `floatPreferencesKey` available, so no new
@@ -153,49 +159,108 @@ Numbered independently from `REFACTOR_PLAN.md`'s own Phase/Stage
 sequence - this is a separate, narrower plan (Settings only), not a
 continuation of that one.
 
-- **Stage 0 - this doc.** Design only. No `app/src` changes.
-- **Stage 1 - navigation scaffolding.** Add the four
-  `composable("settings/...")` routes to `MainActivity`'s `NavHost` and the
+- **Stage 0 - done.** This doc. Design only, no `app/src` changes.
+- **Stage 1 - done.** Navigation scaffolding: the four
+  `composable("settings/...")` routes in `MainActivity`'s `NavHost` and the
   four new screen files, initially as thin wrappers that just render the
-  moved control code (see Stage 2). Turn `SettingsScreen` into the index/menu
+  moved control code (see Stage 2). `SettingsScreen` becomes the index/menu
   described in §1, four new `LegalRow` entries alongside the existing three.
-- **Stage 2 - mechanical extraction, no behavior change.** Move
-  Theme/Library/Splash's existing control code out of `SettingsScreen.kt`
-  into `ThemeSettingsScreen.kt`/`LibrarySettingsScreen.kt`/
-  `SplashSettingsScreen.kt` verbatim; wire the same callbacks
-  `MainActivity` already passes today one level deeper. `SettingsViewModel`
-  and `PreferencesManager` untouched.
-- **Stage 3 - the new TTS settings page.** Add the `PreferencesManager` keys
-  above, build `TtsSettingsScreen.kt`, decide + implement the engine-picker
-  question (own control vs. link-out), wire `rememberChapterTts()` to read
-  the new defaults, implement auto-continue and keep-screen-on.
+- **Stage 2 - done.** Mechanical extraction, no behavior change:
+  Theme/Library/Splash's existing control code moved out of
+  `SettingsScreen.kt` into `ThemeSettingsScreen.kt`/`LibrarySettingsScreen.kt`/
+  `SplashSettingsScreen.kt` verbatim; the same callbacks `MainActivity`
+  already passed before Stage 1 now wired one level deeper.
+  `SettingsViewModel` and `PreferencesManager` untouched.
+- **Stage 3 - the new TTS settings page.** Split into sub-stages, same
+  reason `REFACTOR_PLAN.md`'s own Phase 3 is split into 3.1-3.5: ordered
+  smallest/lowest-risk first, each one shippable and reviewable on its own
+  rather than one patch that touches `PreferencesManager`, a new screen,
+  and `Tts.kt`'s engine-init code all at once.
+  - **Stage 3.0 - done in this patch.** Docs only: this split, plus
+    resolving the engine-picker and ViewModel-ownership open questions that
+    were blocking 3.1 from starting (see "Open questions" below). No
+    `app/src` changes.
+  - **Stage 3.1 - `PreferencesManager` keys, no UI yet.** Add the four
+    keys in the table above (`tts_default_rate`, `tts_pitch`,
+    `tts_auto_continue`, `tts_keep_screen_on`) with their DataStore
+    read/write plumbing, same shape as the existing
+    `splashAnimationEnabled`/`splashMusicEnabled` keys. Nothing reads them
+    yet - `rememberChapterTts()` still hardcodes `1.0f`/no explicit pitch,
+    `ChapterTtsState.onUtteranceFinished` still just drops `isSpeaking`.
+    Purely additive, so there's nothing for `TtsSettingsScreen.kt` or
+    `MainActivity` to wire against yet - this stage is `PreferencesManager`
+    plus its own tests only, not `TtsSettingsScreen.kt`.
+  - **Stage 3.2 - `TtsSettingsScreen.kt` controls + a link-out engine
+    row.** Build the actual controls: a rate slider, a pitch slider, an
+    auto-continue switch, a keep-screen-on switch (same `Row` +
+    label/description + control shape `SplashSettingsScreen.kt` already
+    uses for its two switches), each reading/writing one Stage 3.1 key via
+    callbacks `MainActivity`'s `"settings/tts"` composable passes down -
+    direct `PreferencesManager` access hoisted at the Activity, same
+    pattern splash already uses, per the resolved ViewModel-ownership
+    question below (no new `TtsSettingsViewModel`). Plus one more row,
+    "Change voice," that opens
+    `Settings.ACTION_VOICE_INPUT_SETTINGS`/system Accessibility
+    Text-to-speech output rather than any in-app picker, per the resolved
+    engine-picker question. This stage is UI-and-persistence only:
+    changing these controls updates the stored preference and the screen
+    reflects it, but nothing in `Tts.kt` reads that preference yet, so
+    reader-facing TTS behavior is still unchanged until Stage 3.3.
+  - **Stage 3.3 - wire `rememberChapterTts()` to the new defaults.** Its
+    `TextToSpeech(context) { ... }` init callback reads `tts_default_rate`
+    and `tts_pitch` and seeds `ChapterTtsState`'s initial `speechRate` and
+    calls `setPitch(...)` with them, replacing the hardcoded `1.0f`/implicit
+    default. This is the actual bug fix the design doc's "Current state"
+    section flags. The pill's live `setRate()` mid-session is untouched -
+    it still only affects that session, never writes back to
+    `tts_default_rate`.
+  - **Stage 3.4 - auto-continue.** `ChapterTtsState.onUtteranceFinished`
+    checks `tts_auto_continue`; when true, calls `ReaderScreen`'s existing
+    next-chapter navigation (same lookup `Screen.Reader`'s
+    `onNext`/`onPrevious` already use against `libraryViewModel.chapters`)
+    instead of just setting `isSpeaking = false`. Off by default per the
+    design doc, so this stage ships with no behavior change until a reader
+    opts in on `settings/tts`.
+  - **Stage 3.5 - keep screen on.** Ties `FLAG_KEEP_SCREEN_ON` on the
+    reader's window to `tts.isSpeaking`, gated by `tts_keep_screen_on`.
+    Smallest of the five sub-stages - one flag, one boolean check - saved
+    for last since it depends on nothing else in Stage 3.1-3.4.
 - **Stage 4 - tests + doc index.** Extend `SettingsViewModelTest.kt`
-  (or add a `TtsSettingsViewModelTest.kt`, depending on whether TTS
-  defaults live on `SettingsViewModel` or a new ViewModel - open question
-  below) covering the new preference reads/writes. Add this file to
-  `docs/README.md`'s `arkarium/` index list.
+  (or add a `TtsSettingsViewModelTest.kt` - moot now that the
+  ViewModel-ownership question resolved to no new ViewModel; this becomes
+  plain `PreferencesManager` read/write tests instead, same shape as
+  whatever covers `splashAnimationEnabled` today) covering the Stage 3.1
+  preference reads/writes. Add this file to `docs/README.md`'s `arkarium/`
+  index list.
 
 ## Open questions
 
-- **Engine picker: own UI or link out?** Building a picker means querying
-  `TextToSpeech.getEngines()` and handling "engine changed mid-session"
-  (does the current `ChapterTtsState.engine` need tearing down and
-  recreating?). Linking to the system picker is far less code but leaves
-  the setting one tap further away and outside the app's own theme. Needs
-  a call before Stage 3 starts, since it decides whether the
-  `tts_engine_package` key above is needed at all.
+- **Engine picker: own UI or link out? Resolved: link out (Stage 3.2).**
+  Building a picker means querying `TextToSpeech.getEngines()` and
+  handling "engine changed mid-session" (does the current
+  `ChapterTtsState.engine` need tearing down and recreating?) for a
+  control most readers touch once, if ever - the doc-comment already in
+  `Tts.kt` about deliberately not shipping or managing voices itself
+  applies just as much to engines. Linking to the system's own
+  Settings > Accessibility > Text-to-speech output picker costs one `Intent`
+  and no engine-teardown handling, at the price of the setting being one
+  tap further away and outside the app's own theme - accepted, same
+  tradeoff already made for "Back-stack depth" below. No
+  `tts_engine_package` key follows from this (see the keys table above).
 - **Does TTS-default state belong on `SettingsViewModel` or a new
-  `TtsSettingsViewModel`?** `SettingsViewModel` (Stage 2.2 of
-  `REFACTOR_PLAN.md`) currently wraps exactly the `SettingsPreferences`
-  interface slice (theme, folder, library URI) - splash and the proposed
-  TTS keys are both already outside that interface and read straight off
-  `PreferencesManager`, same as `splashAnimationEnabled`/
-  `splashMusicEnabled` today. Given `REFACTOR_PLAN.md`'s stated preference
-  for splitting ViewModels by feature area rather than growing one, a
-  separate `TtsSettingsViewModel` (or just direct `PreferencesManager`
-  access from `TtsSettingsScreen`'s call site, same as splash today) both
-  seem more consistent with the existing pattern than folding TTS into
-  `SettingsViewModel`.
+  `TtsSettingsViewModel`? Resolved: neither - direct `PreferencesManager`
+  access (Stage 3.2), same as splash.** `SettingsViewModel` (Stage 2.2 of
+  `REFACTOR_PLAN.md`) wraps exactly the `SettingsPreferences` interface
+  slice (theme, folder, library URI); splash was never folded into it
+  either; it's read straight off `PreferencesManager` via callbacks
+  `MainActivity` hoists and passes down, same shape
+  `SplashSettingsScreen.kt` shows today. TTS gets the same treatment
+  rather than a new single-screen ViewModel: `REFACTOR_PLAN.md`'s
+  preference for splitting ViewModels by feature area is about state with
+  real logic on top of the raw preference (theme's system-default
+  resolution, library's folder-URI persistence), not a justification for
+  a ViewModel wrapping four flat key reads/writes with no logic in
+  between - splash already sets that precedent, TTS just follows it.
 - **Back-stack depth.** Settings -> Settings/TTS now costs one more
   `popBackStack()` than today's single flat screen. Considered and
   accepted as the right tradeoff for readability/focus per option, same
