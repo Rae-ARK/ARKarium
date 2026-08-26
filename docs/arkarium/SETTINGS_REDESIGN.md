@@ -8,8 +8,9 @@
 > Stage 3.0 (docs only), **Stage 3.1** (the four `PreferencesManager` keys,
 > no UI yet), **Stage 3.2** (`TtsSettingsScreen.kt`'s controls + the
 > link-out engine row), **Stage 3.3** (wiring `rememberChapterTts()` to
-> the new rate/pitch defaults), and **Stage 3.4** (auto-continue) are done.
-> This patch is **Stage 3.4**.
+> the new rate/pitch defaults), **Stage 3.4** (auto-continue), and
+> **Stage 3.5** (keep screen on) are done - all of Stage 3 is now complete.
+> This patch is **Stage 3.5**.
 
 ## Current state
 
@@ -245,10 +246,24 @@ continuation of that one.
     when `autoContinueEnabled` is true - off by default per the design doc
     (`ttsAutoContinue`'s own `PreferencesManager` default), so this stage
     ships with no behavior change until a reader opts in on `settings/tts`.
-  - **Stage 3.5 - keep screen on.** Ties `FLAG_KEEP_SCREEN_ON` on the
-    reader's window to `tts.isSpeaking`, gated by `tts_keep_screen_on`.
-    Smallest of the five sub-stages - one flag, one boolean check - saved
-    for last since it depends on nothing else in Stage 3.1-3.4.
+  - **Stage 3.5 - done.** Keep screen on. `ReaderScreen` reads
+    `tts_keep_screen_on` (same direct-`PreferencesManager`,
+    `collectAsState()`-kept-live pattern Stage 3.4 used for
+    `tts_auto_continue`) and ties `WindowManager.LayoutParams
+    .FLAG_KEEP_SCREEN_ON` on the reader's own `Activity.window` to
+    `tts.isSpeaking`, via a `DisposableEffect` keyed on both the
+    preference and `isSpeaking` so the flag is added/cleared on every
+    transition and guaranteed cleared on final disposal too - no
+    read-aloud session can leave the flag set behind it, whether it
+    finishes normally, is stopped manually, or the reader screen itself
+    is closed mid-chapter. A small `Context.findActivity()` helper
+    unwraps `LocalContext.current` down to the `Activity` that owns the
+    window, rather than assuming a direct cast holds. Off by default
+    (`tts_keep_screen_on`'s own `PreferencesManager` default), so this
+    stage ships with no behavior change until a reader opts in on
+    `settings/tts`. Smallest of the five sub-stages, as expected - one
+    flag, one boolean check - and depended on nothing else in
+    Stage 3.1-3.4, so it's the last one shipped. This completes Stage 3.
 - **Stage 4 - tests + doc index.** Extend `SettingsViewModelTest.kt`
   (or add a `TtsSettingsViewModelTest.kt` - moot now that the
   ViewModel-ownership question resolved to no new ViewModel; this becomes
