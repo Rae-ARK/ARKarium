@@ -3,7 +3,6 @@ package com.arkarium.app.ui
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.Settings
-import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -192,7 +191,7 @@ fun TtsSettingsScreen(
                 onClick = {
                     try {
                         context.startActivity(
-                            Intent(TextToSpeech.Engine.ACTION_TTS_SETTINGS)
+                            Intent("com.android.settings.TTS_SETTINGS")
                                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         )
                     } catch (e: ActivityNotFoundException) {
