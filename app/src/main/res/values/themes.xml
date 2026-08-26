@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        Same Theme.Material.Light.NoActionBar the manifest used directly before -
+        only windowBackground is overridden here, to #FF000000 (SplashScreen.kt's
+        own SplashBackground constant). Without this, the manifest's stock theme
+        has a *white* windowBackground, so the very first frame the OS draws for
+        a cold launch (before Compose's setContent has run a single frame) is
+        white - then onCreate's synchronous work (AppDatabase.create(), etc.)
+        finishes, Compose finally renders, and the screen snaps to the black
+        splash. That white-flash-then-black-snap is exactly the "second or two
+        glitch on open" - it happens on every cold launch regardless of the
+        splash music/animation toggles, since it happens before either of those
+        composables even exist. Pre-painting the window black removes the flash:
+        there's nothing left to snap away from once Compose catches up.
+    -->
+    <style name="Theme.ARKarium" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FF000000</item>
+    </style>
+</resources>

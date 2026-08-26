@@ -18,7 +18,7 @@
         android:label="ARKarium"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:theme="@android:style/Theme.Material.Light.NoActionBar">
+        android:theme="@style/Theme.ARKarium">
         <!-- launchMode="singleTop" so tapping a "new chapter" notification (see
              NewChapterNotifier's PendingIntent) delivers straight into onNewIntent()
              on an already-running instance instead of spawning a second MainActivity
