@@ -3,15 +3,23 @@ package com.arkarium.app.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.LibraryBooks
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -26,6 +34,13 @@ import androidx.compose.ui.unit.dp
 // monolithic SettingsScreen.kt. MainActivity's "settings/library" composable
 // wires useCustomFolder/hasCustomFolderSelected and the three callbacks the
 // same way its old "settings" composable did.
+//
+// Beautification pass: the same header badge used on settings/theme now
+// opens this page too, the "Use custom folder" switch row moves into a
+// surfaceVariant card (matching AuthorPageScreen's card idiom), and Rescan
+// Library is styled as a secondary OutlinedButton with a refresh icon so it
+// doesn't visually compete with Select/Change Folder as the primary action
+// on this page. No callback, param, or behavior changed.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibrarySettingsScreen(
@@ -54,56 +69,78 @@ fun LibrarySettingsScreen(
         )
 
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(
+            SettingsHeaderBadge(
+                icon = Icons.Filled.LibraryBooks,
+                caption = "Choose where ARKarium reads your novels from, and " +
+                    "rescan whenever files change on disk."
+            )
+
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
-                // weight(1f) is load-bearing here, not cosmetic: an unweighted Column in a
-                // Row is measured with loose (unbounded) width, so this description text -
-                // long enough to need wrapping - never actually wraps against the space
-                // left for it. It just claims however much width it wants and pushes the
-                // Switch out past the screen edge instead of sitting next to it. Weighting
-                // the Column forces it to share the Row with the Switch and wrap within
-                // its share, which is what makes the Switch reliably visible/tappable.
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 12.dp)
-                ) {
-                    Text("Use custom folder")
-                    Text(
-                        if (useCustomFolder) {
-                            "Reading from a folder you picked."
-                        } else {
-                            "Reading from ARKarium's own storage. Drop novel " +
-                                "folders into the app's Android/data folder, or " +
-                                "turn this on to pick a folder yourself."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // weight(1f) is load-bearing here, not cosmetic: an unweighted Column in a
+                        // Row is measured with loose (unbounded) width, so this description text -
+                        // long enough to need wrapping - never actually wraps against the space
+                        // left for it. It just claims however much width it wants and pushes the
+                        // Switch out past the screen edge instead of sitting next to it. Weighting
+                        // the Column forces it to share the Row with the Switch and wrap within
+                        // its share, which is what makes the Switch reliably visible/tappable.
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 12.dp)
+                        ) {
+                            Text("Use custom folder", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                if (useCustomFolder) {
+                                    "Reading from a folder you picked."
+                                } else {
+                                    "Reading from ARKarium's own storage. Drop novel " +
+                                        "folders into the app's Android/data folder, or " +
+                                        "turn this on to pick a folder yourself."
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        Switch(checked = useCustomFolder, onCheckedChange = onUseCustomFolderToggle)
+                    }
+
+                    if (useCustomFolder) {
+                        Button(
+                            onClick = onSelectFolderClick,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 14.dp)
+                        ) {
+                            Text(if (hasCustomFolderSelected) "Change Folder" else "Select Folder")
+                        }
+                    }
                 }
-                Switch(checked = useCustomFolder, onCheckedChange = onUseCustomFolderToggle)
             }
 
-            if (useCustomFolder) {
-                Button(
-                    onClick = onSelectFolderClick,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 12.dp)
-                ) {
-                    Text(if (hasCustomFolderSelected) "Change Folder" else "Select Folder")
-                }
-            }
+            Spacer(modifier = Modifier.height(16.dp))
 
-            Button(
+            OutlinedButton(
                 onClick = onRescan,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.primary
+                )
             ) {
+                Icon(
+                    Icons.Filled.Refresh,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
                 Text("Rescan Library")
             }
         }

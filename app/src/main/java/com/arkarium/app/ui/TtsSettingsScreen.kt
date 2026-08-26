@@ -6,15 +6,23 @@ import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.RecordVoiceOver
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -35,6 +43,14 @@ import androidx.compose.ui.unit.dp
 // changing these controls updates the stored preference and this screen
 // reflects it, but Tts.kt doesn't read any of these keys yet (that's Stages
 // 3.3-3.5), so reader-facing TTS behavior is unchanged until then.
+//
+// Beautification pass: the shared header badge opens this page too; the two
+// sliders (rate/pitch) and the two switches (auto-continue/keep screen on)
+// each move into their own surfaceVariant card - two small grouped cards
+// instead of one long undivided column - with a small GraphicEq accent icon
+// next to each slider's label. "Change voice" keeps its own outlined,
+// icon-fronted button below the cards, unchanged in behavior. No callback,
+// param, range, step, or persisted-value logic changed.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TtsSettingsScreen(
@@ -65,118 +81,164 @@ fun TtsSettingsScreen(
         )
 
         Column(modifier = Modifier.padding(16.dp)) {
-            // Default speech rate. Same 0.5x-2.5x range/step as the reader
-            // pill's live rate slider (ReaderScreen.kt) for a consistent feel
-            // between the two controls - this one only changes what
-            // rememberChapterTts() seeds ChapterTtsState.speechRate with
-            // (Stage 3.3), not the live session value.
-            Column(modifier = Modifier.padding(bottom = 16.dp)) {
-                Text("Default speech rate")
-                Text(
-                    "Starting read-aloud speed for every chapter. The " +
-                        "reader's Speed slider can still adjust it for that " +
-                        "session without changing this default.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Slider(
-                        value = ttsDefaultRate,
-                        onValueChange = onDefaultRateChange,
-                        valueRange = 0.5f..2.5f,
-                        steps = 7,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 8.dp)
-                    )
-                    Text(
-                        "${String.format("%.2f", ttsDefaultRate)}x",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
+            SettingsHeaderBadge(
+                icon = Icons.Filled.RecordVoiceOver,
+                caption = "Defaults for read-aloud - rate, pitch, and how it " +
+                    "behaves between chapters."
+            )
 
-            // Pitch. No pill exposure - unlike rate, there's no mid-chapter
-            // case for changing this, per the design doc. Applied once at
-            // engine init (Stage 3.3) via TextToSpeech.setPitch(), whose
-            // documented range is the same 0.5-2.0 used here (1.0 = normal).
-            Column(modifier = Modifier.padding(bottom = 16.dp)) {
-                Text("Pitch")
-                Text(
-                    "Voice pitch for read-aloud. 1.0 is the engine's normal " +
-                        "pitch.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Slider(
-                        value = ttsPitch,
-                        onValueChange = onPitchChange,
-                        valueRange = 0.5f..2.0f,
-                        steps = 5,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 8.dp)
-                    )
-                    Text(
-                        "${String.format("%.2f", ttsPitch)}",
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
-            }
-
-            Row(
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 12.dp)
-                ) {
-                    Text("Auto-continue to next chapter")
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Default speech rate. Same 0.5x-2.5x range/step as the reader
+                    // pill's live rate slider (ReaderScreen.kt) for a consistent feel
+                    // between the two controls - this one only changes what
+                    // rememberChapterTts() seeds ChapterTtsState.speechRate with
+                    // (Stage 3.3), not the live session value.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.GraphicEq,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Text("Default speech rate", style = MaterialTheme.typography.bodyLarge)
+                    }
                     Text(
-                        "Keep reading aloud into the next chapter instead of " +
-                            "stopping at the end of this one.",
+                        "Starting read-aloud speed for every chapter. The " +
+                            "reader's Speed slider can still adjust it for that " +
+                            "session without changing this default.",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(top = 2.dp)
                     )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Slider(
+                            value = ttsDefaultRate,
+                            onValueChange = onDefaultRateChange,
+                            valueRange = 0.5f..2.5f,
+                            steps = 7,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp)
+                        )
+                        Text(
+                            "${String.format("%.2f", ttsDefaultRate)}x",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
+
+                    Divider(
+                        modifier = Modifier.padding(vertical = 14.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
+                    )
+
+                    // Pitch. No pill exposure - unlike rate, there's no mid-chapter
+                    // case for changing this, per the design doc. Applied once at
+                    // engine init (Stage 3.3) via TextToSpeech.setPitch(), whose
+                    // documented range is the same 0.5-2.0 used here (1.0 = normal).
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            Icons.Filled.GraphicEq,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Text("Pitch", style = MaterialTheme.typography.bodyLarge)
+                    }
+                    Text(
+                        "Voice pitch for read-aloud. 1.0 is the engine's normal " +
+                            "pitch.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Slider(
+                            value = ttsPitch,
+                            onValueChange = onPitchChange,
+                            valueRange = 0.5f..2.0f,
+                            steps = 5,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 8.dp)
+                        )
+                        Text(
+                            "${String.format("%.2f", ttsPitch)}",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
-                Switch(checked = ttsAutoContinue, onCheckedChange = onAutoContinueToggle)
             }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .padding(end = 12.dp)
-                ) {
-                    Text("Keep screen on while speaking")
-                    Text(
-                        "Prevents the screen from sleeping for as long as " +
-                            "read-aloud is active.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 12.dp)
+                        ) {
+                            Text("Auto-continue to next chapter", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "Keep reading aloud into the next chapter instead of " +
+                                    "stopping at the end of this one.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        Switch(checked = ttsAutoContinue, onCheckedChange = onAutoContinueToggle)
+                    }
+
+                    Divider(
+                        modifier = Modifier.padding(vertical = 14.dp),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
                     )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 12.dp)
+                        ) {
+                            Text("Keep screen on while speaking", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "Prevents the screen from sleeping for as long as " +
+                                    "read-aloud is active.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        Switch(checked = ttsKeepScreenOn, onCheckedChange = onKeepScreenOnToggle)
+                    }
                 }
-                Switch(checked = ttsKeepScreenOn, onCheckedChange = onKeepScreenOnToggle)
             }
 
             // Link-out engine row, per the design doc's resolved
@@ -187,7 +249,7 @@ fun TtsSettingsScreen(
             // most devices); falls back to the general Accessibility
             // settings screen on the rare device where that intent doesn't
             // resolve, rather than crashing on ActivityNotFoundException.
-            Button(
+            OutlinedButton(
                 onClick = {
                     try {
                         context.startActivity(
@@ -203,8 +265,13 @@ fun TtsSettingsScreen(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 12.dp)
+                    .padding(top = 16.dp)
             ) {
+                Icon(
+                    Icons.Filled.Tune,
+                    contentDescription = null,
+                    modifier = Modifier.padding(end = 8.dp)
+                )
                 Text("Change voice")
             }
         }
