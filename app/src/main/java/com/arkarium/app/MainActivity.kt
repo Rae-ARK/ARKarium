@@ -1129,10 +1129,9 @@ class MainActivity : ComponentActivity() {
                         // settingsViewModel/prefsManager wiring that used to sit right
                         // here (onThemeSelected, onUseCustomFolderToggle,
                         // onSelectFolderClick, onRescan, onSplashAnimationToggle,
-                        // onSplashMusicToggle) moves down into each new sub-screen's own
-                        // call site in Stage 2 - not deleted, just not wired to anything
-                        // yet while these routes are thin wrappers (see
-                        // ThemeSettingsScreen/LibrarySettingsScreen/SplashSettingsScreen).
+                        // onSplashMusicToggle) now lives on each sub-screen's own call
+                        // site as of Stage 2 - see the "settings/theme"/"settings/library"/
+                        // "settings/splash" composables below.
                         SettingsScreen(
                             onThemeClick = { navController.navigate("settings/theme") },
                             onLibraryClick = { navController.navigate("settings/library") },
@@ -1150,19 +1149,98 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/theme") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        ThemeSettingsScreen(onBack = { navController.popBackStack() })
+                        // Stage 2 of docs/arkarium/SETTINGS_REDESIGN.md: the Theme radio
+                        // group's callback wiring, unchanged from the old "settings"
+                        // composable - just terminating on this screen instead of the
+                        // index. See that composable's own history for why these route
+                        // through settingsViewModel rather than prefsManager directly.
+                        ThemeSettingsScreen(
+                            currentTheme = currentTheme.value,
+                            systemDefaultLightVariant = currentSystemDefaultLightVariant.value,
+                            onThemeSelected = { theme -> settingsViewModel.setTheme(theme) },
+                            onSystemDefaultLightVariantSelected = { variant ->
+                                settingsViewModel.setSystemDefaultLightVariant(variant)
+                            },
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                 }
 
                 composable("settings/library") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        LibrarySettingsScreen(onBack = { navController.popBackStack() })
+                        // Stage 2 of docs/arkarium/SETTINGS_REDESIGN.md: the Library
+                        // switch/buttons' callback wiring, unchanged from the old
+                        // "settings" composable - just terminating on this screen
+                        // instead of the index.
+                        LibrarySettingsScreen(
+                            useCustomFolder = useCustomFolder.value,
+                            hasCustomFolderSelected = savedUri.value != null,
+                            onUseCustomFolderToggle = { enabled ->
+                                settingsViewModel.setUseCustomFolder(enabled)
+                                // Switching sources mints different novel IDs (see
+                                // ScannerImpl's id hash, keyed off root.uri) - clear
+                                // first so the old source's novels don't linger
+                                // alongside the new source's until the next scan's
+                                // reconciliation pass catches up. Kept on lifecycleScope
+                                // (not settingsViewModel, which owns no novel state) -
+                                // novels/startScan now live on libraryViewModel (Stage
+                                // 2.3, see docs/arkarium/REFACTOR_PLAN.md).
+                                lifecycleScope.launch {
+                                    libraryViewModel.novels.clear()
+                                    // Turning custom folder ON with nothing picked yet
+                                    // resolves to null here by design - leave the
+                                    // library empty and let the "Select Folder" button
+                                    // below (or EmptyLibraryPrompt on Home) start the
+                                    // picker instead of scanning anything.
+                                    resolveLibraryRoot(this@MainActivity, enabled, savedUri.value)?.let { libraryViewModel.startScan(it) }
+                                }
+                            },
+                            onSelectFolderClick = { pickFolder.launch(null) },
+                            onRescan = {
+                                lifecycleScope.launch {
+                                    // No novels.clear() here - see bugs.md Bug 4.
+                                    // startScan's onScanCompleted now reconciles
+                                    // stale novels against the DB once the scan
+                                    // actually finishes, instead of blanking the
+                                    // visible library up front and hoping the scan
+                                    // fully repopulates it.
+                                    val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
+                                    if (root != null) {
+                                        libraryViewModel.startScan(root)
+                                    } else {
+                                        // Custom folder is on but nothing's been picked
+                                        // yet - "Rescan" would otherwise silently do
+                                        // nothing here. Send the user to the picker.
+                                        pickFolder.launch(null)
+                                    }
+                                }
+                            },
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                 }
 
                 composable("settings/splash") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        SplashSettingsScreen(onBack = { navController.popBackStack() })
+                        // Stage 2 of docs/arkarium/SETTINGS_REDESIGN.md: the Splash
+                        // switches' callback wiring, unchanged from the old "settings"
+                        // composable - just terminating on this screen instead of the
+                        // index.
+                        SplashSettingsScreen(
+                            splashAnimationEnabled = splashAnimationEnabled.value,
+                            splashMusicEnabled = splashMusicEnabled.value,
+                            onSplashAnimationToggle = { enabled ->
+                                lifecycleScope.launch {
+                                    prefsManager.setSplashAnimationEnabled(enabled)
+                                }
+                            },
+                            onSplashMusicToggle = { enabled ->
+                                lifecycleScope.launch {
+                                    prefsManager.setSplashMusicEnabled(enabled)
+                                }
+                            },
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                 }
 
