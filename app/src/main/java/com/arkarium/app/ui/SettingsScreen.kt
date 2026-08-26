@@ -2,7 +2,6 @@ package com.arkarium.app.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +18,7 @@ import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material3.Card
@@ -39,39 +39,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arkarium.app.BuildConfig
 
-// A single tappable "goes to its own page" settings row - used for every entry
-// on this screen now (Theme/Library/Splash/TTS as of Stage 1, see
-// docs/arkarium/SETTINGS_REDESIGN.md; Privacy Policy/Terms/About Me already
-// worked this way before that doc existed).
-//
-// Left completely as-is for About Me: that row deliberately keeps the plain
-// text-only look it always had rather than picking up an icon badge, since
-// it's "just a dumb thing which opens the author's portfolio site" and
-// doesn't need to be dressed up like the real settings above it.
-@Composable
-private fun LegalRow(label: String, onClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(label)
-        Icon(
-            Icons.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-        )
-    }
-}
-
 // Small uppercase, letter-spaced label used above each grouped card
-// (PREFERENCES / LEGAL) so the index page reads as sections instead of one
-// long undifferentiated list - the same "group related settings" idea most
-// platform settings apps use, just without pulling in a whole new library
-// for it.
+// (PREFERENCES / LEGAL / ABOUT) so the index page reads as sections instead
+// of one long undifferentiated list - the same "group related settings"
+// idea most platform settings apps use, just without pulling in a whole new
+// library for it.
 @Composable
 private fun SettingsSectionLabel(text: String) {
     Text(
@@ -180,20 +152,23 @@ private fun SettingsCard(content: @Composable () -> Unit) {
 // Stage 1 of docs/arkarium/SETTINGS_REDESIGN.md: this screen stops rendering
 // any control itself (Theme radio group, Library switch/buttons, Splash
 // switches all used to live here inline) and becomes a pure index of rows,
-// each navigating to its own destination - the same LegalRow pattern Privacy
-// Policy/Terms/About Me already used, just applied to all seven entries
-// instead of three. The actual Theme/Library/Splash controls still exist
-// verbatim in MainActivity's "settings" call site for one more stage; they
-// move into settings/theme, settings/library, settings/splash's own screens
-// in Stage 2, which is also when this screen's callback params below get
-// threaded one level deeper instead of terminating here.
+// each navigating to its own destination - the same tappable-row pattern
+// Privacy Policy/Terms/About Me already used, just applied to all seven
+// entries instead of three. The actual Theme/Library/Splash controls still
+// exist verbatim in MainActivity's "settings" call site for one more stage;
+// they move into settings/theme, settings/library, settings/splash's own
+// screens in Stage 2, which is also when this screen's callback params
+// below get threaded one level deeper instead of terminating here.
 //
-// "Extra stage" beautification pass: the Theme/Library/Splash/TTS rows and
-// the Privacy Policy/Terms rows now render inside two icon-badged,
-// section-labeled cards (SettingsCard/SettingsCardRow above) instead of as
-// bare LegalRow text lines - purely visual, no navigation or callback wiring
-// changed. About Me deliberately keeps the original plain LegalRow look;
-// see that composable's doc comment for why.
+// "Extra stage" beautification pass: every row on this index, including
+// About Me, now renders inside an icon-badged, section-labeled card
+// (SettingsCard/SettingsCardRow above) instead of as bare text - purely
+// visual, no navigation or callback wiring changed. The "ignore About Me"
+// direction from the original pass was about not reskinning the WebView
+// destination page that opens the author's portfolio site (that page really
+// is just a dumb WebView wrapper and doesn't need styling) - it was never
+// about leaving this index row looking inconsistent with the rows around
+// it, so About Me now matches Theme/Library/Splash/TTS/Privacy/Terms here.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -267,13 +242,22 @@ fun SettingsScreen(
                 )
             }
 
-            Divider(modifier = Modifier.padding(top = 20.dp, bottom = 12.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // Opens the author's site in-app via WebViewScreen (see MainActivity's
-            // Screen.AboutMe case) rather than sending the reader out to a browser.
-            // Kept as the original plain LegalRow - not part of this beautification
-            // pass, see the doc comment on LegalRow above.
-            LegalRow(label = "About Me", onClick = onAboutMe)
+            SettingsSectionLabel("About")
+            SettingsCard {
+                // Opens the author's site in-app via WebViewScreen (see MainActivity's
+                // Screen.AboutMe case) rather than sending the reader out to a browser.
+                // That destination page is left as a plain WebView wrapper - no reason
+                // to style it, it just displays the portfolio site - but the row here
+                // on the index now matches every other row's card/icon-badge look.
+                SettingsCardRow(
+                    icon = Icons.Filled.Person,
+                    title = "About Me",
+                    onClick = onAboutMe,
+                    showDivider = false
+                )
+            }
 
             Divider(modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
 
