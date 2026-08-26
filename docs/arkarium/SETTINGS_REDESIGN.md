@@ -7,8 +7,9 @@
 > smallest/lowest-risk slice first, each one independently reviewable.
 > Stage 3.0 (docs only), **Stage 3.1** (the four `PreferencesManager` keys,
 > no UI yet), **Stage 3.2** (`TtsSettingsScreen.kt`'s controls + the
-> link-out engine row), and **Stage 3.3** (wiring `rememberChapterTts()` to
-> the new rate/pitch defaults) are done. This patch is **Stage 3.3**.
+> link-out engine row), **Stage 3.3** (wiring `rememberChapterTts()` to
+> the new rate/pitch defaults), and **Stage 3.4** (auto-continue) are done.
+> This patch is **Stage 3.4**.
 
 ## Current state
 
@@ -227,13 +228,23 @@ continuation of that one.
     design doc's "Current state" section flags. The pill's live
     `setRate()` mid-session is untouched - it still only affects that
     session, never writes back to `tts_default_rate`.
-  - **Stage 3.4 - auto-continue.** `ChapterTtsState.onUtteranceFinished`
-    checks `tts_auto_continue`; when true, calls `ReaderScreen`'s existing
-    next-chapter navigation (same lookup `Screen.Reader`'s
-    `onNext`/`onPrevious` already use against `libraryViewModel.chapters`)
-    instead of just setting `isSpeaking = false`. Off by default per the
-    design doc, so this stage ships with no behavior change until a reader
-    opts in on `settings/tts`.
+  - **Stage 3.4 - done.** Auto-continue. `ChapterTtsState` gained an
+    `autoContinueEnabled` flag (kept live via `collectAsState()` on
+    `tts_auto_continue` in `rememberChapterTts()`, unlike rate/pitch's
+    one-shot `.first()` seed, so a reader flipping the setting mid-session
+    doesn't have to leave and reopen the reader for it to take effect) and
+    an `onChapterFinished` callback. `ReaderScreen` sets that callback to
+    its existing `onNext` on every recomposition, so it always closes over
+    whichever `onNext` the screen currently has - the same one
+    `Screen.Reader`'s Previous/Next buttons already call against
+    `libraryViewModel.chapters`, just invoked automatically instead of by a
+    tap, and passing `1f` rather than the live scroll-derived
+    `currentProgress()` since a reader who finished a chapter by ear hasn't
+    necessarily scrolled to its bottom. `onUtteranceFinished` calls
+    `onChapterFinished?.invoke()` once the last chunk finishes, but only
+    when `autoContinueEnabled` is true - off by default per the design doc
+    (`ttsAutoContinue`'s own `PreferencesManager` default), so this stage
+    ships with no behavior change until a reader opts in on `settings/tts`.
   - **Stage 3.5 - keep screen on.** Ties `FLAG_KEEP_SCREEN_ON` on the
     reader's window to `tts.isSpeaking`, gated by `tts_keep_screen_on`.
     Smallest of the five sub-stages - one flag, one boolean check - saved

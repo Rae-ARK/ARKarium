@@ -163,6 +163,17 @@ fun ReaderScreen(
     // Read-aloud. See Tts.kt - one engine instance persists for the whole reading
     // session (including across Previous/Next), same reuse behavior as the state above.
     val tts = rememberChapterTts()
+    // Stage 3.4 of docs/arkarium/SETTINGS_REDESIGN.md: reassigned every recomposition
+    // so the closure always captures whichever onNext this screen currently has (it
+    // changes chapter-to-chapter, and is null at the last chapter) - cheap and
+    // idempotent, so no LaunchedEffect/key needed. Passes 1f rather than
+    // currentProgress(): auto-continue fires because the reader finished the chapter by
+    // ear, not by eye, so scroll position isn't a meaningful signal of how much of the
+    // chapter was actually heard - same "chapter complete" progress a manual Next tap
+    // would leave behind if the reader had scrolled to the bottom first. tts itself
+    // gates this on autoContinueEnabled (off by default), so onChapterFinished being
+    // set here is not itself a behavior change until a reader opts in on settings/tts.
+    tts.onChapterFinished = { onNext?.invoke(1f) }
     val showControls = remember { mutableStateOf(true) }
     // Separate from showControls: showControls is the tap-anywhere immersive toggle
     // for the top bar + progress readout, but font/spacing/mode were only reachable
