@@ -16,9 +16,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         ChapterOverrideEntity::class,
         ScanFingerprintEntity::class,
         ReadingProgressEntity::class,
-        SyncedFileEntity::class
+        SyncedFileEntity::class,
+        ChapterReadEventEntity::class
     ],
-    version = 12
+    version = 13
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun novelDao(): NovelDao
@@ -29,6 +30,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun scanFingerprintDao(): ScanFingerprintDao
     abstract fun readingProgressDao(): ReadingProgressDao
     abstract fun syncedFileDao(): SyncedFileDao
+    abstract fun chapterReadEventDao(): ChapterReadEventDao
 
     companion object {
         // Migration from v1 to v2: add new tables
@@ -237,11 +239,34 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v12 to v13: adds the chapter_read_events table backing the
+        // Home screen's reading-stats card (streak + chapters read this week - see
+        // ChapterReadEventEntity's doc comment). Purely additive - no existing table
+        // is touched, and the new table starts empty for every existing install, so
+        // streak/weekly-count both start at 0 rather than being backfilled from
+        // reading_progress's history (that table only ever keeps one row per novel -
+        // the *current* position - so there's no historical "which days did I read
+        // on" data to reconstruct from it).
+        val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS chapter_read_events (
+                        chapter_id TEXT NOT NULL,
+                        novel_id TEXT NOT NULL,
+                        read_date TEXT NOT NULL,
+                        read_at INTEGER NOT NULL,
+                        PRIMARY KEY(chapter_id, read_date),
+                        FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+            }
+        }
+
         fun create(context: Context): AppDatabase = Room.databaseBuilder(
             context.applicationContext,
             AppDatabase::class.java,
             "arkarium.db"
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
             .fallbackToDestructiveMigration()
             .build()
     }

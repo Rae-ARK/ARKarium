@@ -11,6 +11,7 @@ import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.ArcEntity
 import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.NovelEntity
+import com.arkarium.app.data.ReadingStats
 import com.arkarium.app.data.ScannerImpl
 import com.arkarium.app.data.SyncStatus
 import com.arkarium.app.data.mergeNovelForRescan
@@ -58,6 +59,18 @@ class LibraryViewModel(
     val arcs: SnapshotStateList<ArcEntity> = mutableStateListOf()
     val recentlyRead: SnapshotStateList<NovelEntity> = mutableStateListOf()
     val inProgressNovels: SnapshotStateList<NovelEntity> = mutableStateListOf()
+
+    // Backs the Home screen's reading-stats card (see ChapterReadEventEntity's doc
+    // comment). Refreshed alongside recentlyRead/inProgressNovels in
+    // refreshRecentlyRead - same "call this after anything that could have added a
+    // new event" reasoning MainActivity.saveReadingProgress already follows for
+    // that function - plus once more from startScan's own refreshRecentlyRead call,
+    // so a cold launch shows the current streak immediately rather than waiting for
+    // the first chapter read of the session.
+    private val _readingStreakDays = mutableStateOf(0)
+    val readingStreakDays: State<Int> = _readingStreakDays
+    private val _chaptersReadThisWeek = mutableStateOf(0)
+    val chaptersReadThisWeek: State<Int> = _chaptersReadThisWeek
 
     private val _overriddenChapterIds = mutableStateOf<Set<String>>(emptySet())
     val overriddenChapterIds: State<Set<String>> = _overriddenChapterIds
@@ -208,6 +221,20 @@ class LibraryViewModel(
         val inProgress = db.novelDao().byStatus("IN_PROGRESS")
         inProgressNovels.clear()
         inProgressNovels.addAll(inProgress)
+
+        refreshReadingStats()
+    }
+
+    // Recomputes the Home screen's streak/weekly-count from chapter_read_events -
+    // see ChapterReadEventEntity and ReadingStats. Kept as its own function (rather
+    // than inlined into refreshRecentlyRead) so it stays independently callable if
+    // a future caller ever needs to refresh just the stats without also re-running
+    // refreshRecentlyRead's recentNovelIds/byStatus queries - today's only caller
+    // is refreshRecentlyRead itself, immediately below.
+    suspend fun refreshReadingStats() {
+        val readDates = db.chapterReadEventDao().distinctReadDates()
+        _readingStreakDays.value = ReadingStats.currentStreakDays(readDates)
+        _chaptersReadThisWeek.value = db.chapterReadEventDao().countSince(ReadingStats.windowStartKey(7))
     }
 
     companion object {
