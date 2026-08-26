@@ -4,6 +4,8 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +69,26 @@ class ChapterTtsState internal constructor() {
 
     var speechRate by mutableFloatStateOf(1.0f)
         internal set
+
+    // Stage 3.4 of docs/arkarium/SETTINGS_REDESIGN.md. Unlike speechRate/pitch (seeded
+    // once at engine init, see rememberChapterTts below), this is kept live for the
+    // whole session - see the collectAsState() wiring below - so toggling auto-continue
+    // in settings/tts takes effect on the very next chapter boundary rather than
+    // requiring the reader to leave and reopen the reader. Off by default, matching
+    // TTS_AUTO_CONTINUE_KEY's own default in PreferencesManager.
+    var autoContinueEnabled by mutableStateOf(false)
+        internal set
+
+    // Invoked from onUtteranceFinished below in place of merely dropping isSpeaking back
+    // to false, once the last chunk in a chapter finishes and autoContinueEnabled is
+    // true. Set by ReaderScreen to its existing onNext callback - ChapterTtsState has no
+    // access to chapter navigation itself (that lives with libraryViewModel.chapters in
+    // MainActivity), so this is the seam between "TTS finished" and "advance to the next
+    // chapter," same division of responsibility Tts.kt already keeps from ReaderScreen
+    // elsewhere in this file. Null (ReaderScreen leaves it unset, or onNext itself is
+    // null because there's no next chapter) means "do nothing beyond stopping," same
+    // "null means disabled" contract onNext already uses.
+    var onChapterFinished: (() -> Unit)? = null
 
     internal var engine: TextToSpeech? = null
     private var pendingChunks: List<String> = emptyList()
@@ -134,6 +156,11 @@ class ChapterTtsState internal constructor() {
             speakNextChunk(TextToSpeech.QUEUE_ADD)
         } else {
             isSpeaking = false
+            // Stage 3.4: off by default, so this is a no-op until a reader opts in on
+            // settings/tts - see autoContinueEnabled's doc comment above.
+            if (autoContinueEnabled) {
+                onChapterFinished?.invoke()
+            }
         }
     }
 }
@@ -158,6 +185,16 @@ fun rememberChapterTts(): ChapterTtsState {
     // ViewModel of their own.
     val prefsManager = remember { PreferencesManager(context) }
     val coroutineScope = rememberCoroutineScope()
+
+    // Stage 3.4 of docs/arkarium/SETTINGS_REDESIGN.md. Deliberately not a one-shot
+    // .first() read like defaultRate/defaultPitch below - auto-continue is checked
+    // every time a chapter finishes, not just once at engine construction, so it's kept
+    // live via collectAsState() instead and pushed onto ChapterTtsState whenever it
+    // changes.
+    val autoContinue by prefsManager.ttsAutoContinue.collectAsState(initial = false)
+    LaunchedEffect(autoContinue) {
+        state.autoContinueEnabled = autoContinue
+    }
 
     DisposableEffect(Unit) {
         var engine: TextToSpeech? = null
