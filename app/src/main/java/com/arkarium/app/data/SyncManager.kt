@@ -403,13 +403,25 @@ class SyncManager(private val context: Context, private val client: SyncClient =
     ): List<SyncedFileEntity> {
         val existingByPath = existing.associateBy { it.relativePath }
         val records = mutableListOf<SyncedFileEntity>()
-        manifest.files.forEachIndexed { index, entry ->
+        // Only the arc folder currently being downloaded is announced - never a raw
+        // per-file path or an "(n/total)" count (see SyncProgressDialog: the dialog
+        // now shows the novel's cover art while a spinner runs over it, with just this
+        // one line of text underneath, so the message needs to read as "which arc"
+        // rather than "which file"). `lastAnnounced` suppresses repeat onProgress calls
+        // for every chapter inside the same arc - only a change in arcLabelForPath's
+        // result fires a new message, so a 40-chapter arc still only announces once.
+        var lastAnnounced: String? = null
+        manifest.files.forEach { entry ->
             val current = existingByPath[entry.relativePath]
             if (current != null && current.sha256 == entry.sha256 && current.size == entry.size) {
                 records.add(current)
-                return@forEachIndexed
+                return@forEach
             }
-            onProgress("Downloading ${entry.relativePath} (${index + 1}/${manifest.files.size})...")
+            val label = arcLabelForPath(entry.relativePath)
+            if (label != lastAnnounced) {
+                lastAnnounced = label
+                onProgress(label)
+            }
             val bytes = client.downloadFile(baseUrl, entry.relativePath)
             val actualHash = sha256Hex(bytes)
             if (actualHash != entry.sha256) {
@@ -435,6 +447,28 @@ class SyncManager(private val context: Context, private val client: SyncClient =
             )
         }
         return records
+    }
+
+    // Turns a manifest-relative path into the one line SyncProgressDialog shows while
+    // downloading - the arc folder only, never the file name or an "(n/total)" count
+    // (see downloadManifestFiles above). A path's first segment is the same thing
+    // ScannerImpl treats as a possible arc folder once it's scanned back off disk
+    // (isArcFolderName reuses ScannerImpl's own ARC_PATTERNS), so this stays in sync
+    // with however arcs actually get named/detected without duplicating that regex.
+    // Non-arc content (root-level chapters, cover art, metadata.json, authors/...)
+    // still gets a label - just a generic one, since there's no arc name to show and
+    // repeating the raw path/filename is exactly what this is meant to avoid.
+    private fun arcLabelForPath(relativePath: String): String {
+        val firstSegment = relativePath.substringBefore('/')
+        return when {
+            firstSegment == "authors" -> "Downloading author info..."
+            relativePath == "manifest.json" -> "Fetching manifest..."
+            relativePath.substringBeforeLast('/', "") == "" &&
+                (firstSegment.startsWith("cover.") || firstSegment == "metadata.json") ->
+                "Downloading cover & details..."
+            ScannerImpl.isArcFolderName(firstSegment) -> "Downloading $firstSegment..."
+            else -> "Downloading chapters..."
+        }
     }
 
     // Writes bytes to folder/relativePath, creating any intermediate arc subfolders

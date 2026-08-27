@@ -40,6 +40,15 @@ class ScannerImpl(private val context: Context) {
             Regex("^(?:弧|卷|部)\\s*(\\d+)?", RegexOption.IGNORE_CASE)
         )
 
+        // Public wrapper around the same ARC_PATTERNS matching the instance-side
+        // isArcFolder() uses on-disk, so a manifest-relative path's first segment can
+        // be classified as "an arc folder" without duplicating the regex - see
+        // SyncManager.arcLabelForPath, which uses this to decide what to announce in
+        // sync progress messages (arc name only, never a raw file path/count).
+        fun isArcFolderName(folderName: String): Boolean {
+            return ARC_PATTERNS.any { it.containsMatchIn(folderName) }
+        }
+
         // Chapter sort tiers - see parseChapter() and bugs.md Bug 2. Regular chapters
         // (0) sort first by their own number/title, exactly as before this fix; bonus
         // content (1) and closing content (2) always sort after every regular chapter
