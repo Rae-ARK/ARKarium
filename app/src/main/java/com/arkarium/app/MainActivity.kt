@@ -1445,6 +1445,9 @@ class MainActivity : ComponentActivity() {
                 // action, see HomeScreen.kt / syncAllRaeArkNovels above). Reuses
                 // SyncProgressDialog, same as the per-novel "Check for updates" dialog
                 // below - just with "Rae ARK's novels" standing in for a single title.
+                // No single novel to draw a cover from here (this is a whole-batch
+                // pass), so coverUrl is left at its null default and the dialog falls
+                // back to the same placeholder NovelCardVertical uses.
                 when (val state = syncViewModel.syncAllState.value) {
                     SyncAllState.Idle -> {}
                     is SyncAllState.InProgress -> {
@@ -1481,6 +1484,11 @@ class MainActivity : ComponentActivity() {
                     is SyncCheckState.InProgress -> {
                         SyncProgressDialog(
                             novelTitle = state.novel.title,
+                            // Local cover.* first, remote-fetched cover as fallback -
+                            // same resolution order NovelCardVertical/NovelContinueCard
+                            // already use elsewhere, so the dialog shows the same art
+                            // the reader already recognizes from the library grid.
+                            coverUrl = state.novel.coverUri ?: state.novel.remoteCoverUrl,
                             isLoading = true,
                             message = state.message,
                             errorMessage = null,
@@ -1490,6 +1498,7 @@ class MainActivity : ComponentActivity() {
                     is SyncCheckState.Done -> {
                         SyncProgressDialog(
                             novelTitle = state.novel.title,
+                            coverUrl = state.novel.coverUri ?: state.novel.remoteCoverUrl,
                             isLoading = false,
                             message = state.message,
                             errorMessage = null,
@@ -1499,6 +1508,7 @@ class MainActivity : ComponentActivity() {
                     is SyncCheckState.Error -> {
                         SyncProgressDialog(
                             novelTitle = state.novel.title,
+                            coverUrl = state.novel.coverUri ?: state.novel.remoteCoverUrl,
                             isLoading = false,
                             message = "",
                             errorMessage = state.message,
