@@ -1,19 +1,21 @@
 package com.arkarium.app.ui
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -115,23 +117,25 @@ fun AddFictionByNameDialog(
 // no input here - it's pure progress/result reporting for a sync pass already in
 // flight or finished.
 //
-// Redesigned around the novel's own cover art rather than a bare spinner: while
-// isLoading, the cover fills a tall panel at the top of the dialog with the spinner
-// centered over it (on a scrim, so it reads on light and dark covers alike), and the
-// one line of status text underneath names only the arc folder currently being
-// synced - see SyncManager.arcLabelForPath, which is what actually produces `message`
-// now. There's deliberately no "file 12/40" count anywhere in this composable: once a
-// sync is chapter-by-chapter inside one arc, nothing here changes until the next arc
-// starts, which is the point - the reader sees "which arc", not "how many files are
-// left to churn through."
+// Kept deliberately compact - a small centered card, not a full-width panel - so it
+// reads as a lightweight status popup rather than a second screen. The cover is a
+// small 2:3 thumbnail (matching the novel detail header's full-size cover proportions,
+// just at a much smaller footprint) with the spinner centered over it on a scrim while
+// isLoading, and the one line of status text underneath names only the arc folder
+// currently being synced - see SyncManager.arcLabelForPath, which is what actually
+// produces `message` now. There's deliberately no "file 12/40" count anywhere in this
+// composable: once a sync is chapter-by-chapter inside one arc, nothing here changes
+// until the next arc starts, which is the point - the reader sees "which arc", not
+// "how many files are left to churn through."
 //
-// The dialog is a plain Dialog + Surface instead of AlertDialog's compact
-// title/text/buttons layout, specifically so it can expand vertically: a tall cover
-// panel at the top and a roomier button row at the bottom, rather than AlertDialog's
-// horizontally-oriented, height-hugging default. `coverUrl` is optional - a batch sync
-// (SyncAllState, which isn't scoped to one novel) has no single cover to show, so that
-// call site passes null and gets the same placeholder NovelCardVertical/
-// NovelContinueCard already fall back to elsewhere in the app.
+// The confirm action is a filled Button (not TextButton) so it's unambiguous which
+// tap ends the dialog - deliberately more prominent than AlertDialog's default
+// low-emphasis text buttons elsewhere in this file, since this dialog can be dismissed
+// as soon as a result is in and shouldn't require hunting for the right tap target.
+// `coverUrl` is optional - a batch sync (SyncAllState, which isn't scoped to one
+// novel) has no single cover to show, so that call site passes null and gets the same
+// placeholder NovelCardVertical/NovelContinueCard already fall back to elsewhere in
+// the app.
 @Composable
 fun SyncProgressDialog(
     novelTitle: String,
@@ -146,21 +150,24 @@ fun SyncProgressDialog(
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier
+                .wrapContentWidth()
+                .widthIn(min = 240.dp, max = 300.dp)
         ) {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                // Cover panel - the "top expansion": a single tall image instead of a
-                // small icon-sized spinner, so what's on screen while a sync runs is
-                // the thing the reader actually recognizes (the novel's own cover),
-                // not an abstract loading indicator floating on empty space. Sized by
-                // aspectRatio rather than a fixed height so the panel always matches
-                // the cover's real 2:3 (width:height) full-size proportions instead of
-                // whatever height happened to look right at one dialog width.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                // Small 2:3 cover thumbnail instead of a full-bleed panel - keeps the
+                // dialog's overall footprint small while still showing the cover the
+                // reader actually recognizes rather than a bare spinner.
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .aspectRatio(2f / 3f)
-                        .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        .width(88.dp)
+                        .height(132.dp)
+                        .clip(RoundedCornerShape(10.dp))
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                     contentAlignment = Alignment.Center
                 ) {
@@ -172,7 +179,7 @@ fun SyncProgressDialog(
                             modifier = Modifier.fillMaxSize()
                         )
                     } else {
-                        Text("📚", style = MaterialTheme.typography.displayLarge)
+                        Text("📚", style = MaterialTheme.typography.displayMedium)
                     }
                     if (isLoading) {
                         // Scrim behind the spinner so it stays legible over a bright
@@ -184,49 +191,51 @@ fun SyncProgressDialog(
                                 .background(Color.Black.copy(alpha = 0.35f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            CircularProgressIndicator(color = Color.White)
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(28.dp))
                         }
                     }
                 }
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        novelTitle,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    novelTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Exactly one line of status: the arc name (isLoading), the final
+                // result message, or the error - never a file path or a count.
+                when {
+                    errorMessage != null -> Text(
+                        errorMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
+                    else -> Text(
+                        message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
 
-                    Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
-                    // Exactly one line of status: the arc name (isLoading), the final
-                    // result message, or the error - never a file path or a count.
-                    when {
-                        errorMessage != null -> Text(
-                            errorMessage,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error
-                        )
-                        else -> Text(
-                            message,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // "Bottom expansion": a full-width button on its own row with
-                    // room around it, instead of AlertDialog's compact right-aligned
-                    // confirm button crowding the text right above it.
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
-                        TextButton(onClick = onDismiss, enabled = !isLoading) { Text("OK") }
-                    }
+                // Filled, full-width primary button - the single obvious tap target,
+                // instead of a low-emphasis TextButton easy to miss.
+                Button(
+                    onClick = onDismiss,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("OK")
                 }
             }
         }
