@@ -1445,14 +1445,17 @@ class MainActivity : ComponentActivity() {
                 // action, see HomeScreen.kt / syncAllRaeArkNovels above). Reuses
                 // SyncProgressDialog, same as the per-novel "Check for updates" dialog
                 // below - just with "Rae ARK's novels" standing in for a single title.
-                // No single novel to draw a cover from here (this is a whole-batch
-                // pass), so coverUrl is left at its null default and the dialog falls
-                // back to the same placeholder NovelCardVertical uses.
+                // coverUrl comes from SyncAllState.InProgress/Done's own coverUrl field -
+                // the most-recently-synced novel's cover in this batch, carried forward by
+                // SyncViewModel.syncAllRaeArkNovels (see that function and SyncAllState's
+                // doc comment). Null (falling back to the placeholder) only until the
+                // first novel in the batch actually finishes.
                 when (val state = syncViewModel.syncAllState.value) {
                     SyncAllState.Idle -> {}
                     is SyncAllState.InProgress -> {
                         SyncProgressDialog(
                             novelTitle = "Rae ARK's novels",
+                            coverUrl = state.coverUrl,
                             isLoading = true,
                             message = state.message,
                             errorMessage = null,
@@ -1462,6 +1465,7 @@ class MainActivity : ComponentActivity() {
                     is SyncAllState.Done -> {
                         SyncProgressDialog(
                             novelTitle = "Rae ARK's novels",
+                            coverUrl = state.coverUrl,
                             isLoading = false,
                             message = state.message,
                             errorMessage = null,
