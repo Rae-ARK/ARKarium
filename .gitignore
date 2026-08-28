@@ -13,4 +13,5 @@ local.properties
 # `assembleRelease` builds, it belongs outside the repo or ignored here.
 *.keystore
 *.jks
-release.keystore.b64
+arkarium-release.keystore.b64
+arkarium-release.keystore
