@@ -340,6 +340,9 @@ class SyncViewModel(
                         syncCheckState.value = SyncCheckState.InProgress(novel, message)
                     }
                 }
+                // Hoisted out of the `if (outcome.changed)` block below so the Done state
+                // can use it too - see the bug this fixes just below.
+                var refreshedNovel: NovelEntity? = null
                 if (outcome.changed) {
                     db.syncedFileDao().deleteForNovel(novel.id)
                     db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novel.id) })
@@ -361,9 +364,18 @@ class SyncViewModel(
                         val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
                         if (idx >= 0) libraryViewModel.novels[idx] = updated
                     }
+                    refreshedNovel = updated
                 }
+                // Bug fix: this used to pass the pre-sync `novel` parameter here, which
+                // still had the OLD coverUri/remoteCoverUrl captured before the sync ran -
+                // so SyncProgressDialog fell back to the placeholder emoji even right after
+                // a sync that just downloaded a brand new cover.* (e.g. a novel's very
+                // first sync, which starts with coverUri == null). `refreshedNovel` is the
+                // post-rescan entity that startScan actually wrote coverUri/etc onto -
+                // falls back to `novel` only when nothing changed, in which case they're
+                // equivalent anyway.
                 syncCheckState.value = SyncCheckState.Done(
-                    novel,
+                    refreshedNovel ?: novel,
                     if (outcome.changed) "Updated to the latest version." else "Already up to date."
                 )
             } catch (e: MissingLocalFolderException) {
