@@ -243,13 +243,18 @@ class SyncViewModel(
         viewModelScope.launch {
             val skipped = mutableListOf<String>()
             var syncedCount = 0
+            // Cover of the most recently downloaded+scanned novel in this batch - carried
+            // forward into every subsequent progress update (see SyncAllState's doc
+            // comment) so the dialog shows a real cover as soon as one exists, instead of
+            // the placeholder for the whole run.
+            var lastCoverUrl: String? = null
             try {
                 for ((index, entry) in entries.withIndex()) {
                     val (displayName, slug) = entry
                     val url = relayBaseUrlForSlug(slug)
                     withContext(Dispatchers.Main) {
                         syncAllState.value =
-                            SyncAllState.InProgress("${index + 1}/${entries.size}: Fetching \"$displayName\"...")
+                            SyncAllState.InProgress("${index + 1}/${entries.size}: Fetching \"$displayName\"...", lastCoverUrl)
                     }
                     try {
                         // `displayName` (from FictionLut.allEntries) becomes the actual
@@ -257,7 +262,7 @@ class SyncViewModel(
                         val (folderName, outcome) = syncManager.downloadInitial(url, libraryRoot, displayName) { message ->
                             withContext(Dispatchers.Main) {
                                 syncAllState.value =
-                                    SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message")
+                                    SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message", lastCoverUrl)
                             }
                         }
                         val folder = libraryRoot.findFile(folderName)
@@ -271,7 +276,7 @@ class SyncViewModel(
                         scanSingleSyncedNovel(libraryRoot, folder) { message ->
                             withContext(Dispatchers.Main) {
                                 syncAllState.value =
-                                    SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message")
+                                    SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message", lastCoverUrl)
                             }
                         }
                         db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
@@ -282,6 +287,15 @@ class SyncViewModel(
                                 val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
                                 if (idx >= 0) libraryViewModel.novels[idx] = updated
                             }
+                            // scanSingleSyncedNovel above already picked up cover.* from
+                            // disk into `updated.coverUri` (falling back to remoteCoverUrl,
+                            // same resolution order every other cover call site uses) - this
+                            // novel just finished, so its cover is the freshest one available
+                            // for the rest of the batch's progress updates. Falls back to
+                            // whatever lastCoverUrl already was if this particular novel has
+                            // neither, so a cover-less novel mid-batch doesn't blank out the
+                            // dialog back to the placeholder.
+                            lastCoverUrl = updated.coverUri ?: updated.remoteCoverUrl ?: lastCoverUrl
                         }
                         syncedCount++
                     } catch (e: SourceGoneException) {
@@ -295,7 +309,7 @@ class SyncViewModel(
                 if (skipped.isNotEmpty()) {
                     summary.append(" Skipped (source unavailable): ${skipped.joinToString(", ")}.")
                 }
-                syncAllState.value = SyncAllState.Done(summary.toString())
+                syncAllState.value = SyncAllState.Done(summary.toString(), lastCoverUrl)
             } catch (e: Exception) {
                 syncAllState.value = SyncAllState.Error("Sync stopped: ${e.message}")
             }

@@ -43,10 +43,17 @@ sealed class AddFictionState {
 // (originally built for one novel's "check for updates" pass) by treating the whole
 // batch as a single progress stream - it's the same shape (loading -> done/error), just
 // with a "1/5: ..." style message instead of a single file's.
+//
+// `coverUrl` defaults to null (the dialog falls back to the placeholder) until at least
+// one novel in the batch has actually been downloaded and scanned - there's no single
+// cover to show before that. Once one exists, SyncViewModel.syncAllRaeArkNovels carries
+// the most-recently-synced novel's cover forward into every subsequent InProgress
+// update (and into Done), so the dialog shows *something* recognizable instead of the
+// book emoji for the whole run - see the fix this was added for.
 sealed class SyncAllState {
     object Idle : SyncAllState()
-    data class InProgress(val message: String) : SyncAllState()
-    data class Done(val message: String) : SyncAllState()
+    data class InProgress(val message: String, val coverUrl: String? = null) : SyncAllState()
+    data class Done(val message: String, val coverUrl: String? = null) : SyncAllState()
     data class Error(val message: String) : SyncAllState()
 }
 
