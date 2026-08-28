@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -150,11 +152,14 @@ fun SyncProgressDialog(
                 // Cover panel - the "top expansion": a single tall image instead of a
                 // small icon-sized spinner, so what's on screen while a sync runs is
                 // the thing the reader actually recognizes (the novel's own cover),
-                // not an abstract loading indicator floating on empty space.
+                // not an abstract loading indicator floating on empty space. Sized by
+                // aspectRatio rather than a fixed height so the panel always matches
+                // the cover's real 2:3 (width:height) full-size proportions instead of
+                // whatever height happened to look right at one dialog width.
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(220.dp)
+                        .aspectRatio(2f / 3f)
                         .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                     contentAlignment = Alignment.Center
@@ -164,7 +169,7 @@ fun SyncProgressDialog(
                             model = coverUrl,
                             contentDescription = null,
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxWidth().height(220.dp)
+                            modifier = Modifier.fillMaxSize()
                         )
                     } else {
                         Text("📚", style = MaterialTheme.typography.displayLarge)
@@ -175,8 +180,7 @@ fun SyncProgressDialog(
                         // finishes (the scrim only composes while isLoading is true).
                         Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(220.dp)
+                                .fillMaxSize()
                                 .background(Color.Black.copy(alpha = 0.35f)),
                             contentAlignment = Alignment.Center
                         ) {

@@ -534,7 +534,11 @@ fun NovelCardVertical(
 ) {
     Card(
         modifier = modifier
-            .height(200.dp)
+            // Same 140dp-wide card as before, just taller to fit a 2:3 (rather than
+            // square) cover below - matches the full-size cover proportions used
+            // elsewhere (e.g. the novel detail header, the sync dialog), so cover art
+            // isn't cropped to a different shape depending on where it's shown.
+            .height(270.dp)
             .clickable { onClick() },
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(
@@ -555,7 +559,8 @@ fun NovelCardVertical(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
+                    // 2:3 full-size cover aspect ratio (140dp wide -> 210dp tall).
+                    .height(210.dp)
                     .clip(RoundedCornerShape(4.dp))
                     .background(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
                 contentAlignment = Alignment.Center
