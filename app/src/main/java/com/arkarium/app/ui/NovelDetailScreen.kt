@@ -172,9 +172,10 @@ fun NovelDetailScreen(
                         // been run) - the local file is the one the user actually
                         // placed there.
                         coverUrl = novel.coverUri ?: novel.remoteCoverUrl,
+                        // 2:3 full-size cover aspect ratio (96dp wide -> 144dp tall).
                         modifier = Modifier
                             .width(96.dp)
-                            .height(136.dp)
+                            .height(144.dp)
                     )
                     Column(
                         modifier = Modifier
@@ -613,9 +614,11 @@ private fun ArcTabCard(
     ) {
         NovelCoverThumb(
             coverUrl = coverUrl,
+            // 2:3 full-size cover aspect ratio (92dp wide -> 138dp tall), matching the
+            // novel header cover above exactly rather than approximately.
             modifier = Modifier
                 .width(92.dp)
-                .height(130.dp)
+                .height(138.dp)
                 .let { base ->
                     if (selected) {
                         base.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))

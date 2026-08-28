@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -288,7 +289,10 @@ fun EnhancedNovelCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(200.dp)
+                    // 2:3 full-size cover aspect ratio - matches the sync dialog and
+                    // novel detail header instead of the old fixed 200dp crop, so the
+                    // grid card's cover shape stays consistent across grid-cell widths.
+                    .aspectRatio(2f / 3f)
                     .background(
                         brush = Brush.verticalGradient(
                             colors = listOf(
