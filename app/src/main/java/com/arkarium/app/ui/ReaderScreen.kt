@@ -434,9 +434,8 @@ fun ReaderScreen(
                                 label = segment.label,
                                 textColor = textColor
                             )
-                            is ChapterSegment.AuthorNote -> ChapterCalloutCard(
-                                icon = "🖋️",
-                                heading = "A Note from the Author",
+                            is ChapterSegment.AuthorNote -> AuthorNoteCallout(
+                                author = author,
                                 body = segment.text,
                                 textColor = textColor
                             )
@@ -817,11 +816,55 @@ private fun ChapterBreakDivider(label: String, textColor: Color) {
     )
 }
 
-// Shared visual for <author> and <news> tags - same callout shape, different
-// icon/heading, same emoji-glyph convention ReaderAuthorAvatar/ReaderCoverThumbnail
-// already use elsewhere on this screen rather than pulling in new icon assets. A
-// tinted container (instead of a border) is enough to read as "aside" against the
-// justified body text around it. A blank body (e.g. "<news></news>" with nothing
+// <author> callout: shows the fiction's linked author - same ReaderAuthorAvatar used
+// by AboutAuthorCard below, plus their name - so a mid-chapter note reads as coming
+// from a person, not a generic banner. Underneath that, indented like a tab under the
+// name/avatar row, the "🖋️ A Note from the Author." line, then the note's own text
+// inside the box. Falls back to a placeholder avatar and "The Author" when this
+// fiction has no linked AuthorEntity (same "no author.json, no identity" behavior
+// AboutAuthorCard already has) rather than failing to render the note at all.
+@Composable
+private fun AuthorNoteCallout(author: AuthorEntity?, body: String, textColor: Color) {
+    if (body.isBlank()) return
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ReaderAuthorAvatar(avatarUrl = author?.avatarUri, modifier = Modifier.size(28.dp))
+                Text(
+                    author?.name ?: "The Author",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = textColor,
+                    modifier = Modifier.padding(start = 8.dp)
+                )
+            }
+            Text(
+                "🖋️ A Note from the Author.",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(start = 24.dp, top = 4.dp)
+            )
+            Text(
+                body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+    }
+}
+
+// <news> callout - same card shape as AuthorNoteCallout above, but generic (no author
+// identity attached): icon + heading, same emoji-glyph convention
+// ReaderAuthorAvatar/ReaderCoverThumbnail already use elsewhere on this screen rather
+// than pulling in new icon assets. A blank body (e.g. "<news></news>" with nothing
 // inside) renders nothing rather than an empty card.
 @Composable
 private fun ChapterCalloutCard(icon: String, heading: String, body: String, textColor: Color) {
