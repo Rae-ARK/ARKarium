@@ -3,6 +3,13 @@ package com.arkarium.app.data
 import android.content.Context
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.IOException
@@ -220,6 +227,12 @@ data class SyncOutcome(
 class SyncManager(private val context: Context, private val client: SyncClient = SyncClient()) {
 
     companion object {
+        // How many chapter downloads downloadManifestFiles runs at once. Bounded rather
+        // than unlimited so a large fiction doesn't open dozens of simultaneous
+        // connections to the relay at once; high enough that network latency, not this
+        // cap, is what dominates a sync of a chapter-heavy fiction.
+        private const val DOWNLOAD_CONCURRENCY = 6
+
         // Re-derives which DocumentFile under libraryRoot belongs to a given novel id,
         // without needing to persist a separate folder reference across app restarts.
         // Mirrors ScannerImpl.scanRoot's own id formula exactly
@@ -402,6 +415,16 @@ class SyncManager(private val context: Context, private val client: SyncClient =
     // throws and aborts the whole sync pass rather than committing a partial result,
     // which is why this whole method's caller (sync/downloadInitial) never persists
     // sourceVersion until every file has succeeded.
+    //
+    // Files that need downloading are fetched with bounded concurrency
+    // (DOWNLOAD_CONCURRENCY at a time) rather than one-by-one - a fiction with a few
+    // hundred chapters used to pay a full network round-trip, serially, per chapter,
+    // which is what made "fetching chapters" feel so slow. Manifest order is preserved
+    // in the returned list, and the one-line-per-arc progress narration (see
+    // arcLabelForPath) still fires in manifest order and still only once per arc, by
+    // chunking the manifest into same-label runs and announcing+downloading a whole run
+    // at a time before moving to the next - concurrency happens *within* a run, not
+    // across the arc boundaries the progress messages are narrating.
     private suspend fun downloadManifestFiles(
         baseUrl: String,
         manifest: Manifest,
@@ -409,53 +432,108 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         libraryRoot: DocumentFile,
         existing: List<SyncedFileEntity>,
         onProgress: suspend (message: String) -> Unit
-    ): List<SyncedFileEntity> {
+    ): List<SyncedFileEntity> = coroutineScope {
         val existingByPath = existing.associateBy { it.relativePath }
-        val records = mutableListOf<SyncedFileEntity>()
-        // Only the arc folder currently being downloaded is announced - never a raw
-        // per-file path or an "(n/total)" count (see SyncProgressDialog: the dialog
-        // now shows the novel's cover art while a spinner runs over it, with just this
-        // one line of text underneath, so the message needs to read as "which arc"
-        // rather than "which file"). `lastAnnounced` suppresses repeat onProgress calls
-        // for every chapter inside the same arc - only a change in arcLabelForPath's
-        // result fires a new message, so a 40-chapter arc still only announces once.
-        var lastAnnounced: String? = null
-        manifest.files.forEach { entry ->
-            val current = existingByPath[entry.relativePath]
-            if (current != null && current.sha256 == entry.sha256 && current.size == entry.size) {
-                records.add(current)
-                return@forEach
-            }
+        val dirCache = DirCache()
+        val semaphore = Semaphore(DOWNLOAD_CONCURRENCY)
+        val results = arrayOfNulls<SyncedFileEntity>(manifest.files.size)
+
+        // Group the manifest into consecutive runs that share the same progress label -
+        // same grouping arcLabelForPath's old `lastAnnounced` check produced, just
+        // computed up front instead of while iterating.
+        val runs = mutableListOf<MutableList<IndexedValue<ManifestFileEntry>>>()
+        var lastLabel: String? = null
+        manifest.files.forEachIndexed { index, entry ->
             val label = arcLabelForPath(entry.relativePath)
-            if (label != lastAnnounced) {
-                lastAnnounced = label
-                onProgress(label)
+            if (label != lastLabel || runs.isEmpty()) {
+                runs.add(mutableListOf())
+                lastLabel = label
             }
-            val bytes = client.downloadFile(baseUrl, entry.relativePath)
-            val actualHash = sha256Hex(bytes)
-            if (actualHash != entry.sha256) {
-                throw IOException("Hash mismatch for ${entry.relativePath} - download corrupted or manifest is stale")
-            }
-            // ScannerImpl.findAuthorsFolder only ever looks for "authors" as a direct
-            // child of the library root, not inside a per-novel folder - so an
-            // "authors/..." manifest entry has to land at libraryRoot/authors/... to
-            // ever be picked up as a real author profile, not folder/authors/....
-            // Everything else stays scoped to this novel's own folder, same as before.
-            if (entry.relativePath.startsWith("authors/")) {
-                writeRelativePath(libraryRoot, entry.relativePath, bytes)
-            } else {
-                writeRelativePath(folder, entry.relativePath, bytes)
-            }
-            records.add(
-                SyncedFileEntity(
-                    novelId = "",  // filled in by the caller once the real novel id is known
-                    relativePath = entry.relativePath,
-                    sha256 = entry.sha256,
-                    size = entry.size
-                )
-            )
+            runs.last().add(IndexedValue(index, entry))
         }
-        return records
+
+        for (run in runs) {
+            // Entries already present-and-unchanged are cheap to resolve and don't need
+            // a network call - skip them without ever announcing this run's label, same
+            // as the old sequential code's silent `return@forEach`.
+            val needsDownload = run.any { (_, entry) ->
+                val current = existingByPath[entry.relativePath]
+                current == null || current.sha256 != entry.sha256 || current.size != entry.size
+            }
+            if (needsDownload) {
+                onProgress(arcLabelForPath(run.first().value.relativePath))
+            }
+
+            run.map { indexed ->
+                async {
+                    semaphore.withPermit {
+                        val (index, entry) = indexed
+                        val current = existingByPath[entry.relativePath]
+                        results[index] = if (current != null && current.sha256 == entry.sha256 && current.size == entry.size) {
+                            current
+                        } else {
+                            val bytes = client.downloadFile(baseUrl, entry.relativePath)
+                            val actualHash = sha256Hex(bytes)
+                            if (actualHash != entry.sha256) {
+                                throw IOException("Hash mismatch for ${entry.relativePath} - download corrupted or manifest is stale")
+                            }
+                            // ScannerImpl.findAuthorsFolder only ever looks for "authors" as a
+                            // direct child of the library root, not inside a per-novel folder -
+                            // so an "authors/..." manifest entry has to land at
+                            // libraryRoot/authors/... to ever be picked up as a real author
+                            // profile, not folder/authors/.... Everything else stays scoped to
+                            // this novel's own folder, same as before.
+                            if (entry.relativePath.startsWith("authors/")) {
+                                writeRelativePath(libraryRoot, entry.relativePath, bytes, dirCache)
+                            } else {
+                                writeRelativePath(folder, entry.relativePath, bytes, dirCache)
+                            }
+                            SyncedFileEntity(
+                                novelId = "",  // filled in by the caller once the real novel id is known
+                                relativePath = entry.relativePath,
+                                sha256 = entry.sha256,
+                                size = entry.size
+                            )
+                        }
+                    }
+                }
+            }.awaitAll()
+        }
+
+        results.filterNotNull()
+    }
+
+    // Resolves (or creates) a chain of DocumentFile subdirectories under `root`,
+    // caching each resolved directory by root+path so a second file landing in the
+    // same arc folder reuses the handle instead of re-querying the SAF
+    // DocumentsProvider for it - DocumentFile.findFile()/createDirectory() are
+    // cross-process calls, and re-walking the same "arcs/arc-1" prefix for every one
+    // of e.g. 40 chapters in that arc was pure overhead. Guarded by a mutex because
+    // downloadManifestFiles now resolves directories from several coroutines
+    // concurrently; the lock only serializes directory lookups/creation, never the
+    // (much slower) network downloads or file writes themselves.
+    private class DirCache {
+        private val mutex = Mutex()
+        private val resolved = mutableMapOf<String, DocumentFile>()
+
+        suspend fun resolve(root: DocumentFile, segments: List<String>): DocumentFile {
+            if (segments.isEmpty()) return root
+            return mutex.withLock {
+                var dir = root
+                var key = root.uri.toString()
+                for (segment in segments) {
+                    key += "/$segment"
+                    dir = resolved[key] ?: run {
+                        val found = dir.findFile(segment)?.takeIf { it.isDirectory }
+                            ?: dir.createDirectory(segment)
+                            ?: throw IOException("Could not create folder $segment")
+                        resolved[key] = found
+                        found
+                    }
+                }
+                dir
+            }
+        }
     }
 
     // Turns a manifest-relative path into the one line SyncProgressDialog shows while
@@ -481,17 +559,13 @@ class SyncManager(private val context: Context, private val client: SyncClient =
     }
 
     // Writes bytes to folder/relativePath, creating any intermediate arc subfolders
-    // (e.g. "arcs/arc-1/001.txt") along the way. relativePath has already been through
-    // SyncPaths.sanitize by construction (see Manifest/ManifestFileEntry above), so no
-    // further validation happens here.
-    private fun writeRelativePath(folder: DocumentFile, relativePath: String, bytes: ByteArray) {
+    // (e.g. "arcs/arc-1/001.txt") along the way - via dirCache, so a folder shared by
+    // many files in the same sync pass is only resolved/created once (see DirCache).
+    // relativePath has already been through SyncPaths.sanitize by construction (see
+    // Manifest/ManifestFileEntry above), so no further validation happens here.
+    private suspend fun writeRelativePath(folder: DocumentFile, relativePath: String, bytes: ByteArray, dirCache: DirCache) {
         val segments = relativePath.split("/")
-        var dir = folder
-        for (dirName in segments.dropLast(1)) {
-            dir = dir.findFile(dirName)?.takeIf { it.isDirectory }
-                ?: dir.createDirectory(dirName)
-                ?: throw IOException("Could not create folder $dirName")
-        }
+        val dir = dirCache.resolve(folder, segments.dropLast(1))
         val fileName = segments.last()
         // Replace-on-write, matching docs/arkarium/SYNC_MVP.md §3 ("no delta/binary patching,
         // whole-file replace on any mismatch") rather than trying to patch in place.
