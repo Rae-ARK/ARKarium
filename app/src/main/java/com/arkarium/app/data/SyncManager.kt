@@ -87,7 +87,16 @@ fun sha256Hex(bytes: ByteArray): String =
 // that needed to change to make the whole client single-origin.
 const val RELAY_HOST = "https://novels.horizonarkstudio.workers.dev/"
 
-fun relayBaseUrlForSlug(slug: String): String = "$RELAY_HOST$slug/"
+// The slug is baked into FictionLut's asset as a plain display-ish string (see
+// gen_fiction_lut.py) - "sbm" happens to be URL-safe as-is, but nothing guarantees
+// that: the "Enigmatic Pathways..." entry's slug is the relay's literal unslugified
+// folder name, spaces included. Unlike joinUrl() below (which encodes each segment
+// of the *relative* manifest path), this base-URL builder was never encoding the
+// slug segment, so a slug with a space or other reserved character produced a
+// malformed URL that failed before any request was even made - this is why "sbm"
+// worked and names with spaces didn't. Encode it the same way joinUrl does.
+fun relayBaseUrlForSlug(slug: String): String =
+    RELAY_HOST + java.net.URLEncoder.encode(slug, "UTF-8").replace("+", "%20") + "/"
 
 // Talks to a relay: fetches and parses manifest.json, downloads individual files.
 // Plain HttpURLConnection on Dispatchers.IO, same convention as
