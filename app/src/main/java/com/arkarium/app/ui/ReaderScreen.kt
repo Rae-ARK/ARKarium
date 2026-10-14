@@ -798,7 +798,6 @@ private fun ChapterNavRow(
 // in full (author page)" note on author.json's bio field.
 private const val BIO_EXCERPT_LENGTH = 160
 
-@Composable
 // Centered scene/chapter separator for a <chapter break> tag. Empty tags
 // ("<chapter break></chapter break>", the common case - most chapter breaks don't
 // carry their own label) fall back to a plain glyph divider; text between the tags is
@@ -898,6 +897,7 @@ private fun ChapterCalloutCard(icon: String, heading: String, body: String, text
     }
 }
 
+@Composable
 private fun AboutAuthorCard(
     author: AuthorEntity,
     backgroundColor: Color,
