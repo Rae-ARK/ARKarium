@@ -65,8 +65,10 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
+import com.arkarium.app.data.ChapterSegment
 import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.Theme
+import com.arkarium.app.data.parseChapterSegments
 
 enum class ReadingMode {
     LIGHT, SEPIA, DARK
@@ -396,7 +398,13 @@ fun ReaderScreen(
                 onNext = { onNext?.invoke(currentProgress()) }
             )
 
-            // Chapter content with enhanced typography
+            // Chapter content with enhanced typography. Parsed into segments so inline
+            // <chapter break>/<author>/<news> tags (see data/ChapterMarkup.kt) render as
+            // their own centered divider / "A Note from the Author" / "News" callouts
+            // instead of printing the raw tag text. A chapter with none of these tags
+            // parses to a single Paragraph segment covering the whole body, so untagged
+            // chapters render exactly as before.
+            val segments = remember(content) { parseChapterSegments(content) }
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -404,18 +412,43 @@ fun ReaderScreen(
                 color = backgroundColor,
                 shape = RoundedCornerShape(8.dp)
             ) {
-                Text(
-                    text = content,
-                    style = TextStyle(
-                        fontSize = fontSize.value.sp,
-                        lineHeight = (fontSize.value * lineHeight.value).sp,
-                        color = textColor,
-                        fontFamily = resolveFontFamily(fontFamilyChoice.value),
-                        letterSpacing = extraLetterSpacing(fontFamilyChoice.value),
-                        textAlign = TextAlign.Justify
-                    ),
-                    modifier = Modifier.padding(20.dp)
-                )
+                Column(modifier = Modifier.padding(20.dp)) {
+                    segments.forEach { segment ->
+                        when (segment) {
+                            is ChapterSegment.Paragraph -> {
+                                if (segment.text.isNotBlank()) {
+                                    Text(
+                                        text = segment.text,
+                                        style = TextStyle(
+                                            fontSize = fontSize.value.sp,
+                                            lineHeight = (fontSize.value * lineHeight.value).sp,
+                                            color = textColor,
+                                            fontFamily = resolveFontFamily(fontFamilyChoice.value),
+                                            letterSpacing = extraLetterSpacing(fontFamilyChoice.value),
+                                            textAlign = TextAlign.Justify
+                                        )
+                                    )
+                                }
+                            }
+                            is ChapterSegment.ChapterBreak -> ChapterBreakDivider(
+                                label = segment.label,
+                                textColor = textColor
+                            )
+                            is ChapterSegment.AuthorNote -> ChapterCalloutCard(
+                                icon = "🖋️",
+                                heading = "A Note from the Author",
+                                body = segment.text,
+                                textColor = textColor
+                            )
+                            is ChapterSegment.News -> ChapterCalloutCard(
+                                icon = "📰",
+                                heading = "News",
+                                body = segment.text,
+                                textColor = textColor
+                            )
+                        }
+                    }
+                }
             }
 
             ChapterNavRow(
@@ -767,6 +800,61 @@ private fun ChapterNavRow(
 private const val BIO_EXCERPT_LENGTH = 160
 
 @Composable
+// Centered scene/chapter separator for a <chapter break> tag. Empty tags
+// ("<chapter break></chapter break>", the common case - most chapter breaks don't
+// carry their own label) fall back to a plain glyph divider; text between the tags is
+// shown centered instead of the surrounding body's justified alignment.
+@Composable
+private fun ChapterBreakDivider(label: String, textColor: Color) {
+    Text(
+        text = label.ifBlank { "• • •" },
+        style = MaterialTheme.typography.titleMedium,
+        color = textColor.copy(alpha = 0.6f),
+        textAlign = TextAlign.Center,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 20.dp)
+    )
+}
+
+// Shared visual for <author> and <news> tags - same callout shape, different
+// icon/heading, same emoji-glyph convention ReaderAuthorAvatar/ReaderCoverThumbnail
+// already use elsewhere on this screen rather than pulling in new icon assets. A
+// tinted container (instead of a border) is enough to read as "aside" against the
+// justified body text around it. A blank body (e.g. "<news></news>" with nothing
+// inside) renders nothing rather than an empty card.
+@Composable
+private fun ChapterCalloutCard(icon: String, heading: String, body: String, textColor: Color) {
+    if (body.isBlank()) return
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        ),
+        shape = RoundedCornerShape(8.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(icon, fontSize = 16.sp)
+                Text(
+                    heading,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 6.dp)
+                )
+            }
+            Text(
+                body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = textColor,
+                modifier = Modifier.padding(top = 8.dp)
+            )
+        }
+    }
+}
+
 private fun AboutAuthorCard(
     author: AuthorEntity,
     backgroundColor: Color,
