@@ -32,6 +32,7 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 # display name (matched case-insensitively, whitespace-collapsed) -> relay slug
 FICTIONS = {
     "Summoned By Mistake, I Decided To Learn How To Live": "sbm",
+    "Enigmatic Pathways: Mystic Circuits (Initial Draft)": "Enigmatic Pathways Mystic Circuits Initial Draft",
 }
 # -----------------------------------------------------------------------------
 
