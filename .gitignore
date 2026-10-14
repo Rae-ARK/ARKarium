@@ -5,6 +5,7 @@ build/
 .DS_Store
 local.properties
 *.patch
+*.txt
 *.apk
 
 # Signing material - the actual keystore must never be committed. CI decodes
