@@ -32,6 +32,9 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoStories
@@ -324,7 +327,11 @@ fun NovelDetailScreen(
                         .padding(horizontal = 16.dp, vertical = 4.dp)
                         .let { base ->
                             if (notifyAvailable) base.clickable { onToggleNotify!!(!notifyEnabled) } else base
-                        },
+                        }
+                        // One TalkBack node for the label + switch. clickable already merges
+                        // its descendants, but the disabled (not-synced) row isn't clickable,
+                        // which would leave a bare unlabeled disabled Switch.
+                        .semantics(mergeDescendants = true) {},
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -707,7 +714,21 @@ private fun ArcTabCard(
                         onDiscoveryInteracted()
                     }
                 }
-            ),
+            )
+            // With TalkBack on, a double-tap is the standard "activate" gesture, so
+            // the app's own double-tap-to-enlarge can't be reached that way. Expose it
+            // as a TalkBack custom action instead (robustness.md F20).
+            .semantics {
+                if (coverUrl != null) {
+                    customActions = listOf(
+                        CustomAccessibilityAction("View cover full-size") {
+                            showEnlargedCover = true
+                            onDiscoveryInteracted()
+                            true
+                        }
+                    )
+                }
+            },
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -875,7 +896,7 @@ private fun EnlargedCoverDialog(coverUrl: String, onDismiss: () -> Unit) {
                 Box {
                     AsyncImage(
                         model = coverUrl,
-                        contentDescription = null,
+                        contentDescription = "Enlarged cover",
                         contentScale = ContentScale.Fit,
                         modifier = Modifier
                             .fillMaxWidth()

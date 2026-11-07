@@ -10,18 +10,24 @@ sealed class ChapterContent {
     data class Text(val body: String) : ChapterContent()
 }
 
-// Thrown by TextChapterContentRepository.getTextContent when the chapter's bytes
-// can't be read at all (lost SAF permission, provider hiccup, file moved/deleted
-// underneath us). Previously such failures were swallowed into an empty ByteArray,
-// which rendered as a silent, indistinguishable-from-genuinely-empty chapter.
-class ChapterReadException(message: String, cause: Throwable? = null) : Exception(message, cause)
+// Outcome of loading one chapter's text. A read failure (lost SAF permission,
+// provider hiccup, file moved/deleted underneath us) used to be swallowed into an
+// empty ByteArray, which rendered as a silent, indistinguishable-from-genuinely-empty
+// chapter; the first fix threw an exception whose only handler painted an error
+// string where the chapter body goes. A sealed result lets the reader tell the two
+// cases apart and offer a real retry. CancellationException is still rethrown, never
+// turned into Failed - cancelling a load is not a read failure.
+sealed class ChapterLoadResult {
+    data class Ok(val content: ChapterContent.Text) : ChapterLoadResult()
+    data class Failed(val message: String, val cause: Throwable? = null) : ChapterLoadResult()
+}
 
 interface ChapterContentRepository {
-    suspend fun getTextContent(sourcePath: String): ChapterContent.Text
+    suspend fun getTextContent(sourcePath: String): ChapterLoadResult
 }
 
 class TextChapterContentRepository(private val context: Context) : ChapterContentRepository {
-    override suspend fun getTextContent(sourcePath: String): ChapterContent.Text = withContext(Dispatchers.IO) {
+    override suspend fun getTextContent(sourcePath: String): ChapterLoadResult = withContext(Dispatchers.IO) {
         val uri = Uri.parse(sourcePath)
         val bytes = try {
             context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
@@ -30,10 +36,9 @@ class TextChapterContentRepository(private val context: Context) : ChapterConten
         } catch (e: Exception) {
             // Swallowing read failures (lost SAF permission, provider hiccup, file
             // moved/deleted underneath us) here used to render as a silent empty
-            // chapter, indistinguishable from a genuinely empty file. Surface it
-            // instead so the reader can show a real error with a retry rather than
-            // quietly losing the chapter's content.
-            throw ChapterReadException("Couldn't read chapter content from $sourcePath", e)
+            // chapter, indistinguishable from a genuinely empty file. Return Failed
+            // instead so the reader can show a real error with a retry button.
+            return@withContext ChapterLoadResult.Failed("Couldn't read chapter content from $sourcePath", e)
         }
         
         // Try UTF-8 first, fallback to ISO-8859-1. Note: bytes.toString(Charsets.UTF_8)
@@ -49,6 +54,6 @@ class TextChapterContentRepository(private val context: Context) : ChapterConten
             bytes.toString(Charsets.ISO_8859_1)
         }
         
-        ChapterContent.Text(body = text)
+        ChapterLoadResult.Ok(ChapterContent.Text(body = text))
     }
 }

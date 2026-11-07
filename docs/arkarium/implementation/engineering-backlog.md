@@ -1,6 +1,6 @@
 # Engineering backlog: merged roadmap
 
-> **Kind:** implementation · **Status:** rungs 1–2 done, rest queued · **Verified:** 2026-11-07 @ ba2e96a
+> **Kind:** implementation · **Status:** rungs 1–8 done, rest queued · **Verified:** 2026-11-07 @ 9cc65b9
 > **Origin:** a follow-up review pass over the open findings in
 > [`../proposal/engineering-review.md`](../proposal/engineering-review.md) and its
 > detail docs, the two open entries in [`../proposal/bugs/`](../proposal/bugs/README.md),
@@ -22,13 +22,13 @@ and point this row at that instead.
 |---|---|---|---|---|
 | 1 | Scan reconcile cascade-deletes a novel's history on an ordinary scan (steps 1–2: mark seen before I/O that can fail; don't reconcile-as-stale on an empty listing while the DB isn't) | Tiny | **done** | [`../proposal/bugs/critical/scan-reconcile-treats-errors-as-absence.md`](../proposal/bugs/critical/scan-reconcile-treats-errors-as-absence.md) |
 | 2 | F23 — Room downgrade throws uncaught, only "recovery" is clearing app data | Tiny | **done** | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
-| 3 | F8 — two separate `AppDatabase` instances (`MainActivity` + the worker) | Tiny | next | [`../proposal/robustness.md`](../proposal/robustness.md) |
-| 4 | Arc cover enlarger is undiscoverable (magnifier badge / one-time tip) | Tiny | queued | [`../proposal/uiux.md`](../proposal/uiux.md) |
-| 5 | F18 — WebView follows any link, JS/DOM storage on (`shouldOverrideUrlLoading`) | Small | queued | [`../proposal/robustness.md`](../proposal/robustness.md) |
-| 6 | F11 — TTS chunking can cut mid-emoji, ignores CJK punctuation (`BreakIterator`) | Small | queued | [`../proposal/robustness.md`](../proposal/robustness.md) |
-| 7 | F7 remainder — unreadable chapter has no retry, just an error string (sealed result type + retry button) | Small | queued | [`../proposal/robustness.md`](../proposal/robustness.md) |
-| 8 | F20 — accessibility audit of `contentDescription = null` across ~13 files | Small | queued | [`../proposal/robustness.md`](../proposal/robustness.md) |
-| 9 | F1/F2 remainder — commit Room schema, add migration tests, move KAPT → KSP | Medium | queued | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
+| 3 | F8 — two separate `AppDatabase` instances (`MainActivity` + the worker) | Tiny | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
+| 4 | Arc cover enlarger is undiscoverable (one-time ripple + tip) | Tiny | **done** | [`../proposal/uiux.md`](../proposal/uiux.md) |
+| 5 | F18 — WebView follows any link (`shouldOverrideUrlLoading`; JS/DOM storage intentionally stay on) | Small | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
+| 6 | F11 — TTS chunking can cut mid-emoji, ignores CJK punctuation (`BreakIterator`) | Small | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
+| 7 | F7 remainder — unreadable chapter has no retry, just an error string (sealed result type + retry button) | Small | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
+| 8 | F20 — accessibility audit of `contentDescription = null` across ~13 files | Small | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
+| 9 | F1/F2 remainder — commit Room schema, add migration tests, move KAPT → KSP | Medium | **next** | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 10 | F22 — TTS audio focus, `MediaSession`, `ACTION_AUDIO_BECOMING_NOISY` | Medium | queued | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
 | 11 | "Notify me" toggle bug, remaining steps (needs a real device, API 33+ permission path) | Medium | queued — not a coding task until confirmed on-device | [`../proposal/bugs/other/notify-toggle-confirmation.md`](../proposal/bugs/other/notify-toggle-confirmation.md) |
 | 12 | F3 — novel identity tied to SAF URI (D3 decided: opaque id, re-link-with-confirmation) | Large | queued — own ladder when started | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
@@ -75,3 +75,32 @@ existing catch-all and renders it as a plain message screen ("This library
 was last opened by a newer version of ARKarium...") instead of the
 class-name-plus-stack-trace crash screen every other startup failure still
 gets.
+
+## Rungs 3–8 — what changed
+
+- **Rung 3 (F8):** `AppDatabase.create()` hands out one per-process instance instead of
+  `MainActivity` and `NewChapterCheckWorker` each building their own, as
+  [`robustness.md`](../proposal/robustness.md) F8 describes.
+- **Rung 4:** the first time someone opens a fiction that has arcs, the "All Chapters" cover
+  ripples and a "Double-tap a cover to see it full-size" tip appears under the strip. Tapping the
+  tip or double-tapping a cover sets `has_seen_cover_enlarge_hint` in `PreferencesManager`, and it
+  never shows again. This replaced the permanent magnifier badge. While DataStore hasn't answered
+  yet the flag is `null` and nothing is shown, so a returning user never gets a one-frame flash.
+- **Rung 5 (F18):** `WebViewScreen` overrides `shouldOverrideUrlLoading`. Links to the same host
+  as the page it was opened on (ignoring `www.`) stay in the WebView; every other `http(s)` or
+  `mailto:` link goes to the system via `ACTION_VIEW`, and any other scheme is dropped. JS and DOM
+  storage stay on because the author's site needs them.
+- **Rung 6 (F11):** `splitForTts` now packs whole sentences from `java.text.BreakIterator` into
+  each chunk, so CJK `。！？` are break points and a decimal point isn't. Only a single sentence
+  longer than the limit is hard-cut, at the last whitespace or CJK comma if there is one and never
+  between the halves of a surrogate pair. It's `internal` now and covered by `SplitForTtsTest`.
+- **Rung 7 (F7 remainder):** `ChapterContentRepository.getTextContent` returns a sealed
+  `ChapterLoadResult` (`Ok` / `Failed`) instead of throwing `ChapterReadException`, which is gone.
+  On `Failed` the reader shows `ChapterLoadErrorScreen` with **Try again** (re-runs the load in
+  place) and **Back**, rather than passing an error string to `ReaderScreen` as the chapter's text.
+- **Rung 8 (F20):** all 32 `contentDescription = null` sites were checked. 29 are decorative
+  (an icon beside its own text, or a cover/avatar beside the title) and stay `null`. Fixed: the
+  enlarged-cover dialog's image is now named, the reader's "back to fiction" row has an
+  `onClickLabel`, the notify row's switch is merged with its label even when disabled, and arc
+  covers get a TalkBack custom action "View cover full-size" because double-tap is TalkBack's
+  activate gesture and can't trigger the app's own double-tap.

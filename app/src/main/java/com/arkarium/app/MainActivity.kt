@@ -50,6 +50,8 @@ import com.arkarium.app.ui.AddFictionByNameDialog
 import com.arkarium.app.ui.LibrarySettingsScreen
 import com.arkarium.app.ui.MetadataSearchDialog
 import com.arkarium.app.ui.NovelDetailScreen
+import com.arkarium.app.data.ChapterLoadResult
+import com.arkarium.app.ui.ChapterLoadErrorScreen
 import com.arkarium.app.ui.ReaderScreen
 import com.arkarium.app.ui.SettingsScreen
 import com.arkarium.app.ui.SplashScreen
@@ -1078,19 +1080,32 @@ class MainActivity : ComponentActivity() {
                         // recomposing the existing one in place - starts each new chapter's
                         // content back at "not loaded yet" instead of briefly showing the
                         // previous chapter's text.
-                        val chapterContentState = remember(chapterId) { mutableStateOf<String?>(null) }
-                        LaunchedEffect(chapterId) {
-                            chapterContentState.value = try {
-                                contentRepo.getTextContent(chapter.sourcePath).body
-                            } catch (e: com.arkarium.app.data.ChapterReadException) {
-                                // Lost SAF permission, provider hiccup, file moved/deleted
-                                // underneath us, etc. - show this plainly rather than
-                                // silently rendering an empty chapter (see ChapterContentRepository).
-                                "Couldn't load this chapter. Pull to refresh or try again later."
-                            }
+                        val chapterContentState = remember(chapterId) { mutableStateOf<ChapterLoadResult?>(null) }
+                        // Bumped by the error screen's "Try again" to re-run the load below
+                        // in place, without navigating away and back.
+                        val chapterRetryCount = remember(chapterId) { mutableStateOf(0) }
+                        LaunchedEffect(chapterId, chapterRetryCount.value) {
+                            chapterContentState.value = null
+                            chapterContentState.value = contentRepo.getTextContent(chapter.sourcePath)
                         }
-                        val content = chapterContentState.value
-                        if (content != null) {
+                        val loadResult = chapterContentState.value
+                        val content = (loadResult as? ChapterLoadResult.Ok)?.content?.body
+                        if (loadResult is ChapterLoadResult.Failed) {
+                            // Lost SAF permission, provider hiccup, file moved/deleted
+                            // underneath us, etc. - a real error screen with a retry rather
+                            // than error text standing in for the chapter body (which
+                            // read-aloud would have read out loud).
+                            ChapterLoadErrorScreen(
+                                chapterTitle = chapter.title,
+                                onRetry = { chapterRetryCount.value += 1 },
+                                onBack = {
+                                    navController.navigate(if (novel != null) "novelDetail/${novel.id}" else "home") {
+                                        popUpTo("home") { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            )
+                        } else if (content != null) {
                             Column(modifier = Modifier.fillMaxSize()) {
                                 val currentIndex = libraryViewModel.chapters.indexOfFirst { it.id == chapterId }
                                 val previousChapter = libraryViewModel.chapters.getOrNull(currentIndex - 1).takeIf { currentIndex > 0 }

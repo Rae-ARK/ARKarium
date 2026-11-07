@@ -5,7 +5,7 @@
 
 Goal: close the ViewModel test gap left after the `MainActivity` refactor.
 Only `SettingsViewModel` has a test today (`SettingsViewModelTest`); other
-tests: `AppThemeTest`, `LibraryScanTest`, `ReaderTtsLogicTest`. Rules and strategy:
+tests: `AppThemeTest`, `LibraryScanTest`, `ReaderTtsLogicTest`, `SplitForTtsTest`, `WebViewLinkPolicyTest`. Rules and strategy:
 [`../foundational/design-notes.md`](../foundational/design-notes.md).
 
 This work adds test files only. It must not change any ViewModel's public

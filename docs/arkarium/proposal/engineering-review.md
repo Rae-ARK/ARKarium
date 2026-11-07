@@ -1,6 +1,6 @@
 # Engineering review: findings and proposed work
 
-> **Kind:** proposal · **Status:** **partially decided** — F1 (partially), F6, F7, F10 fixed in code; D2, D3, D4, D5, D6 decided (see each); D1 (the per-finding accept/defer/reject table below) still open; two new findings (F22, F23) added from a follow-up review pass · **Verified:** 2026-11-07 @ b777145
+> **Kind:** proposal · **Status:** **partially decided** — F1 (partially), F6, F7, F8, F10, F11, F18, F20 fixed in code; D2, D3, D4, D5, D6 decided (see each); D1 (the per-finding accept/defer/reject table below) still open; two new findings (F22, F23) added from a follow-up review pass · **Verified:** 2026-11-07 @ b777145
 > **Origin:** notes from a separate review session (code read plus web research), not an authoritative audit.
 > **Checked since:** each finding was re-read against the code on 2026-11-07. External guidance (library, platform, vendor behavior) was **not** re-checked except where a finding below says otherwise. The detail docs this file links to did not exist when this table was first written; they were filled in and F3 was corrected (see C3/C4) on the same date. A follow-up pass the same day added F22/F23 and recorded D2–D6; see each linked detail doc for what was re-verified for those.
 
@@ -29,20 +29,20 @@ Severity is the reviewer's judgment of impact if left alone.
 | F4 | Manifest proves integrity, not authenticity; no rollback or freeze protection | Med | V, E | Open — [`manifest-signing.md`](manifest-signing.md) |
 | F5 | SAF scan and sync cost several provider queries per file | Med | V, E | Open — [`performance.md`](performance.md) |
 | F6 | Cancellation swallowed in the new-chapter worker | Med | V | **Fixed** (5426a3d) — [`robustness.md`](robustness.md) |
-| F7 | Unreadable chapter is shown as an empty chapter | Med | V | **Fixed**, minimal (5426a3d); sealed result type still open — [`robustness.md`](robustness.md) |
-| F8 | Two code paths create separate `AppDatabase` instances | Low | V, E | [`robustness.md`](robustness.md) |
+| F7 | Unreadable chapter is shown as an empty chapter | Med | V | **Fixed** (5426a3d, then sealed result type + retry screen) — [`robustness.md`](robustness.md) |
+| F8 | Two code paths create separate `AppDatabase` instances | Low | V, E | **Fixed** — [`robustness.md`](robustness.md) |
 | F9 | Reading position is a scroll fraction, so it drifts with font, spacing, width | Med | V, I | [`reader-playback.md`](reader-playback.md) |
 | F10 | TTS lives in a composable, so it dies on rotation or leaving the reader | High | V | **Fixed** (service-based playback, 823c914); controls surface still open — [`reader-playback.md`](reader-playback.md) |
-| F11 | `splitForTts` hard-cuts and only breaks on `\n . ! ?` | Low | V, I | [`robustness.md`](robustness.md) |
+| F11 | `splitForTts` hard-cuts and only breaks on `\n . ! ?` | Low | V, I | **Fixed** (unit-tested; not run on a device) — [`robustness.md`](robustness.md) |
 | F12 | R8 off, no baseline profile, no benchmarks, old Kotlin/Compose toolchain | Med | V | [`performance.md`](performance.md) |
 | F13 | Splash: about 2.75 s per cold start, per-frame recomposition, chord synthesized on the main thread, no audio focus | Med | V (cost unmeasured) | [`performance.md`](performance.md) |
 | F14 | Lazy lists mostly unkeyed; chapter filtering not remembered; non-lifecycle-aware collection | Low–Med | V, E | [`performance.md`](performance.md) |
 | F15 | No shared image loader, no crossfade on covers | Low | V | [`performance.md`](performance.md) |
 | F16 | Almost no animation outside the splash | Low | V | [`animation-and-polish.md`](animation-and-polish.md) |
 | F17 | Not ready for predictive back or edge-to-edge | Low | V, E | [`animation-and-polish.md`](animation-and-polish.md) |
-| F18 | WebView enables JS and DOM storage and follows any link | Low | V | [`robustness.md`](robustness.md) |
+| F18 | WebView enables JS and DOM storage and follows any link | Low | V | **Fixed** (links; JS/DOM storage stay on) — [`robustness.md`](robustness.md) |
 | F19 | Typography: justified text, no hyphenation, uncapped line width | Low | V, I | [`animation-and-polish.md`](animation-and-polish.md) |
-| F20 | Some icons have `contentDescription = null` | Low | V | [`robustness.md`](robustness.md) |
+| F20 | Some icons have `contentDescription = null` | Low | V | **Audited**, 4 fixes, no on-device screen-reader pass — [`robustness.md`](robustness.md) |
 | F21 | Functional gaps: read state on rows, single-scroll chapter list, sleep timer, immersive mode, full-text search | n/a | V | [`ideas.md`](ideas.md) |
 | F22 | `TtsPlaybackService` requests no audio focus, doesn't handle `ACTION_AUDIO_BECOMING_NOISY`, has no `MediaSession` | Med | V | Open — [`reader-playback.md`](reader-playback.md) |
 | F23 | Room throws uncaught on a version **downgrade** (older APK over newer data); only recovery shown to the user is a crash, and clearing app data to recover destroys the same data F1's fix was meant to protect | Med | V | Open — [`data-safety.md`](data-safety.md) |
