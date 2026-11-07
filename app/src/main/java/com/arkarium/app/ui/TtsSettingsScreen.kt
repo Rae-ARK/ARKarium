@@ -78,6 +78,14 @@ fun TtsSettingsScreen(
     ttsPitch: Float = 1.0f,
     ttsAutoContinue: Boolean = false,
     ttsKeepScreenOn: Boolean = false,
+    // Dropped during the beautification pass (cards split) and restored here:
+    // each control above still reads exactly one of these as its
+    // onValueChange/onCheckedChange, so the signature has to carry them even
+    // though that pass's comment focused on layout, not these four.
+    onDefaultRateChange: (Float) -> Unit = {},
+    onPitchChange: (Float) -> Unit = {},
+    onAutoContinueToggle: (Boolean) -> Unit = {},
+    onKeepScreenOnToggle: (Boolean) -> Unit = {},
     // Step 4 of docs/arkarium/proposal/tts-voice-picker.md. `availableVoices` is
     // empty until the engine finishes initializing (same timing as everything
     // else TtsPlaybackService exposes) - the voice row below renders fine in

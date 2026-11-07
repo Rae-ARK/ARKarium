@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -664,21 +665,47 @@ private fun ArcTabCard(
             ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        NovelCoverThumb(
-            coverUrl = coverUrl,
-            // 2:3 full-size cover aspect ratio (92dp wide -> 138dp tall), matching the
-            // novel header cover above exactly rather than approximately.
-            modifier = Modifier
-                .width(92.dp)
-                .height(138.dp)
-                .let { base ->
-                    if (selected) {
-                        base.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
-                    } else {
-                        base
+        Box(contentAlignment = Alignment.BottomEnd) {
+            NovelCoverThumb(
+                coverUrl = coverUrl,
+                // 2:3 full-size cover aspect ratio (92dp wide -> 138dp tall), matching the
+                // novel header cover above exactly rather than approximately.
+                modifier = Modifier
+                    .width(92.dp)
+                    .height(138.dp)
+                    .let { base ->
+                        if (selected) {
+                            base.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
+                        } else {
+                            base
+                        }
                     }
+            )
+
+            // uiux.md's "Arc cover enlarger is undiscoverable": double-tap had no
+            // visible hint that it opens an enlarged view, and single-tap is already
+            // taken by arc selection so it can't be the hint itself. A small
+            // magnifier badge in the corner is that hint - shown only when there's
+            // actually a cover to enlarge (coverUrl != null), matching the same
+            // guard the double-tap handler above already uses.
+            if (coverUrl != null) {
+                Box(
+                    modifier = Modifier
+                        .padding(4.dp)
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(Color.Black.copy(alpha = 0.55f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Search,
+                        contentDescription = "Double-tap to enlarge cover",
+                        tint = Color.White,
+                        modifier = Modifier.size(13.dp)
+                    )
                 }
-        )
+            }
+        }
         Text(
             label,
             style = MaterialTheme.typography.labelMedium,

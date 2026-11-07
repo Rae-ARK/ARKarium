@@ -321,21 +321,42 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // F8 (engineering-backlog.md rung 3 / robustness.md): MainActivity and
+        // NewChapterCheckWorker each used to call create() independently and get
+        // back two live RoomDatabase instances in the same process - against
+        // Room's own per-process-singleton guidance, and meaning the worker's
+        // writes weren't visible to an already-open Activity (or vice versa)
+        // until the underlying SQLite file was re-read. @Volatile plus the
+        // double-checked lock below makes create() build the real database at
+        // most once per process and hand back that same instance on every later
+        // call, from either caller, without either caller needing to hold or
+        // pass a reference to the other.
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
+
         // NOTE: deliberately catching only IllegalStateException here, not Throwable -
         // that's the type Room.databaseBuilder(...).build() throws for an unhandled
         // version (the no-destructive-fallback case above) and the only case this
         // downgrade check knows how to recognize. Anything else (a stale kapt cache,
         // a genuinely corrupt .db file, ...) should keep surfacing as whatever it
         // actually is, caught by MainActivity's own catch-all around this call.
-        fun create(context: Context): AppDatabase = try {
-            Room.databaseBuilder(
-                context.applicationContext,
-                AppDatabase::class.java,
-                "arkarium.db"
-            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
-                .build()
-        } catch (e: IllegalStateException) {
-            throw asDowngradeExceptionIfApplicable(e)
+        fun create(context: Context): AppDatabase {
+            INSTANCE?.let { return it }
+            synchronized(this) {
+                INSTANCE?.let { return it }
+                val built = try {
+                    Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java,
+                        "arkarium.db"
+                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                        .build()
+                } catch (e: IllegalStateException) {
+                    throw asDowngradeExceptionIfApplicable(e)
+                }
+                INSTANCE = built
+                return built
+            }
         }
     }
 }
