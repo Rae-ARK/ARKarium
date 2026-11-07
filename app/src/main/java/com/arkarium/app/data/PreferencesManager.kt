@@ -119,6 +119,15 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         // (repeat launches, sound in a quiet/public setting, etc.).
         private val SPLASH_ANIMATION_ENABLED_KEY = booleanPreferencesKey("splash_animation_enabled")
         private val SPLASH_MUSIC_ENABLED_KEY = booleanPreferencesKey("splash_music_enabled")
+        // uiux.md's "Arc cover enlarger is undiscoverable", replacing the old
+        // magnifier badge with a one-time onboarding ripple (see
+        // NovelDetailScreen.kt's CoverEnlargeDiscoveryHint): the first time someone
+        // opens a fiction that has arcs, its cover ripples with a short
+        // "Double-tap a cover to see it full-size" tip underneath. Default false
+        // ("not yet seen") so that plays exactly once per install; dismissing the
+        // tip (tapping it, or double-tapping a cover) sets this true and it never
+        // shows again.
+        private val HAS_SEEN_COVER_ENLARGE_HINT_KEY = booleanPreferencesKey("has_seen_cover_enlarge_hint")
     }
 
     // libraryUri.collect() and theme.collect() run unattended in MainActivity.onCreate,
@@ -209,6 +218,11 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     // only TtsSettingsScreen's voice picker calls setTtsVoiceName.
     val ttsVoiceName: Flow<String?> = safePrefs.map(::ttsVoiceNameOf)
 
+    // Default false - see HAS_SEEN_COVER_ENLARGE_HINT_KEY's doc comment above.
+    val hasSeenCoverEnlargeHint: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[HAS_SEEN_COVER_ENLARGE_HINT_KEY] ?: false
+    }
+
     override suspend fun setLibraryUri(uri: String) {
         context.dataStore.edit { prefs ->
             prefs[LIBRARY_URI_KEY] = uri
@@ -290,6 +304,15 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
             } else {
                 prefs[TTS_VOICE_NAME_KEY] = name
             }
+        }
+    }
+
+    // Called once, when CoverEnlargeDiscoveryHint is dismissed - see
+    // HAS_SEEN_COVER_ENLARGE_HINT_KEY's doc comment. There's deliberately no
+    // setter to flip this back to false.
+    suspend fun setHasSeenCoverEnlargeHint() {
+        context.dataStore.edit { prefs ->
+            prefs[HAS_SEEN_COVER_ENLARGE_HINT_KEY] = true
         }
     }
 }
