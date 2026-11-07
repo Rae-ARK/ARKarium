@@ -1,16 +1,6 @@
-# Bug reports
+# "Notify me when new chapters are available" toggle needs on-device confirmation
 
-> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-07 @ 823c914
-
-Open, unfixed bugs. A fixed bug is deleted from here; if the cause taught a
-rule, it goes in [`../foundational/`](../foundational/README.md) (see sync
-invariants S6–S9 in `architecture.md` for the pattern), otherwise the commit
-message is the record.
-
-Format: `### <short title>`, then **Seen** · **Where** · **Repro** · **Expected / Actual**, and **Cause** / **Status** when known.
-Historic ARKster-era bug history is frozen in `../../reference/arkster/bugs.md`.
-
-### "Notify me when new chapters are available" toggle needs on-device confirmation
+> **Kind:** proposal · **Status:** open · **Verified:** 2026-11-07 @ 823c914
 
 **Seen:** 0.8, reported by owner (as "toggle is not visible"). **Status:** the undiscoverability half is fixed (see below); step 1 and the device check in step 3 below are still open and need the owner, not just code.
 **Where:** `ui/NovelDetailScreen.kt` (the toggle row), `MainActivity.kt` (what it passes as `onToggleNotify`).

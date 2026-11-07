@@ -3,7 +3,7 @@
 > **Kind:** proposal · **Status:** open issues only · **Verified:** 2026-11-07 @ b4fcc2f
 
 Open usability, visual, or feature-gap issues that are not crashes or wrong
-behavior (those go in [`bugs.md`](bugs.md)). Delete an entry when fixed.
+behavior (those go in [`bugs/`](bugs/README.md)). Delete an entry when fixed.
 
 Format: `### <short title>`, then **Where** · **Problem** · **Idea**.
 

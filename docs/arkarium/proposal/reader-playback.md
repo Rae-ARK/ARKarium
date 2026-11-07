@@ -50,8 +50,8 @@ next/previous chapter, which per `MainActivity`'s own comment replaces the
 backStackEntry rather than recomposing in place) or rotating the device —
 which separately causes `MainActivity` to be recreated — both tore down and
 rebuilt the composable, stopping an active read-aloud session. This was also
-the cause of the now-fixed `bugs.md` entry "Rotating the device stops an
-active read-aloud session" (deleted from that file; this doc is the record).
+the cause of the now-fixed `bugs/` entry "Rotating the device stops an
+active read-aloud session" (its file deleted; this doc is the record).
 
 **Fixed (commit 823c914):** playback — the `TextToSpeech` engine and the
 chunk queue, moved unchanged — now lives in `TtsPlaybackService`, a separate

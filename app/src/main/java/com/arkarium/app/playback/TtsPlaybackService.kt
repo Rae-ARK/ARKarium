@@ -54,8 +54,8 @@ private fun splitForTts(text: String): List<String> {
 /**
  * Owns the on-device TextToSpeech engine and the chunk queue that used to live inside
  * ChapterTtsState, `remember`-scoped to ReaderScreen's composable - see
- * docs/arkarium/proposal/reader-playback.md F10 and the rotation half of
- * docs/arkarium/proposal/bugs.md's "Rotating the device restarts the app" entry.
+ * docs/arkarium/proposal/reader-playback.md F10, which is also the record of the
+ * now-fixed "Rotating the device restarts the app" bug this split addressed.
  *
  * A Service's lifecycle is independent of any Activity or composable, and this one is
  * built with applicationContext, not an Activity context - so none of the events that

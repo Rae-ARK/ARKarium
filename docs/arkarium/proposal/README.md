@@ -7,9 +7,10 @@ documented but **not being worked on**. This is the **future**.
 |---|---|---|
 | [`ideas.md`](ideas.md) | backlog | Small features and gaps, one row each. |
 | [`tts-multivoice.md`](tts-multivoice.md) | feature | Character-aware multi-voice TTS (the planned differentiator). |
+| [`tts-voice-picker.md`](tts-voice-picker.md) | feature | In-app single-voice/language picker for `settings/tts` ("Change voice" currently only links out to system settings and does nothing). |
 | [`relay-chain.md`](relay-chain.md) | feature | Multi-relay fallback. |
 | [`backend-social.md`](backend-social.md) | feature | Gating, comments, ratings, position sync without owning a backend. |
-| [`bugs.md`](bugs.md) | reports | Open bugs. |
+| [`bugs/`](bugs/README.md) | reports | Open bugs, split into `critical/` and `other/`. |
 | [`uiux.md`](uiux.md) | reports | Open UI/UX issues. |
 | [`engineering-review.md`](engineering-review.md) | review | Findings index (F1–F21) from a code-plus-research review; links out to the detail docs below. |
 | [`data-safety.md`](data-safety.md) | review detail | F1–F3: Room's destructive migration fallback, missing schema/tests, `novelId` identity. |
