@@ -1,6 +1,6 @@
 # Design notes
 
-> **Kind:** foundational · **Verified:** 2026-11-06 @ b4fcc2f · **Truth lives in:** code structure, `app/src/test/`
+> **Kind:** foundational · **Verified:** 2026-11-07 @ a621542 · **Truth lives in:** code structure, `app/src/test/`
 
 The rules the code is held to, and the decisions that are settled. Each entry
 is a *why*; the *what* is in [`architecture.md`](architecture.md).

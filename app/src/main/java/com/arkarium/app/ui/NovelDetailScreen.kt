@@ -644,8 +644,8 @@ private fun ArcTabCard(
     selected: Boolean,
     onClick: () -> Unit
 ) {
-    // Simplest fix for "Arc covers are too small to see" (docs/arkarium/proposal/uiux.md):
-    // double-tap opens the cover enlarged. The card already has a single-tap
+    // Double-tap opens the cover enlarged; discoverability is tracked in docs/arkarium/proposal/uiux.md.
+    // The card already has a single-tap
     // (select this arc), so combinedClickable is required here rather than a
     // second clickable - two stacked `clickable`s on the same node would just
     // have the outer one win and silently swallow the double-tap.
