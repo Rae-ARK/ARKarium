@@ -52,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -277,35 +278,62 @@ fun NovelDetailScreen(
                 }
             }
 
-            // "Notify me when new chapters are available" - only offered for a synced
-            // novel (onToggleNotify null for a purely local one), same gating as
-            // onSyncClick in the app bar above: there's nothing to check for updates
-            // against, so nothing to notify about either. See docs/arkarium/foundational/architecture.md, Sync: entry points
-            // and NewChapterCheckWorker, which is what actually acts on this once it's on.
-            if (onToggleNotify != null) {
-                item {
-                    Row(
+            // "Notify me when new chapters are available" - the toggle itself is only
+            // meaningful for a synced novel (onToggleNotify null for a purely local
+            // one, same gating as onSyncClick in the app bar above: there's nothing to
+            // check for updates against, so nothing to notify about either - see
+            // docs/arkarium/foundational/architecture.md, Sync: entry points and
+            // NewChapterCheckWorker, which is what actually acts on this once it's on).
+            //
+            // The row itself, though, always renders (see bugs.md - "toggle not
+            // visible" was this row being left off entirely for a local novel, with no
+            // indication the feature existed at all). For a local novel it renders
+            // disabled with a one-line reason instead of disappearing, so the feature
+            // is discoverable even where it can't be turned on.
+            item {
+                val notifyAvailable = onToggleNotify != null
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .let { base ->
+                            if (notifyAvailable) base.clickable { onToggleNotify!!(!notifyEnabled) } else base
+                        },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        if (notifyEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsNone,
+                        contentDescription = null,
+                        tint = when {
+                            !notifyAvailable -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
+                            notifyEnabled -> MaterialTheme.colorScheme.primary
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                    )
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp)
-                            .clickable { onToggleNotify(!notifyEnabled) },
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(start = 12.dp)
+                            .weight(1f)
                     ) {
-                        Icon(
-                            if (notifyEnabled) Icons.Default.NotificationsActive else Icons.Default.NotificationsNone,
-                            contentDescription = null,
-                            tint = if (notifyEnabled) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                         Text(
                             "Notify me when new chapters are available",
                             style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier
-                                .padding(start = 12.dp)
-                                .weight(1f)
+                            color = if (notifyAvailable) Color.Unspecified
+                                else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                         )
-                        Switch(checked = notifyEnabled, onCheckedChange = onToggleNotify)
+                        if (!notifyAvailable) {
+                            Text(
+                                "Only available for fictions synced from a source",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
+                    Switch(
+                        checked = notifyEnabled,
+                        onCheckedChange = onToggleNotify,
+                        enabled = notifyAvailable
+                    )
                 }
             }
 
