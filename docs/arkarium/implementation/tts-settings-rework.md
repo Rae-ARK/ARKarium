@@ -1,6 +1,6 @@
 # TTS settings: engine fixes and the voice page
 
-> **Kind:** implementation (ladder) · **Status:** rung 0 done, rung 1 current · **Verified:** 2026-11-07 @ 8e0a937
+> **Kind:** implementation (ladder) · **Status:** rungs 0-3 done, rung 4 next · **Verified:** 2026-11-08
 > **Truth lives in:** `playback/TtsPlaybackService.kt`, `ui/Tts.kt`, `ui/TtsSettingsScreen.kt`, `MainActivity.kt` (the `settings/tts` route), `data/PreferencesManager.kt`
 > **Origin:** [`../proposal/tts-voice-picker.md`](../proposal/tts-voice-picker.md), whose steps 1-4 are built, plus a read-through of `settings/tts` against five screenshots of a reference reader app's TTS settings (supplied 2026-11-07).
 
@@ -89,12 +89,15 @@ That glyph reads as "offline". `voiceSummary` also writes "offline" for local
 voices but says nothing for online ones, so the two cases aren't stated the
 same way.
 
-**U2. One language is split across groups. V.** Rows are grouped by
-`locale.displayName`, so "English (India)" and "English (United States)" are
-separate headings in a single 420dp-tall dialog. In the reference screenshot
-the first nine voices are all English (India) with the US ones after them,
-which is the shape of list this grouping handles badly. The reference filters
-by language and puts the region in each row's description.
+**U2. One language is split across groups. V. Partially fixed at rung 3.**
+Rows used to be grouped by `locale.displayName`, so "English (India)" and
+"English (United States)" were separate headings in a single 420dp-tall
+dialog. In the reference screenshot the first nine voices are all English
+(India) with the US ones after them, which is the shape of list this grouping
+handled badly. Rung 3's `VoicePickerDialog` groups by language only now
+(region moved into each row's description), so that specific split no longer
+happens; the dialog itself - one scrollable 420dp list rather than the
+reference's two-step language-then-voice flow - is still rung 4's to replace.
 
 **U3. "Change voice" is now misleading. V.** The Voice card directly above it
 opens the in-app picker, while the "Change voice" button below it opens the
@@ -111,57 +114,70 @@ corrected in the same commit as this file.
 | Rung | State | What |
 |---|---|---|
 | 0 | done | This doc. |
-| **1** | **current** | Init order and "System default" (D1, D2, D3). No UI change. |
-| 2 | next | Stop on engine error and say why (D4, D5's runtime half). |
-| 3 | queued | Voice list model: pure, unit-tested functions that turn `List<Voice>` into language options and rows. |
-| 4 | queued | Voice page: a full `settings/tts/voice` route replacing the dialog (U1, U2, U3). |
+| 1 | done | Init order and "System default" (D1, D2, D3). No UI change. |
+| 2 | done | Stop on engine error and say why (D4, D5's runtime half). |
+| 3 | done | Voice list model: pure, unit-tested functions that turn `List<Voice>` into language options and rows. |
+| **4** | **next** | Voice page: a full `settings/tts/voice` route replacing the dialog (U1, U3). |
 | 5 | queued | Favorites: a star per voice, favorites listed first. |
 
-### Rung 1: init order and "System default"
+### Rung 1: init order and "System default" (done)
 
-The service stops treating "engine not ready yet" as a case that can lose
-data. The seed values (rate, pitch, voice name) are kept and applied when init
-completes, or immediately if it already has; `defaultsApplied` only flips once
-they have actually been applied. The service reports "voices are ready" to its
-listener, and `ChapterTtsState` mirrors the new list, so a picker opened early
-fills in on its own. `setVoice(null)` applies the engine's own default voice
-(`TextToSpeech.getDefaultVoice()`) and sets `currentVoiceName` to null.
+`TtsPlaybackService` no longer treats "engine not ready yet" as a case that
+can lose data. `setInitialRateAndPitch` now only records the seed
+(`pendingSeedRate`/`pendingSeedPitch`/`pendingSeedVoiceName`); `applyPendingSeed()`
+applies it immediately if the engine is already ready, and `onCreate`'s
+`TextToSpeech` init callback applies it the moment `isAvailable` goes true
+otherwise - whichever of "service bound" and "engine initialized" happens
+second. `defaultsApplied` only flips once a seed has actually been applied.
+`Listener.onVoicesChanged(List<Voice>)` is a new callback, pushed from that
+same init callback; `ChapterTtsState` mirrors it live, so a picker opened
+before init finished fills in on its own instead of staying empty until the
+page is reopened. `setVoice(null)` now applies the engine's own
+`TextToSpeech.getDefaultVoice()` live and sets `currentVoiceName` to null,
+instead of being a no-op.
 
-Pure helper worth extracting so it can be unit-tested without a `Voice`
-object (which the plain-JVM test setup, with no Robolectric, probably can't construct; I): a function from (stored
-name, list of available names) to the name that should be applied, or null.
+The pure helper this rung called for is `voiceNameToApply(storedName,
+availableNames)` in the new `playback/TtsVoiceModel.kt` (shared with rung 3,
+since it's exactly the "Voice-free" shape that file is for) - covered by
+`TtsVoiceModelTest`.
 
-**Done when:** a saved voice and pitch are applied whichever of "service
-bound" and "engine initialized" happens first; opening `settings/tts` on a
-cold service ends with the voice list filled; choosing "System default" after
-a custom voice changes what the next utterance sounds like and what the card
-shows.
+### Rung 2: stop on engine error (done)
 
-### Rung 2: stop on engine error
+The `UtteranceProgressListener`'s two `onError` overloads now call a new
+`onChunkError(utteranceId, errorCode)` instead of `onUtteranceFinished`, which
+stops the session (same field resets as `stop()`, minus `engine.stop()`) and
+reports the code via the new `Listener.onError(errorCode)` instead of
+advancing as if the chunk had succeeded. Auto-continue is never reached on
+this path, so it can't carry on past a failed chapter. `ttsErrorMessage(Int)`
+(`TtsPlaybackService.kt`) names each `TextToSpeech.ERROR_*` code, with the two
+network codes specifically suggesting a local voice; covered by
+`TtsErrorMessageTest`. `ChapterTtsState.lastErrorMessage` mirrors it;
+`ReaderScreen` shows it once as a `Toast` (no `Snackbar` host exists yet -
+out of scope for this ladder) and calls `clearError()` right after.
+The deprecated single-arg `onError(utteranceId)` overload has no error code
+to report, so it passes `TextToSpeech.ERROR` (the generic code) through the
+same path. Whether to retry once before stopping is still an open question
+below - this rung always stops on the first failure.
 
-`onError(utteranceId, errorCode)` stops the session instead of advancing, and
-the service reports the code to its listener. The reader shows a short message
-(for the network codes, one that suggests a local voice), and auto-continue
-does not carry on past a failed chapter. Use the `TextToSpeech.ERROR_*`
-constants by name. Whether to retry once before stopping is an open question
-below.
+### Rung 3: voice list model (done)
 
-**Done when:** with an online voice selected and no connection, starting
-read-aloud stops with a message instead of finishing silently.
+`playback/TtsVoiceModel.kt` adds `TtsVoiceInfo` (name, language, region,
+quality, online, installed - no `android.speech.tts.Voice` in the file) plus:
 
-### Rung 3: voice list model
+- `languagesOf` - the languages present in the list, the device's language first;
+- `rowsForLanguage` - the rows for one language, local before online, then by region, then name;
+- `descriptionOf` - a one-line description such as "India · online · high quality";
+- `installedOnly` - installed versus not-installed (not wired into the UI yet; rung 4 marks or hides the latter).
 
-Pure functions over a small data class (name, language tag, region, quality,
-online, installed), not over `android.speech.tts.Voice` itself, so they run in
-plain JVM tests like `SplitForTtsTest`:
-
-- the languages present in the list, the device's language first;
-- the rows for one language, sorted by region, then local before online;
-- a one-line description such as "India · online · high quality";
-- installed versus not-installed, so rung 4 can mark or hide the latter.
-
-**Done when:** the three behaviors above are covered by a `*Test` file and the
-dialog's grouping code is replaced by calls to these functions.
+All covered by `TtsVoiceModelTest`. `Voice.toTtsVoiceInfo()` (the one
+conversion that needs the real `Voice` class) lives in `TtsPlaybackService.kt`.
+`TtsSettingsScreen.kt`'s `VoicePickerDialog` now groups through these
+functions instead of grouping raw `Voice` objects by `locale.displayName` -
+which also gives U2 a partial fix in passing (groups are language-only now,
+e.g. one "English" group instead of a separate "English (India)" and "English
+(United States)"), though the dialog shape itself (still an `AlertDialog`,
+still capped at 420dp) is unchanged; U1's icon and U3's button wording are
+still rung 4, not this pass.
 
 ### Rung 4: voice page
 

@@ -19,6 +19,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.playback.TtsPlaybackService
+import com.arkarium.app.playback.ttsErrorMessage
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -64,6 +65,18 @@ class ChapterTtsState internal constructor() {
     var currentVoiceName by mutableStateOf<String?>(null)
         internal set
 
+    // Rung 2 (tts-settings-rework.md, D4): the message for the most recent chunk
+    // failure, or null once consumed. ReaderScreen shows this once (Toast - no
+    // Snackbar host exists today) and calls clearError() right after, the same
+    // one-shot-event shape as a SnackbarHostState's showSnackbar, just without a
+    // dedicated host.
+    var lastErrorMessage by mutableStateOf<String?>(null)
+        internal set
+
+    fun clearError() {
+        lastErrorMessage = null
+    }
+
     // Stage 3.4 (see docs/arkarium/foundational/design-notes.md). Pushed straight through
     // to the attached service (which is where the live flag now actually lives, so it
     // survives rotation same as everything else about an in-progress session) whenever
@@ -103,6 +116,18 @@ class ChapterTtsState internal constructor() {
             // unqualified reference inside this override would shadow the property
             // with the method itself rather than reading it.
             this@ChapterTtsState.onChapterFinished?.invoke()
+        }
+
+        // Rung 1 (D1): mirrors a voice list that arrives (or changes) after attach(),
+        // not just the one-time snapshot attach() itself copies - see attach() below.
+        override fun onVoicesChanged(voices: List<Voice>) {
+            this@ChapterTtsState.availableVoices = voices
+        }
+
+        // Rung 2 (D4): surfaced as lastErrorMessage for whatever UI is attached to
+        // show once and clear.
+        override fun onError(errorCode: Int) {
+            this@ChapterTtsState.lastErrorMessage = ttsErrorMessage(errorCode)
         }
     }
 

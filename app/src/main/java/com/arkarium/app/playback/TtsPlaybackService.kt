@@ -127,6 +127,16 @@ class TtsPlaybackService : Service() {
         fun onAvailabilityChanged(isAvailable: Boolean)
         fun onPausedChanged(isPaused: Boolean)
         fun onChapterFinished()
+
+        // Rung 1 (tts-settings-rework.md, D1): pushed whenever availableVoices changes
+        // (today, only once - from the TextToSpeech init callback), so a picker that's
+        // already attached and open while the engine is still initializing fills in on
+        // its own instead of staying stuck on "System default" until the page reopens.
+        fun onVoicesChanged(voices: List<Voice>)
+
+        // Rung 2 (D4): reported instead of silently advancing when a chunk fails - see
+        // onChunkError below. errorCode is one of TextToSpeech.ERROR_*.
+        fun onError(errorCode: Int)
     }
 
     private val binder = LocalBinder()
@@ -180,8 +190,21 @@ class TtsPlaybackService : Service() {
 
     // Seeded exactly once per service instance - see setInitialRateAndPitch() below -
     // so a rotation (which re-runs rememberChapterTts's attach logic) doesn't stomp a
-    // rate the reader already changed mid-chapter back to the stored default.
+    // rate the reader already changed mid-chapter back to the stored default. Rung 1
+    // (D2): this only flips to true once the seed has actually been applied to the
+    // engine, not as soon as setInitialRateAndPitch is called - see applyPendingSeed().
     private var defaultsApplied = false
+
+    // Rung 1 (D2): the rate/pitch/voice setInitialRateAndPitch was given, held here
+    // until the engine is ready to actually accept them. Previously the setters were
+    // called immediately regardless of init state; if the engine's TextToSpeech
+    // constructor callback hadn't run yet, setSpeechRate/setPitch/setVoice silently
+    // failed (they return an error code rather than queueing) and - because
+    // defaultsApplied was already set - never got a second chance. pendingSeedRate
+    // doubles as "is there a seed waiting at all": null once applied or never seeded.
+    private var pendingSeedRate: Float? = null
+    private var pendingSeedPitch: Float = 1.0f
+    private var pendingSeedVoiceName: String? = null
 
     private var engine: TextToSpeech? = null
     private var pendingChunks: List<String> = emptyList()
@@ -212,6 +235,15 @@ class TtsPlaybackService : Service() {
             // null-check it too.
             availableVoices = engine?.voices?.toList().orEmpty()
             listener?.onAvailabilityChanged(isAvailable)
+            // Rung 1 (D1): pushed every time this callback runs (today, that's once),
+            // so a picker already open and bound before init finished sees the real
+            // list land instead of staying stuck on an empty snapshot.
+            listener?.onVoicesChanged(availableVoices)
+            // Rung 1 (D2): apply whatever setInitialRateAndPitch was given before the
+            // engine was ready, now that it is. No-op if nothing was ever seeded, or
+            // if a seed already got applied via the "engine was already ready" path in
+            // setInitialRateAndPitch itself.
+            if (isAvailable) applyPendingSeed()
         }
         engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {}
@@ -222,11 +254,13 @@ class TtsPlaybackService : Service() {
 
             @Deprecated("Deprecated in Java, but still the callback older API levels invoke")
             override fun onError(utteranceId: String?) {
-                onUtteranceFinished(utteranceId)
+                // No errorCode available on this overload - TextToSpeech.ERROR is the
+                // generic code, same fallback rung 2's onChunkError uses it for.
+                onChunkError(utteranceId, TextToSpeech.ERROR)
             }
 
             override fun onError(utteranceId: String?, errorCode: Int) {
-                onUtteranceFinished(utteranceId)
+                onChunkError(utteranceId, errorCode)
             }
         })
     }
@@ -251,33 +285,61 @@ class TtsPlaybackService : Service() {
     }
 
     // Applies the settings/tts defaults exactly once per service instance - see
-    // defaultsApplied's doc comment above. Harmless to call again (it's a no-op after
-    // the first time), so ui/Tts.kt calls it unconditionally on every attach rather
-    // than tracking "did I already do this" on the Compose side too.
-    // `voiceName` grows this beyond rate/pitch per docs/arkarium/proposal/tts-voice-picker.md's
-    // "New preference key" section - seeded once per service instance exactly like
-    // rate and pitch already were, via the same defaultsApplied guard. Defaults to
-    // null (engine/system default) for anyone who hasn't visited the voice picker,
-    // same "no-op until opted into" shape rate/pitch already had before Stage 3.3.
+    // defaultsApplied's doc comment above. `voiceName` defaults to null (engine/system
+    // default) for anyone who hasn't visited the voice picker, same "no-op until
+    // opted into" shape rate/pitch already had before Stage 3.3.
+    //
+    // Rung 1 (D2): no longer applies anything itself or flips defaultsApplied up
+    // front - it only records the seed and, if the engine is already ready, applies
+    // it now; otherwise onCreate's init callback applies it the moment isAvailable
+    // goes true. Still harmless to call again (a no-op after the first successful
+    // apply), so ui/Tts.kt still calls it unconditionally on every attach rather than
+    // tracking "did I already do this" on the Compose side too.
     fun setInitialRateAndPitch(rate: Float, pitch: Float, voiceName: String? = null) {
         if (defaultsApplied) return
-        defaultsApplied = true
-        speechRate = rate
-        engine?.setSpeechRate(rate)
-        engine?.setPitch(pitch)
-        if (voiceName != null) setVoice(voiceName)
+        pendingSeedRate = rate
+        pendingSeedPitch = pitch
+        pendingSeedVoiceName = voiceName
+        if (isAvailable) applyPendingSeed()
     }
 
-    // Resolves `name` against availableVoices and applies it. A null name, or a name
-    // that doesn't resolve (uninstalled language pack, engine switched since it was
-    // stored), is a silent no-op that leaves the engine on whatever voice it already
-    // had - the same "unknown ⇒ treat as default, never crash" posture
-    // tts-multivoice.md uses for its own segment format - rather than throwing or
-    // falling back to some other voice the reader didn't ask for. currentVoiceName
-    // only advances when the resolve actually succeeds, so a failed call doesn't make
-    // the settings UI claim a voice is active when the engine is still on its old one.
+    // Does the actual applying for setInitialRateAndPitch, from whichever of "engine
+    // ready" and "seed provided" happens second. pendingSeedRate is cleared (set back
+    // to null) once applied so a later onInit callback - there shouldn't be one, but a
+    // defensive re-check costs nothing - doesn't re-apply a stale seed.
+    private fun applyPendingSeed() {
+        val rate = pendingSeedRate ?: return
+        if (defaultsApplied) return
+        defaultsApplied = true
+        pendingSeedRate = null
+        speechRate = rate
+        engine?.setSpeechRate(rate)
+        engine?.setPitch(pendingSeedPitch)
+        val toApply = voiceNameToApply(pendingSeedVoiceName, availableVoices.map { it.name })
+        if (toApply != null) setVoice(toApply)
+    }
+
+    // Resolves `name` against availableVoices and applies it, live. A name that
+    // doesn't resolve (uninstalled language pack, engine switched since it was stored)
+    // is a silent no-op that leaves the engine on whatever voice it already had - the
+    // same "unknown ⇒ treat as default, never crash" posture tts-multivoice.md uses for
+    // its own segment format - rather than throwing or falling back to some other
+    // voice the reader didn't ask for. currentVoiceName only advances when the resolve
+    // actually succeeds, so a failed call doesn't make the settings UI claim a voice is
+    // active when the engine is still on its old one.
+    //
+    // Rung 1 (D3): a null name is no longer a no-op. It now means "go back to the
+    // engine's own default voice" - applied live via TextToSpeech.getDefaultVoice()
+    // (Kotlin: engine.defaultVoice) - and currentVoiceName is set to null either way,
+    // so the Voice card and the picker's "System default" row both update immediately
+    // instead of only after the page is reopened with a fresh service.
     fun setVoice(name: String?) {
-        if (name == null) return
+        if (name == null) {
+            val default = engine?.defaultVoice
+            if (default != null) engine?.setVoice(default)
+            currentVoiceName = null
+            return
+        }
         val voice = availableVoices.firstOrNull { it.name == name } ?: return
         engine?.setVoice(voice)
         currentVoiceName = name
@@ -421,9 +483,12 @@ class TtsPlaybackService : Service() {
 
     // Ignores callbacks that don't match the chunk most recently queued - a late
     // onDone/onError arriving after stop() (or after a fresh start() replaced the
-    // queue) would otherwise advance a read that's no longer current. Otherwise
-    // advances to the next chunk, or - once the last chunk in the chapter finishes -
-    // either auto-continues (if enabled) or stops the service the same way stop() does.
+    // queue) would otherwise advance (or abort) a read that's no longer current.
+    // Otherwise advances to the next chunk, or - once the last chunk in the chapter
+    // finishes - either auto-continues (if enabled) or stops the service the same way
+    // stop() does. Only ever called from onDone now - see onChunkError below for the
+    // rung-2 (D4) failure path, which used to share this method and be silently
+    // treated as "chunk finished".
     private fun onUtteranceFinished(utteranceId: String?) {
         if (ignorePendingFinish) {
             ignorePendingFinish = false
@@ -449,6 +514,33 @@ class TtsPlaybackService : Service() {
                 stopSelf()
             }
         }
+    }
+
+    // Rung 2 (D4): a chunk that failed to synthesize/play used to be routed into
+    // onUtteranceFinished, which advanced as if it had succeeded - so a lost
+    // connection on an online voice, or any other synthesis failure, made the chapter
+    // "complete" silently, auto-continue included. This stops the session instead
+    // (same cleanup stop() does, minus engine.stop() - the engine already isn't
+    // speaking after an error) and reports errorCode so the UI can say why. The same
+    // stale-callback guard onUtteranceFinished uses applies here for the same reason:
+    // a late error for an already-interrupted chunk (pause(), skipNext/Previous())
+    // must not abort a session that's already moved on.
+    private fun onChunkError(utteranceId: String?, errorCode: Int) {
+        if (ignorePendingFinish) {
+            ignorePendingFinish = false
+            return
+        }
+        if (utteranceId != null && utteranceId != lastQueuedUtteranceId) return
+        isSpeaking = false
+        isPaused = false
+        pendingChunks = emptyList()
+        pendingIndex = 0
+        lastQueuedUtteranceId = null
+        sessionKey = null
+        listener?.onSpeakingChanged(false)
+        listener?.onError(errorCode)
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        stopSelf()
     }
 
     private fun ensureChannel() {
@@ -491,4 +583,39 @@ class TtsPlaybackService : Service() {
         private const val CHANNEL_ID = "tts_playback"
         private const val NOTIFICATION_ID = 42
     }
+}
+
+// Converts a live android.speech.tts.Voice into the Voice-free TtsVoiceInfo model
+// (TtsVoiceModel.kt, rung 3) that TtsSettingsScreen's picker consumes - this file is
+// the one place that already needs both android.speech.tts.Voice and TtsVoiceInfo in
+// scope, so the conversion lives here rather than duplicating the Voice import there.
+internal fun Voice.toTtsVoiceInfo(): TtsVoiceInfo = TtsVoiceInfo(
+    name = name,
+    language = locale?.language ?: "",
+    region = locale?.displayCountry ?: "",
+    quality = quality,
+    online = isNetworkConnectionRequired,
+    installed = features?.contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) != true
+)
+
+// Human-readable text for a TextToSpeech.ERROR_* code (rung 2, D4), shown once in the
+// reader when a chunk fails instead of silently advancing. The two network codes get a
+// specific nudge toward a local voice, since that's the one concrete thing a reader
+// hitting ERROR_NETWORK/ERROR_NETWORK_TIMEOUT can do about it; every other code gets a
+// flat message instead of guessing at a cause this function has no evidence for.
+internal fun ttsErrorMessage(errorCode: Int): String = when (errorCode) {
+    TextToSpeech.ERROR_NETWORK, TextToSpeech.ERROR_NETWORK_TIMEOUT ->
+        "Read-aloud stopped: no connection for this voice. Try a local voice in TTS settings."
+    TextToSpeech.ERROR_NOT_INSTALLED_YET ->
+        "Read-aloud stopped: this voice isn't installed yet."
+    TextToSpeech.ERROR_OUTPUT ->
+        "Read-aloud stopped: the audio output failed."
+    TextToSpeech.ERROR_SERVICE ->
+        "Read-aloud stopped: the speech service failed."
+    TextToSpeech.ERROR_SYNTHESIS ->
+        "Read-aloud stopped: couldn't synthesize this voice."
+    TextToSpeech.ERROR_INVALID_REQUEST ->
+        "Read-aloud stopped: invalid request to the speech engine."
+    else ->
+        "Read-aloud stopped: a speech engine error occurred."
 }

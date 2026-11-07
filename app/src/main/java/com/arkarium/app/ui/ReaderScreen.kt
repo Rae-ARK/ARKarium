@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.view.WindowManager
+import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -216,6 +217,17 @@ fun ReaderScreen(
     // (listening, not reading) that the rest of the reader isn't, so this ties the flag
     // to tts.isSpeaking rather than to the reader screen merely being open.
     val context = LocalContext.current
+    // Rung 2 (tts-settings-rework.md, D4): a chunk that fails now stops the session
+    // and reports why via ChapterTtsState.lastErrorMessage, instead of the chapter
+    // silently "completing" with no sound. Shown once as a Toast - ReaderScreen has
+    // no Snackbar host today, and adding one is out of this ladder's scope - and
+    // cleared right after so it doesn't reappear on the next recomposition.
+    LaunchedEffect(tts.lastErrorMessage) {
+        tts.lastErrorMessage?.let { message ->
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            tts.clearError()
+        }
+    }
     val prefsManager = remember { PreferencesManager(context) }
     val keepScreenOnEnabled by prefsManager.ttsKeepScreenOn.collectAsState(initial = false)
     DisposableEffect(keepScreenOnEnabled, tts.isSpeaking) {

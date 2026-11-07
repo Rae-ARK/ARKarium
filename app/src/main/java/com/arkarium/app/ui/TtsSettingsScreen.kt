@@ -47,6 +47,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.arkarium.app.playback.descriptionOf
+import com.arkarium.app.playback.languagesOf
+import com.arkarium.app.playback.rowsForLanguage
+import com.arkarium.app.playback.toTtsVoiceInfo
+import java.util.Locale
 
 // Stage 3.2 (see docs/arkarium/foundational/design-notes.md) - the actual TTS default
 // controls, replacing the "arrives in Stage 3" placeholder text Stage 1 left
@@ -405,15 +410,17 @@ private fun qualityLabel(quality: Int): String = when {
     else -> "very low quality"
 }
 
-// Picker dialog per tts-voice-picker.md's UI sketch: voices grouped by
-// locale display name (language first - on a single-engine device most
-// people care "which language" more than "which voice model"), each row
-// showing a quality tier and a "requires network" badge. A leading "System
-// default" row clears back to null, same as every other "unset means
-// default" control in this screen. Groups and the voices within them are
-// sorted alphabetically so the list is stable/scannable across
-// recompositions rather than following whatever order the engine happened
-// to return.
+// Picker dialog per tts-voice-picker.md's UI sketch, reworked at rung 3
+// (tts-settings-rework.md) to group by language only via the pure TtsVoiceModel
+// functions (languagesOf/rowsForLanguage/descriptionOf) rather than by full locale
+// display name here - U2's "English (India)" and "English (United States)" no longer
+// land in separate groups; the region moves into each row's description instead, next
+// to its online/offline state and quality tier (see descriptionOf). A leading "System
+// default" row clears back to null, same as every other "unset means default" control
+// in this screen. The device's own language is listed first, same as the reference
+// screenshots. Still the dialog-based picker from Step 4 of tts-voice-picker.md - a
+// full `settings/tts/voice` page replacing it, and the online badge's wrong icon (U1),
+// are rung 4, not this pass.
 @Composable
 private fun VoicePickerDialog(
     availableVoices: List<Voice>,
@@ -421,11 +428,10 @@ private fun VoicePickerDialog(
     onVoiceSelected: (String?) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val groupedVoices = remember(availableVoices) {
-        availableVoices
-            .sortedBy { it.name }
-            .groupBy { it.locale?.displayName ?: "Other" }
-            .toSortedMap()
+    val voiceInfos = remember(availableVoices) { availableVoices.map { it.toTtsVoiceInfo() } }
+    val deviceLanguage = remember { Locale.getDefault().language }
+    val languages = remember(voiceInfos, deviceLanguage) {
+        languagesOf(voiceInfos, deviceLanguage)
     }
 
     AlertDialog(
@@ -443,23 +449,24 @@ private fun VoicePickerDialog(
                     )
                     Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 }
-                groupedVoices.forEach { (localeName, voicesInLocale) ->
+                languages.forEach { language ->
                     item {
                         Text(
-                            localeName,
+                            Locale(language).displayLanguage
+                                .replaceFirstChar { it.uppercase() },
                             style = MaterialTheme.typography.labelLarge,
                             color = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
                         )
                     }
-                    items(voicesInLocale, key = { it.name }) { voice ->
+                    items(rowsForLanguage(voiceInfos, language), key = { it.name }) { info ->
                         VoicePickerRow(
-                            title = voice.name,
-                            subtitle = qualityLabel(voice.quality)
+                            title = info.name,
+                            subtitle = descriptionOf(info)
                                 .replaceFirstChar { it.uppercase() },
-                            selected = voice.name == currentVoiceName,
-                            networkRequired = voice.isNetworkConnectionRequired,
-                            onClick = { onVoiceSelected(voice.name) }
+                            selected = info.name == currentVoiceName,
+                            networkRequired = info.online,
+                            onClick = { onVoiceSelected(info.name) }
                         )
                     }
                 }
