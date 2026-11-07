@@ -159,6 +159,26 @@ fun TtsVoicePickerScreen(
             Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
         }
 
+        // Computed here, in the composable function body, rather than inside
+        // the LazyColumn's content lambda below: that lambda is a
+        // LazyListScope builder, not a @Composable context, so the `remember`
+        // call that used to live in there (guarded by `if (language != null)`)
+        // failed to compile - "remember" is itself @Composable and can't be
+        // invoked from LazyListScope directly, only from inside an `item`/
+        // `items` row lambda. Hoisting it here and falling back to an empty
+        // list when no language is selected keeps the exact same rendered
+        // result (the `items` call below renders nothing for an empty list,
+        // same as the old `if` skipping it) without calling remember from a
+        // non-composable scope.
+        val language = selectedLanguage
+        val rows = remember(voiceInfos, language, favoriteVoiceNames) {
+            if (language != null) {
+                withFavoritesFirst(rowsForLanguage(voiceInfos, language), favoriteVoiceNames)
+            } else {
+                emptyList()
+            }
+        }
+
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             // Kept as the list's first row rather than folded into the
             // language filter (it has no language of its own) - same
@@ -179,26 +199,20 @@ fun TtsVoicePickerScreen(
                 Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
             }
 
-            val language = selectedLanguage
-            if (language != null) {
-                val rows = remember(voiceInfos, language, favoriteVoiceNames) {
-                    withFavoritesFirst(rowsForLanguage(voiceInfos, language), favoriteVoiceNames)
-                }
-                items(rows, key = { it.name }) { info ->
-                    val voice = availableVoices.firstOrNull { it.name == info.name }
-                    TtsVoiceRow(
-                        title = info.name,
-                        subtitle = descriptionOf(info).replaceFirstChar { it.uppercase() },
-                        selected = info.name == currentVoiceName,
-                        online = info.online,
-                        isFavorite = info.name in favoriteVoiceNames,
-                        onToggleFavorite = { onToggleFavorite(info.name) },
-                        onClick = {
-                            onVoiceSelected(info.name)
-                            playSample(voice)
-                        }
-                    )
-                }
+            items(rows, key = { it.name }) { info ->
+                val voice = availableVoices.firstOrNull { it.name == info.name }
+                TtsVoiceRow(
+                    title = info.name,
+                    subtitle = descriptionOf(info).replaceFirstChar { it.uppercase() },
+                    selected = info.name == currentVoiceName,
+                    online = info.online,
+                    isFavorite = info.name in favoriteVoiceNames,
+                    onToggleFavorite = { onToggleFavorite(info.name) },
+                    onClick = {
+                        onVoiceSelected(info.name)
+                        playSample(voice)
+                    }
+                )
             }
         }
     }
