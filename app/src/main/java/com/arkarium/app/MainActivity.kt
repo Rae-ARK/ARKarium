@@ -56,6 +56,7 @@ import com.arkarium.app.ui.SplashScreen
 import com.arkarium.app.ui.SplashSettingsScreen
 import com.arkarium.app.ui.ThemeSettingsScreen
 import com.arkarium.app.ui.TtsSettingsScreen
+import com.arkarium.app.ui.rememberChapterTts
 import com.arkarium.app.ui.WebViewScreen
 import com.arkarium.app.ui.SyncProgressDialog
 import com.arkarium.app.ui.SyncResolutionDialog
@@ -651,6 +652,14 @@ class MainActivity : ComponentActivity() {
                 val ttsPitch = prefsManager.ttsPitch.collectAsState(initial = 1.0f)
                 val ttsAutoContinue = prefsManager.ttsAutoContinue.collectAsState(initial = false)
                 val ttsKeepScreenOn = prefsManager.ttsKeepScreenOn.collectAsState(initial = false)
+                // Step 4/5 of docs/arkarium/proposal/tts-voice-picker.md - collected here
+                // too, same reasoning as the four tts_* flows above, so the "Voice" row's
+                // current-selection text doesn't flash null->real-value on first
+                // composition. The voice *list* itself (availableVoices) isn't a
+                // PreferencesManager flow - it comes from TtsPlaybackService via a
+                // ChapterTtsState bound inside the settings/tts composable below, same
+                // service-owned shape the proposal specifies.
+                val ttsVoiceName = prefsManager.ttsVoiceName.collectAsState(initial = null)
 
                 // Navigates to whichever novel a "new chapter" notification was tapped
                 // for (see handleNotificationIntent/onNewIntent and
@@ -1327,14 +1336,33 @@ class MainActivity : ComponentActivity() {
                         // Stage 3.2 (see docs/arkarium/foundational/design-notes.md): direct
                         // PreferencesManager access hoisted at the Activity, same
                         // pattern settings/splash above already uses - no
-                        // TtsSettingsViewModel. UI-and-persistence only; nothing in
-                        // Tts.kt reads these keys yet (Stages 3.3-3.5), so this just
-                        // updates the stored preference and reflects it back.
+                        // TtsSettingsViewModel. Stages 3.3-3.5 and
+                        // tts-voice-picker.md's Step 4 (below) wired this screen's
+                        // controls up to actually take effect, so this is no longer
+                        // store-and-reflect only.
+                        //
+                        // tts-voice-picker.md's Step 4: "bind TtsSettingsScreen to
+                        // TtsPlaybackService the same way rememberChapterTts() already
+                        // does for the reader" - rememberChapterTts() already is that
+                        // binding (ServiceConnection + BIND_AUTO_CREATE), so this reuses
+                        // it directly rather than writing a second one. This composable
+                        // leaves ReaderScreen's own rememberChapterTts() call (the one
+                        // actually reading chapters aloud) alone - each call site gets
+                        // its own ChapterTtsState, and the service supports being bound
+                        // from more than one place at once.
+                        val ttsState = rememberChapterTts()
                         TtsSettingsScreen(
                             ttsDefaultRate = ttsDefaultRate.value,
                             ttsPitch = ttsPitch.value,
                             ttsAutoContinue = ttsAutoContinue.value,
                             ttsKeepScreenOn = ttsKeepScreenOn.value,
+                            availableVoices = ttsState.availableVoices,
+                            // Prefers the service's live currentVoiceName once a
+                            // service is attached and has resolved one (matches what
+                            // setVoice() below will actually apply), falling back to
+                            // the stored preference before that attach completes so
+                            // the row doesn't flash "System default" first.
+                            currentVoiceName = ttsState.currentVoiceName ?: ttsVoiceName.value,
                             onDefaultRateChange = { rate ->
                                 lifecycleScope.launch {
                                     prefsManager.setTtsDefaultRate(rate)
@@ -1353,6 +1381,17 @@ class MainActivity : ComponentActivity() {
                             onKeepScreenOnToggle = { enabled ->
                                 lifecycleScope.launch {
                                     prefsManager.setTtsKeepScreenOn(enabled)
+                                }
+                            },
+                            onVoiceChange = { name ->
+                                // "push live" if a service is attached (tts-voice-picker.md's
+                                // UI sketch) and always persist, so the next session picks
+                                // it up via setInitialRateAndPitch - same split
+                                // onDefaultRateChange/onPitchChange/etc. don't need since
+                                // those have no live mid-session counterpart.
+                                ttsState.setVoice(name)
+                                lifecycleScope.launch {
+                                    prefsManager.setTtsVoiceName(name)
                                 }
                             },
                             onBack = { navController.popBackStack() }

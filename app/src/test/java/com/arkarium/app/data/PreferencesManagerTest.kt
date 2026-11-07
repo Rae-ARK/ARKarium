@@ -42,6 +42,16 @@ class PreferencesManagerTest {
         assertEquals(false, ttsKeepScreenOnOf(emptyPreferences()))
     }
 
+    // Unlike the four above, ttsVoiceName has no Float/Boolean fallback to
+    // assert against - "unset" and "engine/system default" are the same
+    // null, per TTS_VOICE_NAME_KEY's doc comment - so this just confirms an
+    // empty snapshot reads back as that null rather than throwing or
+    // returning an empty string.
+    @Test
+    fun ttsVoiceName_withNoStoredValue_fallsBackToNull() {
+        assertEquals(null, ttsVoiceNameOf(emptyPreferences()))
+    }
+
     // --- write/read round-trip, using the same `prefs[KEY] = value` shape the real ----
     // --- setTts*() functions call inside their context.dataStore.edit { } block -------
 
@@ -77,6 +87,18 @@ class PreferencesManagerTest {
         assertEquals(true, ttsKeepScreenOnOf(prefs))
     }
 
+    // Same round-trip shape as the four above, against setTtsVoiceName's own
+    // `prefs[TTS_VOICE_NAME_KEY] = name` write (see PreferencesManager.kt) -
+    // a voice name is a plain Voice.getName() string, nothing locale-shaped
+    // needs parsing on the way back out.
+    @Test
+    fun ttsVoiceName_roundTripsAStoredValue() {
+        val prefs = mutablePreferencesOf()
+        prefs[TTS_VOICE_NAME_KEY] = "en-us-x-sfg#female_1-local"
+
+        assertEquals("en-us-x-sfg#female_1-local", ttsVoiceNameOf(prefs))
+    }
+
     // A value written and then overwritten should read back as the latest write, not
     // the default and not the first write - the shape setTtsDefaultRate's callers rely
     // on when a user drags the rate slider more than once per session.
@@ -87,5 +109,29 @@ class PreferencesManagerTest {
         prefs[TTS_DEFAULT_RATE_KEY] = 0.5f
 
         assertEquals(0.5f, ttsDefaultRateOf(prefs), 0.0001f)
+    }
+
+    // setTtsVoiceName(null) removes the key entirely rather than storing an
+    // empty string (see its doc comment in PreferencesManager.kt) - this is
+    // the pure-function side of that: a key that was present and then
+    // removed must read back exactly like one that was never stored,
+    // matching the "clear to System default" case VoicePickerDialog's
+    // leading row triggers in TtsSettingsScreen.
+    @Test
+    fun ttsVoiceName_afterRemoval_fallsBackToNull() {
+        val prefs = mutablePreferencesOf()
+        prefs[TTS_VOICE_NAME_KEY] = "en-us-x-sfg#female_1-local"
+        prefs.remove(TTS_VOICE_NAME_KEY)
+
+        assertEquals(null, ttsVoiceNameOf(prefs))
+    }
+
+    @Test
+    fun ttsVoiceName_secondWriteOverwritesTheFirst() {
+        val prefs = mutablePreferencesOf()
+        prefs[TTS_VOICE_NAME_KEY] = "en-us-x-sfg#female_1-local"
+        prefs[TTS_VOICE_NAME_KEY] = "en-gb-x-gbb#male_1-local"
+
+        assertEquals("en-gb-x-gbb#male_1-local", ttsVoiceNameOf(prefs))
     }
 }
