@@ -1,19 +1,17 @@
 # Animation, platform readiness, and reading typography
 
-> **Kind:** proposal · **Status:** nothing built yet · **Verified:** 2026-11-07 @ 5426a3d
+> **Kind:** proposal · **Status:** screen transitions and the reader's bottom-pill swap built; the rest open · **Verified:** 2026-11-07 @ a621542
 > **Origin:** [`engineering-review.md`](engineering-review.md) F16, F17, F19.
 
 ### F16. Almost no animation outside the splash
 
 **Severity:** Low. **Tags:** V.
-**Where:** checked every screen under `ui/`; the only `animate*` use outside
-`SplashScreen.kt`/`SplashChordPlayer.kt` is a single `animateContentSize()` on
-the reader's preferences panel.
+**Where:** outside the splash, motion exists in `navigation/NavMotion.kt` (screen
+transitions), `ui/WaterRipple.kt` (the reader's bottom-pill swap) and one
+`animateContentSize()` on the reader's preferences panel.
 
-Navigation transitions, list changes, sync progress updates, and the
-Light/Sepia/Dark theme switch all either use Compose Navigation's untouched
-defaults or cut instantly, with no deliberate motion design anywhere outside
-the splash — which, per `performance.md` F13, is already the most expensive
+List changes, sync progress updates, and the Light/Sepia/Dark theme switch
+still cut instantly, with no deliberate motion design outside the splash — which, per `performance.md` F13, is already the most expensive
 single thing in the app and arguably animated for too long, not too little.
 
 **Where animation would actually earn its keep** (effort roughly
@@ -21,11 +19,11 @@ hours-to-a-day each, see `engineering-review.md`'s suggested order item 6/7):
 
 | Place | Today | Direction |
 |---|---|---|
-| Home → detail → reader nav | Compose Navigation's default crossfade | Custom enter/exit/pop transitions (~300ms in, ~200ms out); a cover shared-element transition once the Compose/Navigation upgrade in F17 lands |
+| Home → detail → reader nav | Material shared-axis X (300ms, ~30dp slide + fade-through) forward and back; a fade-through for Previous/Next chapter - `NavMotion` | A cover shared-element transition once the Compose/Navigation upgrade in F17 lands |
 | Chapter list changes (sync adds a chapter, a filter is applied) | Instant | `animateItem()` — needs the stable `key =` values from `performance.md` F14 first |
 | Cover load | Pops in | Crossfade via the shared `ImageLoader` in `performance.md` F15 |
 | Reading mode switch (Light/Sepia/Dark) | Snaps | `animateColorAsState` on the background, ~200ms |
-| Reader chrome, TTS controls | Static | `AnimatedVisibility` fade for the control surface; a draw-phase TTS highlight once `reader-playback.md` F10 exists |
+| Reader chrome, TTS controls | The bottom pill swaps Reader Preferences ↔ read-aloud controls with a water ripple; the top bar and progress readout still snap | `AnimatedVisibility` fade for the top bar and readout; a draw-phase TTS highlight once `reader-playback.md` F10 exists |
 | Sync progress | Text swaps | `AnimatedContent` on the arc label; `animateFloatAsState` for a determinate progress bar |
 
 **Rules to follow once this is built**, so animation doesn't cost frames or

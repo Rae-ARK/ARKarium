@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -53,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -229,19 +231,31 @@ fun ReaderScreen(
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
-    val showControls = remember { mutableStateOf(true) }
+    // The tap-anywhere immersive toggle: true = chrome showing (top bar, Reader
+    // Preferences pill, progress readout), false = immersive. rememberSaveable rather
+    // than remember because navigating away (e.g. to settings/tts from the read-aloud
+    // pill) takes this screen out of composition, and plain `remember` state does not
+    // survive that - the reader used to come back out of immersive mode every time.
+    val showControls = rememberSaveable { mutableStateOf(true) }
     // Separate from showControls: showControls is the tap-anywhere immersive toggle
     // for the top bar + progress readout, but font/spacing/mode were only reachable
     // by first being in non-immersive mode. Royal Road instead exposes an explicit,
     // always-visible "Reader Preferences" pill so the settings are discoverable
     // without depending on the tap gesture at all.
     val showPreferences = remember { mutableStateOf(false) }
-    // Shows/hides TtsControlsBar (defined below, outside this function). Deliberately
-    // its own flag rather than reusing showControls or showPreferences: unlike those
-    // two, which are both about immersive mode, this is meant to keep working through
-    // an immersive toggle once a reader has opened it - see TtsControlsBar's own call
-    // site comment.
-    val showTtsControls = remember { mutableStateOf(false) }
+    // A read-aloud session exists (playing or paused) - mirrored from the service via
+    // `tts`, so it is also true when this composition has only just re-attached to a
+    // session that kept running while the reader was away.
+    val ttsSessionActive = tts.isSpeaking || tts.isPaused
+    // Which pill owns the bottom edge: Reader Preferences when chrome is showing, the
+    // read-aloud controls in immersive mode while a session exists, otherwise nothing.
+    // The two are one slot that swaps (with a water ripple), never shown together. See
+    // ReaderTtsLogic.kt.
+    val bottomPill = readerBottomPill(
+        immersive = !showControls.value,
+        ttsSessionActive = ttsSessionActive,
+        ttsAvailable = tts.isAvailable
+    )
     val scrollState = rememberScrollState()
 
     // ReaderScreen's call site in MainActivity doesn't change when Previous/Next swaps
@@ -255,15 +269,31 @@ fun ReaderScreen(
     // whenever the chapter actually changes.
     LaunchedEffect(chapter.id) {
         scrollState.scrollTo(0)
-        // Otherwise Previous/Next would keep reading the outgoing chapter's remaining
-        // queued chunks over the top of the newly-loaded one, since the engine (and its
-        // queue) persists across chapter navigation - see rememberChapterTts's doc
-        // comment on why it isn't torn down and recreated here.
-        tts.stop()
-        // A fresh chapter means a fresh session (tts.stop() above) - there's nothing
-        // left for the controls bar to control, so it goes away with the session
-        // rather than lingering open and inert until the reader notices and taps X.
-        showTtsControls.value = false
+    }
+
+    // Reconciles this composition with a read-aloud session that may have outlived the
+    // previous one. The session lives in TtsPlaybackService, not here, so it keeps
+    // playing while the reader is covered by another screen (the TTS settings page
+    // above all), across a rotation, or after backing out and reopening the chapter -
+    // but everything on this screen starts from scratch each time, and `tts` only learns
+    // about the session once the service bind completes (isAvailable going true).
+    //  - Session is reading this chapter: return to immersive mode so its controls pill
+    //    is showing again, and leave playback alone.
+    //  - Session is reading a different chapter (Previous/Next, or another chapter
+    //    opened meanwhile): stop it. This is what the old unconditional tts.stop() on
+    //    every new chapter was for; it ran before the bind finished, so whether it hit
+    //    the live session was down to timing. Keyed to the session now, not the timing.
+    // Runs once per composition (per chapter, since Previous/Next swap the whole route).
+    var ttsSessionReconciled by remember(chapter.id) { mutableStateOf(false) }
+    LaunchedEffect(chapter.id, tts.isAvailable) {
+        if (!tts.isAvailable || ttsSessionReconciled) return@LaunchedEffect
+        ttsSessionReconciled = true
+        val action = reconcileTtsSession(ttsSessionActive, tts.sessionKey, chapter.id)
+        if (action == TtsSessionAction.ENTER_IMMERSIVE) {
+            showControls.value = false
+        } else if (action == TtsSessionAction.STOP_STALE) {
+            tts.stop()
+        }
     }
 
     fun currentProgress(): Float {
@@ -326,19 +356,27 @@ fun ReaderScreen(
                     }
                 },
                 // Only shown once the engine's finished initializing successfully - see
-                // ChapterTtsState.isAvailable's doc comment. Always the same speaker
-                // glyph now, regardless of play/pause/stop state - it no longer starts
-                // or stops playback itself (that moved to the play/pause control inside
-                // TtsControlsBar below, which also has pause/resume and skip - not just
-                // stop - now that TtsPlaybackService supports them). Tapping this only
-                // shows or hides that bar, which is why there's no icon state to switch
-                // between here any more.
+                // ChapterTtsState.isAvailable's doc comment. Pressing it starts reading
+                // aloud and drops into immersive mode, where the read-aloud controls
+                // pill (TtsControlsBar) takes over the bottom edge from the Reader
+                // Preferences pill. If a session already exists it isn't restarted from
+                // the top: a paused one resumes, a playing one is left alone, and either
+                // way the reader just goes back to its controls. The top bar only exists
+                // outside immersive mode, so this is the only way to *start* read-aloud;
+                // the pill stops, pauses and skips it from there.
                 actions = {
                     if (tts.isAvailable) {
-                        IconButton(onClick = { showTtsControls.value = !showTtsControls.value }) {
+                        IconButton(onClick = {
+                            when {
+                                tts.isPaused -> tts.resume()
+                                tts.isSpeaking -> Unit
+                                else -> tts.speak(context, chapter.title, content, chapter.id)
+                            }
+                            showControls.value = false
+                        }) {
                             Icon(
                                 Icons.Filled.VolumeUp,
-                                contentDescription = if (showTtsControls.value) "Hide read-aloud controls" else "Show read-aloud controls"
+                                contentDescription = "Read aloud"
                             )
                         }
                     }
@@ -737,13 +775,15 @@ fun ReaderScreen(
             // panel above rather than navigating anywhere, so it stays a single
             // persistent affordance instead of disappearing once tapped.
             //
-            // Used to render unconditionally ("immersive or not") - changed to
-            // non-immersive only (showControls.value): font/spacing/mode aren't needed
-            // while immersed, unlike read-aloud's controls, which uiux.md's
-            // playback-controls entry specifically wants reachable there (see
-            // TtsControlsBar below) - so the two now diverge instead of both always
-            // being on.
-            if (showControls.value) {
+            // Non-immersive only (bottomPill == PREFERENCES): font/spacing/mode aren't
+            // needed while immersed. In immersive mode this slot belongs to the
+            // read-aloud controls pill instead (TtsControlsBar, below) - the two swap
+            // places with a water ripple (see WaterRipple.kt) rather than showing
+            // together.
+            RippleReveal(
+                visible = bottomPill == ReaderBottomPill.PREFERENCES,
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 Box(
                     modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.Center
@@ -793,15 +833,17 @@ fun ReaderScreen(
         }
     }
 
-    // Rung 1-2 of the TTS playback-controls ladder (docs/arkarium/implementation/
-    // tts-playback-controls.md), promoted from uiux.md's playback-controls entry.
-    // Deliberately not gated on showControls - that flag is the immersive on/off
-    // toggle for the top bar and footer above, but this bar is meant to stay
-    // reachable through an immersive toggle once opened, rather than vanish with
-    // everything else, since starting/stopping read-aloud shouldn't require leaving
-    // immersive mode first. Also gated on tts.isAvailable, same as the speaker icon
-    // that opens it - no engine, nothing to control.
-    if (showTtsControls.value && tts.isAvailable) {
+    // The read-aloud controls pill (rungs 1-2 of docs/arkarium/implementation/
+    // tts-playback-controls.md). Immersive mode only, and only while a session exists
+    // (playing or paused) - bottomPill == TTS says exactly that, see ReaderTtsLogic.kt.
+    // Outside immersive mode the Reader Preferences pill above holds this spot, and
+    // playback simply carries on without a visible control; entering immersive mode
+    // brings the pill back. Also gated on tts.isAvailable inside bottomPill - no engine,
+    // nothing to control.
+    RippleReveal(
+        visible = bottomPill == ReaderBottomPill.TTS,
+        modifier = Modifier.align(Alignment.BottomCenter)
+    ) {
         TtsControlsBar(
             isSpeaking = tts.isSpeaking,
             isPaused = tts.isPaused,
@@ -809,26 +851,37 @@ fun ReaderScreen(
                 when {
                     tts.isPaused -> tts.resume()
                     tts.isSpeaking -> tts.pause()
-                    else -> tts.speak(context, chapter.title, content)
+                    else -> tts.speak(context, chapter.title, content, chapter.id)
                 }
             },
             onSkipPrevious = { tts.skipPrevious() },
             onSkipNext = { tts.skipNext() },
             onSettingsClick = onOpenTtsSettings,
-            onClose = {
-                tts.stop()
-                showTtsControls.value = false
-            },
-            modifier = Modifier.align(Alignment.BottomCenter)
+            // Ends the session; with no session left, bottomPill goes to NONE and the
+            // pill leaves on its own - nothing else to hide here.
+            onClose = { tts.stop() }
         )
     }
+
+    // Rings spreading from the pill whenever the bottom edge swaps between Reader
+    // Preferences and read-aloud controls. Not on first composition, and not when the
+    // swap is to NONE (nothing arrives to ripple around).
+    WaterRippleWave(
+        trigger = bottomPill,
+        enabled = bottomPill != ReaderBottomPill.NONE,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .height(240.dp)
+    )
     }
 }
 
 // The read-aloud controls bar: stop the session, open TTS settings, skip to the
-// previous/next chunk, and play/pause - shown and hidden by the speaker icon in
-// ReaderScreen's top bar (see that function's call site comment above) rather than by
-// showControls, so it keeps working through an immersive toggle. Laid out to match
+// previous/next chunk, and play/pause. Shown by ReaderScreen only in immersive mode
+// while a session exists (see readerBottomPill); the speaker icon in the top bar is what
+// starts one. Laid out to match
 // the reference screenshot in uiux.md's playback-controls entry (close/settings on
 // one side, skip/play/skip on the other) minus its "n of total" scrub readout -
 // TtsProgressStub below is where that's meant to slot in later, not omitted outright.

@@ -130,9 +130,16 @@ class ChapterTtsState internal constructor() {
     // else reads it back. No-ops if no service is attached yet (shouldn't happen in
     // practice - isAvailable, which gates the play control in ReaderScreen, only ever
     // goes true once a service has attached and its engine has finished initializing).
-    fun speak(context: Context, chapterTitle: String, text: String) {
-        service?.start(context, chapterTitle, text)
+    fun speak(context: Context, chapterTitle: String, text: String, sessionKey: String? = null) {
+        service?.start(context, chapterTitle, text, sessionKey)
     }
+
+    // Which chapter the attached service's current session is reading (the key passed
+    // to speak()), or null with no session or no service attached yet. A plain getter,
+    // not Compose state: read it once, after isAvailable has gone true, to reconcile
+    // with a session that outlived this composition (see reconcileTtsSession).
+    val sessionKey: String?
+        get() = service?.sessionKey
 
     fun stop() {
         service?.stop()

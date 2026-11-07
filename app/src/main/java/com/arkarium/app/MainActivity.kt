@@ -78,6 +78,7 @@ import com.arkarium.app.data.SyncManager
 import com.arkarium.app.data.NovelStatus
 import com.arkarium.app.data.TextChapterContentRepository
 import com.arkarium.app.navigation.MetadataSearchState
+import com.arkarium.app.navigation.NavMotion
 import com.arkarium.app.navigation.AddFictionState
 import com.arkarium.app.navigation.SyncAllState
 import com.arkarium.app.navigation.SyncCheckState
@@ -730,7 +731,15 @@ class MainActivity : ComponentActivity() {
                     // NavHost's own startDestination - the thing that actually decides
                     // what's on screen first.
                     startDestination = "home",
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    // Without these NavHost falls back to its stock 700ms full-screen
+                    // crossfade. See navigation/NavMotion.kt for the motion design:
+                    // shared-axis slide + fade-through for going deeper and back, a plain
+                    // fade-through for Previous/Next chapter.
+                    enterTransition = { NavMotion.enter(initialState, targetState) },
+                    exitTransition = { NavMotion.exit(initialState, targetState) },
+                    popEnterTransition = { NavMotion.popEnter(initialState, targetState) },
+                    popExitTransition = { NavMotion.popExit(initialState, targetState) }
                 ) {
                 composable("home") {
                     Column(modifier = Modifier.fillMaxSize()) {
