@@ -24,14 +24,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.Brightness7
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
@@ -599,32 +597,32 @@ fun ReaderScreen(
                         .background(backgroundColor)
                         .padding(16.dp)
                 ) {
-                // Font size control
+                // Font size control. A slider, matching Spacing/Speed below rather
+                // than the old +/- stepper - a stepper reads oddly once you know the
+                // value is bounded (12..28) rather than open-ended, and a slider
+                // shows the bound instead of hiding it.
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text("Text:", style = MaterialTheme.typography.labelSmall, color = textColor)
-                    IconButton(
-                        onClick = { if (fontSize.value > 12) fontSize.value -= 2 },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(Icons.Default.Remove, contentDescription = "Decrease font", tint = textColor)
-                    }
+                    Slider(
+                        value = fontSize.value,
+                        onValueChange = { fontSize.value = it },
+                        valueRange = 12f..28f,
+                        steps = 7, // 12,14,...,28 - 9 stops, 2pt increments
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 8.dp)
+                    )
                     Text(
                         "${fontSize.value.toInt()}",
-                        modifier = Modifier.padding(horizontal = 8.dp),
-                        color = textColor
+                        style = MaterialTheme.typography.labelSmall,
+                        color = textColor,
+                        modifier = Modifier.padding(start = 8.dp)
                     )
-                    IconButton(
-                        onClick = { if (fontSize.value < 28) fontSize.value += 2 },
-                        modifier = Modifier.size(32.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Increase font", tint = textColor)
-                    }
                 }
 
                 // Line height control
@@ -721,10 +719,18 @@ fun ReaderScreen(
                                 fontFamily = resolveFontFamily(choice),
                                 letterSpacing = extraLetterSpacing(choice),
                                 style = MaterialTheme.typography.labelSmall,
+                                // Unselected used to be hardcoded Color.Black, which is
+                                // (near-)invisible against the Dark app theme's own
+                                // surfaceVariant (0xFF1E2729) - Dark theme pairs a light
+                                // primary with a dark surfaceVariant, the opposite of
+                                // Light/Sepia, so a hardcoded color that happened to work
+                                // for those two silently broke for Dark. onSurfaceVariant
+                                // is the themed color meant to sit on surfaceVariant in all
+                                // three schemes.
                                 color = if (fontFamilyChoice.value == choice)
                                     MaterialTheme.colorScheme.onPrimary
                                 else
-                                    Color.Black
+                                    MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -763,11 +769,19 @@ fun ReaderScreen(
                                 horizontalArrangement = Arrangement.Center
                             ) {
                                 when (mode) {
+                                    // Selected/unselected tint was hardcoded White/Black -
+                                    // see the Font row's comment just above for why that
+                                    // breaks specifically under the Dark app theme (light
+                                    // primary + dark surfaceVariant inverts the Light/Sepia
+                                    // assumption Black/White happened to work under).
                                     ReadingMode.LIGHT -> Icon(
                                         Icons.Default.Brightness7,
                                         contentDescription = "Light mode",
                                         modifier = Modifier.size(16.dp),
-                                        tint = if (readingMode.value == mode) Color.White else Color.Black
+                                        tint = if (readingMode.value == mode)
+                                            MaterialTheme.colorScheme.onPrimary
+                                        else
+                                            MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                     ReadingMode.SEPIA -> Text(
                                         "📖",
@@ -777,7 +791,10 @@ fun ReaderScreen(
                                         Icons.Default.Brightness4,
                                         contentDescription = "Dark mode",
                                         modifier = Modifier.size(16.dp),
-                                        tint = if (readingMode.value == mode) Color.White else Color.Black
+                                        tint = if (readingMode.value == mode)
+                                            MaterialTheme.colorScheme.onPrimary
+                                        else
+                                            MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }

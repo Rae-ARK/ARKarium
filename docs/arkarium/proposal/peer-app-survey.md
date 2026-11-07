@@ -142,6 +142,18 @@ preview both need to inspect the same file set before anything is pushed.
   [`reader-playback.md`](reader-playback.md)'s F22 (audio focus/
   `MediaSession`) cover the infrastructure this needs; a sleep timer itself
   is still just a backlog item.
+- **Multi-document + one audio session, not one lock per window.** Checked
+  this 2026-11-08 against a few peer apps' own release notes/FAQs for how
+  they handle opening a second book while one is reading aloud: none of
+  them run two live playback sessions and arbitrate a lock between them —
+  each keeps exactly one global session, so a second book is a navigation
+  change, not a second player. Their write-ups are mostly about getting the
+  *handoff* right rather than the lock: periodic position saves racing the
+  switch and landing on the wrong book, and a playback service rebuilt by
+  Android mid-session forgetting its own play/pause state. Relevant to
+  [`reader-settings.md`](reader-settings.md)'s multi-document section, which
+  follows the same one-session shape for ARKarium. Not re-verified beyond
+  this pass — treat as directional, not a citable feature audit.
 - **Author-supplied style, kept narrow.** LNReader's arbitrary CSS/JS
   injection is powerful but is also a security surface most readers don't
   need, and doesn't fit ARKarium's Compose-rendered (not WebView-rendered)
