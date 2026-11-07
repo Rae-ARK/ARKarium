@@ -2,6 +2,7 @@ package com.arkarium.app.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
@@ -67,6 +68,15 @@ private class CircleRevealShape(private val fraction: Float) : Shape {
 // AnimatedVisibility whose content is revealed (and hidden) by a circle expanding from
 // its centre. Layout space grows/shrinks vertically alongside, so a pill sitting in a
 // Column footer doesn't leave a hole - or snap the space away - when it goes.
+//
+// `transition.animateFloat` below (the AnimatedVisibilityScope-receiver `transition`,
+// plus EnterExitState) is an experimental animation API - without this opt-in, the
+// compiler treats every use of it as a hard compile error, not a warning (see the
+// build log this fix came from: ":app:compileDebugKotlin FAILED", four "This is an
+// experimental animation API" errors at this function's `transition.animateFloat(...)`
+// call and its EnterExitState.Visible comparison). Scoped to this function only -
+// WaterRippleWave below doesn't touch this API and doesn't need the opt-in.
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun RippleReveal(
     visible: Boolean,
