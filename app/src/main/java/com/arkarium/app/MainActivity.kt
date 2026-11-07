@@ -661,13 +661,12 @@ class MainActivity : ComponentActivity() {
                 // service-owned shape the proposal specifies.
                 val ttsVoiceName = prefsManager.ttsVoiceName.collectAsState(initial = null)
                 // uiux.md's "Arc cover enlarger is undiscoverable" - collected here
-                // too, same reasoning as the flows above, so NovelDetailScreen's
-                // first composition already knows whether to play the one-time
-                // ripple hint. Initial true (not the stored default of false) is the
-                // safe side to guess wrong on while the real read is in flight: worst
-                // case the hint appears a few frames late, never flashes on for a
-                // frame for someone who has already dismissed it.
-                val hasSeenCoverEnlargeHint = prefsManager.hasSeenCoverEnlargeHint.collectAsState(initial = true)
+                // too, same reasoning as the flows above. null means "DataStore hasn't
+                // answered yet", which is different from false ("answered: not seen
+                // yet"). Only a real false plays the one-time hint, so a fresh install
+                // is greeted by it as soon as the read lands, and a returning user who
+                // already dismissed it never gets a frame of it while loading.
+                val hasSeenCoverEnlargeHint = prefsManager.hasSeenCoverEnlargeHint.collectAsState(initial = null)
 
                 // Navigates to whichever novel a "new chapter" notification was tapped
                 // for (see handleNotificationIntent/onNewIntent and
@@ -995,7 +994,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 } else null,
-                                hasSeenCoverEnlargeHint = hasSeenCoverEnlargeHint.value,
+                                hasSeenCoverEnlargeHint = hasSeenCoverEnlargeHint.value ?: true, // null = still loading, show nothing
                                 onCoverEnlargeHintDismissed = {
                                     lifecycleScope.launch { prefsManager.setHasSeenCoverEnlargeHint() }
                                 }
