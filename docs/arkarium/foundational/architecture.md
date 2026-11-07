@@ -25,8 +25,9 @@ Dependencies point down only. See [`design-notes.md`](design-notes.md) for why.
 | Pure logic | `data/LibraryScan.kt`, `ui/theme/AppTheme.kt`, `data/ReadingStats.kt` | Plain functions/objects, JVM-testable. |
 
 Navigation destinations (all in `MainActivity`'s `NavHost`): home, fiction
-browse, novel detail, chapter editor, reader, author, settings (+ `settings/theme|library|splash|tts`),
-privacy policy, terms, about.
+browse, novel detail, chapter editor, reader, author, settings (+
+`settings/theme|library|splash|reader|tts|tts/voice`), privacy policy, terms,
+about.
 
 ## Content format
 
@@ -133,7 +134,23 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
 
 - `ReaderScreen`: Royal Road-style layout, cover fallback (arc → fiction), Previous/Next
   (replace, not push, so Back returns to the novel), "Reader Preferences" pill
-  (font size, line spacing, speech rate, font family, Light/Sepia/Dark).
+  (font size, line spacing, speech rate, Light/Sepia/Dark, and an opt-in
+  brightness slider - see Reader settings below). Font family is **not** in
+  the pill; it moved to `settings/reader` as a "set and forget" choice.
+- **Reader settings (`settings/reader`, `PreferencesManager` keys
+  `reader_*`), per [`../proposal/reader-settings.md`](../proposal/reader-settings.md):**
+  persisted defaults for font size, line height and reading mode that the
+  pill seeds from once per chapter and never writes back to; font family's
+  own row; `reader_keep_screen_on` (combines with, doesn't override, the TTS
+  one - either true keeps the screen on, plain `FLAG_KEEP_SCREEN_ON`, no
+  idle timer); `reader_fullscreen` (hides system bars via
+  `WindowInsetsControllerCompat`, swipe-to-reveal, while in immersive mode);
+  and `reader_brightness_slider_enabled`, which only toggles whether the
+  pill's brightness slider is shown - the brightness value itself isn't
+  persisted. Reading mode's unset state means "follow the app theme" (an
+  absent key, not a fourth mode). Multi-document, a day/night button, a
+  volume slider and column count are documented in that proposal but **not
+  built**.
 - `reading_progress` per novel/chapter; `chapter_read_events` back the Home
   "reading stats" card (streak, chapters this week). A chapter counts as read at 90% scroll (`ReadingStats`).
 - Encoding fallback UTF-8 → ISO-8859-1 in `TextChapterContentRepository`.
