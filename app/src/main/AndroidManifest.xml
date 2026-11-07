@@ -13,6 +13,17 @@
          no-op on API 33+. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- TtsPlaybackService (see docs/arkarium/proposal/reader-playback.md F10) runs
+         read-aloud as a foreground service so an active session survives rotation and
+         leaving the reader, instead of dying with the composable that used to own the
+         TextToSpeech engine directly. FOREGROUND_SERVICE is required for any foreground
+         service on API 28+; FOREGROUND_SERVICE_MEDIA_PLAYBACK is required in addition,
+         on API 34+, for a service declaring android:foregroundServiceType="mediaPlayback"
+         (see the <service> entry below) - both are normal, install-time-granted
+         permissions, nothing to prompt for at runtime. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+
     <application
         android:allowBackup="true"
         android:label="ARKarium"
@@ -31,6 +42,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Not exported - only this app binds to it (see ui/Tts.kt's rememberChapterTts).
+             foregroundServiceType="mediaPlayback" is what lets startForeground() succeed
+             with a media-playback-typed notification on API 29+, and is required
+             alongside the FOREGROUND_SERVICE_MEDIA_PLAYBACK permission above on API 34+. -->
+        <service android:name="com.arkarium.app.playback.TtsPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
     </application>
 
 </manifest>

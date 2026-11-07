@@ -1,6 +1,6 @@
 # Bug reports
 
-> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-07 @ b39eafe
+> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-07 @ 823c914
 
 Open, unfixed bugs. A fixed bug is deleted from here; if the cause taught a
 rule, it goes in [`../foundational/`](../foundational/README.md) (see sync
@@ -9,38 +9,6 @@ message is the record.
 
 Format: `### <short title>`, then **Seen** · **Where** · **Repro** · **Expected / Actual**, and **Cause** / **Status** when known.
 Historic ARKster-era bug history is frozen in `../../reference/arkster/bugs.md`.
-
-### Rotating the device stops an active read-aloud session
-
-**Priority:** high. **Seen:** 0.8, reported by owner (as part of a broader "rotation restarts the app" report - the splash-replay half of that report is fixed, see below; this is the half that isn't). Cause below comes from reading the code; not yet reproduced on a device.
-**Where:** `MainActivity` (manifest - no `android:configChanges`), `ui/Tts.kt` `rememberChapterTts()`.
-**Repro:** open a chapter, start read-aloud, rotate portrait ↔ landscape.
-**Expected:** playback continues from where it was.
-**Actual:** playback stops; resuming requires pressing Play again (and starts the current chunk over, not mid-chunk).
-
-**Cause (from code):** the `<activity>` in `AndroidManifest.xml` declares no
-`android:configChanges`, so any config change (not just rotation - dark
-mode, locale, font scale too) destroys and recreates `MainActivity`.
-`rememberChapterTts()` holds its `TextToSpeech` engine and chunk queue in
-`remember { ChapterTtsState() }` plus a `DisposableEffect(Unit)` that builds
-the engine; both are torn down and rebuilt from scratch on recreation, same
-as every other `remember`-scoped composable in the tree. Unlike `showSplash`
-below, this one has no cheap fix: a live `TextToSpeech` engine and its
-in-flight utterance aren't the kind of state `rememberSaveable` can persist
-through a Bundle (it isn't serializable, and "resume what was mid-utterance
-when destroyed" isn't something either reconstructs).
-
-**Direction:** this is the same restructuring [`reader-playback.md`](reader-playback.md)
-F10 already calls for independent of this bug - moving playback into a
-`MediaSessionService` makes it survive Activity recreation (and backgrounding,
-and navigation away from the reader) for free, since a Service's lifecycle is
-independent of the Activity's. Not worth a narrower one-off fix here; fix F10
-and this bug is fixed as a side effect.
-
-**Not verified:** how much else besides TTS is lost on recreation (dialog
-state, scroll positions, current `NavHost` route). The `NavHost` back stack
-and `rememberScrollState()` should survive via their own `rememberSaveable`
-use, but this hasn't been checked on a device.
 
 ### "Notify me when new chapters are available" toggle needs on-device confirmation
 

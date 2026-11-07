@@ -306,7 +306,7 @@ fun ReaderScreen(
                 actions = {
                     if (tts.isAvailable) {
                         IconButton(onClick = {
-                            if (tts.isSpeaking) tts.stop() else tts.speak(content)
+                            if (tts.isSpeaking) tts.stop() else tts.speak(context, chapter.title, content)
                         }) {
                             Icon(
                                 if (tts.isSpeaking) Icons.Filled.Stop else Icons.Filled.PlayArrow,

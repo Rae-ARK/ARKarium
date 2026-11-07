@@ -1,6 +1,6 @@
 # Engineering review: findings and proposed work
 
-> **Kind:** proposal · **Status:** **awaiting review** — F1 (partially), F6, F7 fixed in code; detail docs written for every finding; rest undecided · **Verified:** 2026-11-07 @ 5426a3d
+> **Kind:** proposal · **Status:** **awaiting review** — F1 (partially), F6, F7, F10 fixed in code; detail docs written for every finding; rest undecided · **Verified:** 2026-11-07 @ 823c914
 > **Origin:** notes from a separate review session (code read plus web research), not an authoritative audit.
 > **Checked since:** each finding was re-read against the code on 2026-11-07. External guidance (library, platform, vendor behavior) was **not** re-checked. The detail docs this file links to did not exist when this table was first written; they were filled in and F3 was corrected (see C3/C4) on the same date.
 
@@ -32,7 +32,7 @@ Severity is the reviewer's judgment of impact if left alone.
 | F7 | Unreadable chapter is shown as an empty chapter | Med | V | **Fixed**, minimal (5426a3d); sealed result type still open — [`robustness.md`](robustness.md) |
 | F8 | Two code paths create separate `AppDatabase` instances | Low | V, E | [`robustness.md`](robustness.md) |
 | F9 | Reading position is a scroll fraction, so it drifts with font, spacing, width | Med | V, I | [`reader-playback.md`](reader-playback.md) |
-| F10 | TTS lives in a composable, so it dies on rotation or leaving the reader | High | V | [`reader-playback.md`](reader-playback.md) |
+| F10 | TTS lives in a composable, so it dies on rotation or leaving the reader | High | V | **Fixed** (service-based playback, 823c914); controls surface still open — [`reader-playback.md`](reader-playback.md) |
 | F11 | `splitForTts` hard-cuts and only breaks on `\n . ! ?` | Low | V, I | [`robustness.md`](robustness.md) |
 | F12 | R8 off, no baseline profile, no benchmarks, old Kotlin/Compose toolchain | Med | V | [`performance.md`](performance.md) |
 | F13 | Splash: about 2.75 s per cold start, per-frame recomposition, chord synthesized on the main thread, no audio focus | Med | V (cost unmeasured) | [`performance.md`](performance.md) |
@@ -78,7 +78,7 @@ Hash-verified sync, invariants S1–S9, incremental fingerprinting, the docs che
 3. Start the measurement track: Compose compiler reports and a Macrobenchmark (F12, F14), so later performance work is data-driven.
 4. F5: SAF directory listing, after measuring on a real custom-folder library.
 5. F4: signing, before building the relay chain.
-6. F9 + F10 + the TTS controls issue in [`uiux.md`](uiux.md): one coordinated change.
+6. F10 is fixed (service-based playback, 823c914). F9 + the TTS controls issue in [`uiux.md`](uiux.md) remain one coordinated change, now buildable on top of that service.
 7. F13, F15–F17, F19: polish, in whatever order the D4 and D6 decisions allow.
 
 ## On acceptance
