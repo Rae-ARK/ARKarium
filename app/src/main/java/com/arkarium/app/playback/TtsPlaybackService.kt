@@ -88,6 +88,7 @@ class TtsPlaybackService : Service() {
     interface Listener {
         fun onSpeakingChanged(isSpeaking: Boolean)
         fun onAvailabilityChanged(isAvailable: Boolean)
+        fun onPausedChanged(isPaused: Boolean)
         fun onChapterFinished()
     }
 
@@ -102,6 +103,8 @@ class TtsPlaybackService : Service() {
     var isSpeaking = false
         private set
     var isAvailable = false
+        private set
+    var isPaused = false
         private set
     var speechRate = 1.0f
         private set
@@ -122,6 +125,18 @@ class TtsPlaybackService : Service() {
     private var pendingIndex: Int = 0
     private var lastQueuedUtteranceId: String? = null
     private var currentChapterTitle: String = ""
+
+    // Set just before pause() stops the engine mid-utterance. TextToSpeech can still
+    // deliver a late onDone/onError for the utterance that was just interrupted, with
+    // the same utteranceId onUtteranceFinished already checks against - but pause()
+    // itself never calls speak() again afterwards, so (unlike skipNext/skipPrevious
+    // below, which always re-queue immediately whenever something was actually
+    // playing) lastQueuedUtteranceId never advances to make that stale callback fail
+    // the ID check on its own. This flag is pause()'s equivalent of that ID bump:
+    // consumed by whichever onUtteranceFinished call sees it first, however long
+    // after pause() that turns out to be - even across an intervening skip while
+    // still paused.
+    private var ignorePendingFinish = false
 
     override fun onCreate() {
         super.onCreate()
@@ -206,6 +221,8 @@ class TtsPlaybackService : Service() {
         ContextCompat.startForegroundService(context, Intent(context, TtsPlaybackService::class.java))
         pendingChunks = chunks
         pendingIndex = 0
+        isPaused = false
+        ignorePendingFinish = false
         isSpeaking = true
         listener?.onSpeakingChanged(true)
         speakNextChunk(TextToSpeech.QUEUE_FLUSH)
@@ -222,12 +239,79 @@ class TtsPlaybackService : Service() {
     fun stop() {
         engine?.stop()
         isSpeaking = false
+        isPaused = false
+        ignorePendingFinish = false
         pendingChunks = emptyList()
         pendingIndex = 0
         lastQueuedUtteranceId = null
         listener?.onSpeakingChanged(false)
+        listener?.onPausedChanged(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+    }
+
+    // Pause is not a TextToSpeech feature (see uiux.md's playback-controls entry);
+    // modeled as "stop, remember pendingIndex, resume from that chunk" - the chunk
+    // the engine was partway through restarts from its own beginning rather than
+    // mid-word, which is the chunk-level granularity that entry describes as the easy
+    // first step (word-level position would need onRangeStart, API 26+).
+    fun pause() {
+        if (!isSpeaking) return
+        ignorePendingFinish = true
+        engine?.stop()
+        isSpeaking = false
+        isPaused = true
+        listener?.onSpeakingChanged(false)
+        listener?.onPausedChanged(true)
+    }
+
+    // Resumes from pendingIndex - the chunk pause() left off on - by re-queuing it
+    // from the top, same as speakNextChunk always has; there is no finer-grained
+    // position to resume from at chunk granularity. No-ops if pendingIndex somehow
+    // ran off the end while paused (shouldn't happen - nothing advances it except
+    // onUtteranceFinished, which only runs while actively speaking).
+    fun resume() {
+        if (!isPaused) return
+        isPaused = false
+        if (pendingIndex !in pendingChunks.indices) {
+            listener?.onPausedChanged(false)
+            return
+        }
+        isSpeaking = true
+        listener?.onPausedChanged(false)
+        listener?.onSpeakingChanged(true)
+        speakNextChunk(TextToSpeech.QUEUE_FLUSH)
+    }
+
+    // Moves directly to the next/previous chunk, rather than waiting for the current
+    // one to finish (playing) or for a resume() call (paused). No-ops at either end of
+    // the chapter instead of wrapping - same "disabled, not hidden" shape the
+    // Previous/Next Chapter buttons elsewhere in the reader already use.
+    fun skipNext() {
+        if (pendingChunks.isEmpty()) return
+        jumpTo((pendingIndex + 1).coerceAtMost(pendingChunks.size - 1))
+    }
+
+    fun skipPrevious() {
+        if (pendingChunks.isEmpty()) return
+        jumpTo((pendingIndex - 1).coerceAtLeast(0))
+    }
+
+    // Shared by skipNext/skipPrevious. Only re-queues speech immediately if something
+    // was actually playing; while paused, the new index just takes effect the next
+    // time resume() is called, the same "stop and remember where we are" model
+    // pause() itself uses. Safe without touching ignorePendingFinish above:
+    // speakNextChunk sets lastQueuedUtteranceId to the new chunk's id before
+    // tts.speak() returns, so a late callback for the chunk being interrupted here
+    // fails the existing utteranceId check in onUtteranceFinished on its own, the same
+    // way a normal chunk-to-chunk advance already relies on.
+    private fun jumpTo(index: Int) {
+        if (index == pendingIndex) return
+        pendingIndex = index
+        if (isSpeaking) {
+            engine?.stop()
+            speakNextChunk(TextToSpeech.QUEUE_FLUSH)
+        }
     }
 
     // Queues exactly one chunk - the one at pendingIndex - rather than the whole
@@ -250,6 +334,10 @@ class TtsPlaybackService : Service() {
     // advances to the next chunk, or - once the last chunk in the chapter finishes -
     // either auto-continues (if enabled) or stops the service the same way stop() does.
     private fun onUtteranceFinished(utteranceId: String?) {
+        if (ignorePendingFinish) {
+            ignorePendingFinish = false
+            return
+        }
         if (utteranceId != null && utteranceId != lastQueuedUtteranceId) return
         pendingIndex++
         if (pendingIndex in pendingChunks.indices) {

@@ -1128,7 +1128,14 @@ class MainActivity : ComponentActivity() {
                                         if (authorId != null) {
                                             navController.navigate("author/$authorId")
                                         }
-                                    }
+                                    },
+                                    // Gear icon in TtsControlsBar (ui/ReaderScreen.kt) -
+                                    // same route "settings" already navigates to via
+                                    // onTtsClick. Forward nav, not popUpTo/launchSingleTop,
+                                    // so Back from settings/tts returns to this same
+                                    // Reader backStackEntry (and its in-progress read-aloud
+                                    // session) rather than replacing it.
+                                    onOpenTtsSettings = { navController.navigate("settings/tts") }
                                 )
                             }
                         }

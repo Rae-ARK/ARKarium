@@ -68,13 +68,14 @@ bound-only service would still drop playback in the brief zero-client window
 a rotation's unbind-then-rebind causes.
 
 **Still open — the structural piece, not the lifecycle bug:** this fix is
-scoped to keeping an existing read-aloud session alive; it does not add
-pause/resume, skip, or a notification with real transport controls (it shows
-a plain "Reading aloud: <chapter>" notification with no actions). That
-controls surface — [`uiux.md`](uiux.md)'s gap — and the multi-voice segment
-list in [`tts-multivoice.md`](tts-multivoice.md) can now build on
-`TtsPlaybackService` rather than needing their own service, but neither is
-built yet. Also not yet verified on a device (see this doc's commit message):
+scoped to keeping an existing read-aloud session alive. `TtsPlaybackService`
+now has pause/resume/skip and a controls bar in the reader itself (see
+[`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md),
+rungs 1-2), but the foreground notification is still a plain "Reading aloud:
+<chapter>" with no transport actions - that's that ladder's rung 4. The
+multi-voice segment list in [`tts-multivoice.md`](tts-multivoice.md) can also
+now build on `TtsPlaybackService` rather than needing its own service, but
+isn't built yet. Also not yet verified on a device (see this doc's commit message):
 whether the service's process genuinely survives a config change on real
 hardware, and whether the `mediaPlayback` notification behaves consistently
 across OEM skins.
