@@ -1,6 +1,6 @@
 # Manifest signing: the sync manifest proves integrity, not authenticity
 
-> **Kind:** proposal · **Status:** design needed before [`relay-chain.md`](relay-chain.md) · **Verified:** 2026-11-07 @ 5426a3d
+> **Kind:** proposal · **Status:** key placement and custody decided (D5); scheme (ECDSA vs Ed25519) and implementation still open · **Verified:** 2026-11-07 @ b777145
 > **Origin:** [`engineering-review.md`](engineering-review.md) F4.
 
 **Severity:** Medium. **Tags:** V (manifest handling read in code), E (signature-scheme guidance not re-checked this pass).
@@ -47,6 +47,25 @@ library (Tink or BouncyCastle were the ones considered). This tradeoff should
 be re-checked against current platform docs before the scheme is picked, not
 assumed from this note.
 
-**Decision needed (D5):** who holds the signing key day to day, and what the
-actual rotation and expiry procedure is — this is an operational decision,
-not just a technical one, and blocks starting implementation.
+**Decided (D5):** key custody and placement, settled ahead of the scheme
+details above.
+
+- **Sign at publish time, in the author's own publishing pipeline** (see
+  [`ideas.md`](ideas.md)'s "Publisher pipeline (ARKlight)" row) — not inside
+  the Cloudflare Worker `RELAY_HOST` points to. If the Worker held the
+  signing key, a compromised Worker could sign whatever it likes and the
+  signature would stop proving anything; signing only buys security if the
+  thing doing the signing is harder to compromise than the thing serving
+  files. A relay or mirror that only ever serves already-signed static files
+  needs no key at all — which also means a future mirror in
+  [`relay-chain.md`](relay-chain.md) can run with zero secrets.
+- **Key stays offline** (on the author's own machine, used only at publish
+  time), not loaded into any always-on service.
+- **A long `expires`, or none at first.** The freeze-attack protection
+  (direction step 3 above) is worth having, but rollback protection (step 2
+  — rejecting `version < stored`) is where most of the value is; don't block
+  shipping steps 1–2 on picking an exact expiry policy for step 3.
+
+Rotation procedure and the ECDSA-vs-Ed25519 choice (the **E**-tagged
+dependency note above) are still open and should be re-checked against
+current platform docs before implementation starts.

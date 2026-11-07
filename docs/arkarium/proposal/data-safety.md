@@ -1,6 +1,6 @@
 # Data safety: Room migrations and novel identity
 
-> **Kind:** proposal · **Status:** open findings, F1 partially fixed in code · **Verified:** 2026-11-07 @ 5426a3d
+> **Kind:** proposal · **Status:** open findings, F1 partially fixed in code · **Verified:** 2026-11-07 @ b777145
 > **Origin:** [`engineering-review.md`](engineering-review.md) F1–F3.
 
 ### F1. Room wiped all user data when a migration was missing
@@ -45,11 +45,58 @@ exported `schemas/` directory, add one instrumented test per migration with
 `MigrationTestHelper`, each asserting the pre-migration seed row survives with
 the expected post-migration shape.
 
+**Decided (D2):** yes, but scoped to migrations specifically — one
+instrumented `MigrationTestHelper` test per migration (maybe one CI emulator
+job), not a broader push into instrumented/Robolectric coverage for the
+Compose UI layer. `design-notes.md`'s "not a priority" ranking for
+UI-layer instrumented tests stands; this finding is just the one place that
+ranking doesn't apply, because a missed migration path is a crash (since the
+fix above) or, before it, was silent data loss — not a UI regression a
+screenshot test would catch anyway.
+
+**New failure mode the fix above introduces — downgrade has no recovery
+path.** With the global fallback removed, `Room.databaseBuilder(...).build()`
+now throws `IllegalStateException` for *any* unhandled version, which
+includes a **downgrade**: installing an older APK (whose `AppDatabase` only
+knows migrations up through some lower version) over data a newer APK
+already wrote. `AppDatabase.create()` (`data/AppDatabase.kt`) has no
+`fallbackToDestructiveMigrationOnDowngrade()` or equivalent, so this throws
+unconditionally — confirmed by reading `create()`: the migration list is
+fixed (`MIGRATION_1_2` … `MIGRATION_12_13`) with nothing to handle a version
+the running code doesn't recognize at all, up or down. **Tags:** V.
+
+This is easy to hit by accident, not just through misuse: sideloading an
+older release from GitHub (no Play Store version-gating), restoring an Auto
+Backup from a newer install onto a device that got rolled back via MDM/OEM
+tooling, or a tester reinstalling a prior build to bisect a regression all
+land here. The crash itself is recoverable — clearing app data gets the app
+running again — but that's a worse outcome than the exception's own message
+suggests, since clearing app data removes the very `chapter_overrides`/
+`reading_progress`/`chapter_read_events` this fallback was removed to
+protect in the first place, and the person hitting it has no way to know
+that short of reading the stack trace. **Direction:** catch
+`IllegalStateException` once around the `Room.databaseBuilder(...).build()`
+call in `AppDatabase.create()` and, when the message indicates a downgrade
+specifically (Room's exception text names the stored vs. requested
+versions), show "This library was last opened by a newer version of
+ARKarium — update the app rather than reinstalling an older version" instead
+of a raw crash screen. This is a UI/error-message change, not a data
+migration — it doesn't weaken the no-destructive-fallback fix above, it just
+gives the one case that fix doesn't make safe-by-default a message instead
+of a stack trace.
+
 ### F2. No exported schema, no migration tests, KAPT instead of KSP
 
 Folded into F1 above — same root cause, same fix.
 
 ### F3. `novelId` depends on SAF URIs, so re-picking the folder or restoring a backup loses data
+
+> **Related, not the same bug:** a scan can cascade-delete a local novel's
+> history on an *ordinary* scan — no folder re-pick needed — when a novel is
+> skipped or the folder listing comes back empty/partial. See
+> [`bugs/critical/scan-reconcile-treats-errors-as-absence.md`](bugs/critical/scan-reconcile-treats-errors-as-absence.md).
+> Fixing that bug's step 3 (soft-delete instead of cascade) also covers most
+> of the damage described below, independently of the D3 decision.
 
 **Severity:** Medium. **Tags:** V (id derivation and rescan merge logic both read in code), I (not run on a device).
 **Where:** `data/ScannerImpl.kt` `buildNovelEntity()` (id derivation), `viewmodel/LibraryViewModel.kt` `startScan()` (rescan merge/stale handling), `AndroidManifest.xml` (`android:allowBackup="true"`, no `fullBackupContent` rules).
@@ -103,3 +150,27 @@ cascade-delete-on-stale path from firing on a root-folder change specifically
 previously-seen local novel as gone — and add `android:fullBackupContent`
 rules that exclude `arkarium.db`, so a restore doesn't silently hand the user
 a library it's about to delete.
+
+**Decided (D3):** give novels an opaque id, stored in Room, independent of
+the SAF root+child URI:
+- **Synced novels** derive the id from `syncSourceUrl` directly (already
+  stable across both a folder re-pick and a backup restore, since it names
+  the relay source, not the on-disk location).
+- **Local novels** get a UID minted once. On a scan that can't find a
+  matching stored id (new install, folder re-picked, backup restored onto a
+  device whose SAF grants don't resolve), re-link by a best-effort match on
+  title, folder name, and chapter count, with the match surfaced to the user
+  for confirmation rather than applied silently — a false match is worse
+  than a false "new novel."
+- **Don't write the UID (or any ARKarium-owned file) into the user's library
+  folder unless they opt in.** Writing into a folder the user doesn't fully
+  control as ARKarium's own storage is a bigger behavior change than this
+  finding needs, and it conflicts with folders that are also synced via
+  something else (cloud storage, Syncthing) where an unexpected new file
+  could itself cause a conflict. Store the minted UID in Room, keyed by
+  whatever re-link signal was confirmed; only write it into the folder's
+  `metadata.json` if the user has explicitly turned that on.
+
+This also resolves F5's note below about any per-directory cache needing a
+stable id — the id itself is now stable by construction, independent of this
+decision being implemented.
