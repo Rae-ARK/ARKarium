@@ -1,6 +1,5 @@
 package com.arkarium.app.ui
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -22,7 +21,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LibraryAdd
@@ -48,13 +46,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arkarium.app.R
 import com.arkarium.app.data.NovelEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -119,16 +115,22 @@ fun HomeScreen(
         TopAppBar(
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Reuses the same "AR" monogram as the splash screen
-                    // (drawable-nodpi/ic_splash_logo.png) rather than a second
-                    // copy - it's a plain white mark on transparent, so it needs
-                    // tinting to the top bar's content color or it'd disappear
-                    // against a light theme.
-                    Image(
-                        painter = painterResource(R.drawable.ic_splash_logo),
+                    // The real app icon art (assets/app-icon-source.png - see
+                    // LogoPoints.kt's doc comment for how it relates to
+                    // ic_splash_logo.png) rather than the splash screen's bare
+                    // tinted monogram: this is a full-color square image (black
+                    // card + white "A+R" mark), loaded from assets the same way
+                    // every other image in this screen is (AsyncImage/Coil), and
+                    // clipped to a squircle so a hard-edged square doesn't sit
+                    // awkwardly inline with the rest of the top bar's rounded
+                    // chrome.
+                    AsyncImage(
+                        model = "file:///android_asset/app-icon-source.png",
                         contentDescription = null,
-                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
-                        modifier = Modifier.size(28.dp)
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(RoundedCornerShape(30))
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text("ARKarium", fontWeight = FontWeight.Bold)
