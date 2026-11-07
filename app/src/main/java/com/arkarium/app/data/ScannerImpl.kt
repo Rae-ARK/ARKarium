@@ -107,7 +107,30 @@ class ScannerImpl(private val context: Context) {
         // against the DB - see MainActivity.startScan's seenNovelIds. Firing this on a
         // partial/aborted scan would let a transient SAF error wipe the entire library
         // instead of just leaving it stale until the next successful scan.
-        onScanCompleted: suspend () -> Unit = {},
+        //
+        // The boolean parameter is true when the (post-authors/-filter) listing
+        // contained at least one directory entry, regardless of whether building or
+        // upserting any of them later succeeded. A caller doing stale-reconcile should
+        // treat `false` here as "this listing may have failed" rather than "the
+        // library now has zero novels" - see
+        // bugs/critical/scan-reconcile-treats-errors-as-absence.md Mechanism 2: a SAF
+        // provider can return a cursor representing a subset (including an empty one)
+        // while still fetching results, with nothing in listFiles()'s return value to
+        // tell that apart from a folder that genuinely has no children.
+        onScanCompleted: suspend (sawAnyNovelFolders: Boolean) -> Unit = {},
+        // Fired for every directory child found in the listing, before buildNovelEntity
+        // or onDiscovered run for it - i.e. before any of the I/O that can fail for
+        // that novel specifically (readLocalMetadata, findCoverUri, and everything the
+        // caller's own onDiscovered does: merge, upsert, chapter scan). The id passed
+        // is the same one buildNovelEntity would compute, since both now go through
+        // novelIdFor() - see that function's doc comment. This exists so a caller can
+        // mark the folder "seen" the instant it's found rather than only after its
+        // whole per-novel pipeline succeeds - see
+        // bugs/critical/scan-reconcile-treats-errors-as-absence.md Mechanism 1: without
+        // this, a novel that throws anywhere downstream of being found is
+        // indistinguishable, at onScanCompleted, from a novel whose folder was
+        // genuinely deleted.
+        onNovelFolderSeen: suspend (novelId: String) -> Unit = {},
         onProgress: suspend (current: Int, total: Int, message: String) -> Unit = { _, _, _ -> }
     ) = withContext(Dispatchers.IO) {
         // Everything below touches the Storage Access Framework, which throws
@@ -145,9 +168,19 @@ class ScannerImpl(private val context: Context) {
                 // it as a novel folder even though it lives at the same level.
                 .filterNot { it.isDirectory && it.name?.equals("authors", ignoreCase = true) == true }
             val total = children.size
+            var sawAnyNovelFolders = false
             children.forEachIndexed { index, child ->
                 onProgress(index + 1, total, "Scanning ${child.name}...")
                 if (child.isDirectory) {
+                    sawAnyNovelFolders = true
+                    // Pure URI hashing, same derivation buildNovelEntity uses below - no
+                    // I/O, so this can't itself be the thing that fails. Mark the folder
+                    // seen before entering the try block, so a throw anywhere inside
+                    // (buildNovelEntity's metadata/cover reads, or anything onDiscovered
+                    // does downstream) still leaves this id correctly recorded as "this
+                    // novel exists" rather than only recording it after the whole
+                    // pipeline succeeds. See the onNovelFolderSeen doc comment above.
+                    onNovelFolderSeen(novelIdFor(root, child))
                     try {
                         val title = child.name ?: "Unknown"
                         // root.uri works out to a stable per-source namespace either way:
@@ -164,7 +197,7 @@ class ScannerImpl(private val context: Context) {
                     }
                 }
             }
-            onScanCompleted()
+            onScanCompleted(sawAnyNovelFolders)
             onProgress(total, total, "Scan complete")
         } catch (e: SecurityException) {
             onProgress(0, 0, "Lost access to the library folder - please reselect it")
@@ -172,6 +205,13 @@ class ScannerImpl(private val context: Context) {
             onProgress(0, 0, "Scan failed: ${e.message}")
         }
     }
+
+    // Pure URI hashing, no I/O - the same derivation buildNovelEntity has always used,
+    // pulled out so scanRoot's per-child loop can compute it (to fire
+    // onNovelFolderSeen) before running any of buildNovelEntity's own I/O, without the
+    // two ever drifting apart into two different ids for the same folder.
+    private fun novelIdFor(root: DocumentFile, child: DocumentFile): String =
+        UUID.nameUUIDFromBytes((root.uri.toString() + ":" + child.uri.toString()).toByteArray()).toString()
 
     // Builds the NovelEntity for a single already-located novel folder, without
     // touching Room or scanning any other folder. Pulled out of scanRoot's per-child
@@ -186,7 +226,7 @@ class ScannerImpl(private val context: Context) {
         authorsById: Map<String, AuthorEntity>,
         authorIdByNormalizedName: Map<String, String>
     ): NovelEntity {
-        val id = UUID.nameUUIDFromBytes((root.uri.toString() + ":" + child.uri.toString()).toByteArray()).toString()
+        val id = novelIdFor(root, child)
         val coverUri = findCoverUri(child)
         // Optional per-novel metadata.json in the novel's own folder, next to
         // cover.* and the chapter/arc folders - see readLocalMetadata() for the

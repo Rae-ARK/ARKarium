@@ -21,6 +21,15 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     ],
     version = 13
 )
+// Thrown by AppDatabase.create() instead of Room's own IllegalStateException
+// specifically when the unhandled version Room hit is a downgrade (the running app's
+// migration list only goes up to some version lower than what's already on disk) -
+// see F23 in docs/arkarium/proposal/data-safety.md. Kept as an IllegalStateException
+// subtype so anything that already catches IllegalStateException around
+// AppDatabase.create() still catches this; callers that want the friendlier message
+// specifically (MainActivity.onCreate) catch this subtype first.
+class DatabaseDowngradeException(message: String) : IllegalStateException(message)
+
 abstract class AppDatabase : RoomDatabase() {
     abstract fun novelDao(): NovelDao
     abstract fun authorDao(): AuthorDao
@@ -272,11 +281,50 @@ abstract class AppDatabase : RoomDatabase() {
         // an unsupported pre-release install), add a scoped
         // fallbackToDestructiveMigrationFrom(startVersion = ...) rather than reaching
         // for the global fallback again.
-        fun create(context: Context): AppDatabase = Room.databaseBuilder(
-            context.applicationContext,
-            AppDatabase::class.java,
-            "arkarium.db"
-        ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
-            .build()
+        // Room's own exception text for an unhandled version, both directions, names
+        // the stored and requested versions as "... migration from X to Y was
+        // required but not found ...". Not part of Room's public API (no dedicated
+        // exception subtype or accessor exists to check this without string-matching
+        // - confirmed by reading the thrown IllegalStateException's message), so this
+        // is deliberately narrow: anything that doesn't match passes through as the
+        // original exception rather than being guessed at.
+        private val UNHANDLED_VERSION_MESSAGE = Regex("migration from (\\d+) to (\\d+)", RegexOption.IGNORE_CASE)
+
+        // See DatabaseDowngradeException's doc comment and F23 in data-safety.md. A
+        // downgrade is "from" > "to": the version already on disk (written by a newer
+        // APK) is higher than the version this build's migration list tops out at.
+        // Anything else - including a genuine missing upgrade migration, which is a
+        // real bug to catch in development, not something to soften - is rethrown
+        // unchanged.
+        internal fun asDowngradeExceptionIfApplicable(e: IllegalStateException): IllegalStateException {
+            val (from, to) = UNHANDLED_VERSION_MESSAGE.find(e.message ?: "")
+                ?.destructured
+                ?: return e
+            return if (from.toInt() > to.toInt()) {
+                DatabaseDowngradeException(
+                    "This library was last opened by a newer version of ARKarium - " +
+                        "update the app rather than reinstalling an older version."
+                )
+            } else {
+                e
+            }
+        }
+
+        // NOTE: deliberately catching only IllegalStateException here, not Throwable -
+        // that's the type Room.databaseBuilder(...).build() throws for an unhandled
+        // version (the no-destructive-fallback case above) and the only case this
+        // downgrade check knows how to recognize. Anything else (a stale kapt cache,
+        // a genuinely corrupt .db file, ...) should keep surfacing as whatever it
+        // actually is, caught by MainActivity's own catch-all around this call.
+        fun create(context: Context): AppDatabase = try {
+            Room.databaseBuilder(
+                context.applicationContext,
+                AppDatabase::class.java,
+                "arkarium.db"
+            ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                .build()
+        } catch (e: IllegalStateException) {
+            throw asDowngradeExceptionIfApplicable(e)
+        }
     }
 }

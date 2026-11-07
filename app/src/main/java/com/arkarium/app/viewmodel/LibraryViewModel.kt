@@ -99,6 +99,15 @@ class LibraryViewModel(
         var authorsFolderFound = false
         try {
             scanner.scanRoot(root,
+                // Fired for every novel folder scanRoot finds, before it attempts to
+                // build/merge/upsert/chapter-scan that novel - see ScannerImpl's doc
+                // comment on this parameter. Adding to seenNovelIds here, not only
+                // inside onDiscovered's own try block below, is the actual fix: a novel
+                // that throws anywhere in that downstream pipeline is still marked
+                // seen, so onScanCompleted's stale-reconcile below can no longer treat
+                // "something about reading it failed" as "this novel doesn't exist" -
+                // see bugs/critical/scan-reconcile-treats-errors-as-absence.md Mechanism 1.
+                onNovelFolderSeen = { novelId -> seenNovelIds.add(novelId) },
                 onDiscovered = { scanned, novelFolder ->
                     try {
                         val existing = db.novelDao().findById(scanned.id)
@@ -133,23 +142,41 @@ class LibraryViewModel(
                         }
                     }
                 },
-                onScanCompleted = {
-                    // See bugs.md Bug 4 / docs/arkarium/foundational/architecture.md, Sync invariants S6 - a purely-local
-                    // novel this pass didn't rediscover is cascade-deleted; a synced
-                    // novel is marked MISSING_LOCALLY instead, since its folder can
-                    // always be re-fetched from its relay.
-                    val stale = db.novelDao().all().filter { it.id !in seenNovelIds }
-                    val staleLocal = stale.filter { it.syncSourceUrl == null }
-                    val staleSynced = stale.filter { it.syncSourceUrl != null && it.syncStatus != SyncStatus.MISSING_LOCALLY.name }
-                    staleLocal.forEach { db.novelDao().delete(it.id) }
-                    staleSynced.forEach { db.novelDao().updateSyncStatus(it.id, SyncStatus.MISSING_LOCALLY.name) }
-                    if (staleLocal.isNotEmpty() || staleSynced.isNotEmpty()) {
+                onScanCompleted = { sawAnyNovelFolders ->
+                    val allNovels = db.novelDao().all()
+                    // See bugs/critical/scan-reconcile-treats-errors-as-absence.md
+                    // Mechanism 2: a SAF provider is allowed to hand back a partial or
+                    // empty listing (still fetching results, a removable volume
+                    // dropping mid-enumeration) with nothing to tell that apart from a
+                    // folder that genuinely has zero children. Finding zero novel
+                    // folders while the DB already has rows is treated as "this
+                    // listing likely failed," not "the library is now empty" - skip
+                    // the stale-reconcile pass entirely rather than reading every
+                    // existing local novel as deleted.
+                    if (!sawAnyNovelFolders && allNovels.isNotEmpty()) {
                         withContext(Dispatchers.Main) {
-                            val staleLocalIds = staleLocal.map { it.id }.toSet()
-                            novels.removeAll { it.id in staleLocalIds }
-                            staleSynced.forEach { s ->
-                                val idx = novels.indexOfFirst { it.id == s.id }
-                                if (idx >= 0) novels[idx] = novels[idx].copy(syncStatus = SyncStatus.MISSING_LOCALLY.name)
+                            _scanMessage.value = "Scan found no novel folders, but the " +
+                                "library isn't empty - skipped cleanup this pass to avoid " +
+                                "losing data. Rescan to retry."
+                        }
+                    } else {
+                        // See bugs.md Bug 4 / docs/arkarium/foundational/architecture.md, Sync invariants S6 - a purely-local
+                        // novel this pass didn't rediscover is cascade-deleted; a synced
+                        // novel is marked MISSING_LOCALLY instead, since its folder can
+                        // always be re-fetched from its relay.
+                        val stale = allNovels.filter { it.id !in seenNovelIds }
+                        val staleLocal = stale.filter { it.syncSourceUrl == null }
+                        val staleSynced = stale.filter { it.syncSourceUrl != null && it.syncStatus != SyncStatus.MISSING_LOCALLY.name }
+                        staleLocal.forEach { db.novelDao().delete(it.id) }
+                        staleSynced.forEach { db.novelDao().updateSyncStatus(it.id, SyncStatus.MISSING_LOCALLY.name) }
+                        if (staleLocal.isNotEmpty() || staleSynced.isNotEmpty()) {
+                            withContext(Dispatchers.Main) {
+                                val staleLocalIds = staleLocal.map { it.id }.toSet()
+                                novels.removeAll { it.id in staleLocalIds }
+                                staleSynced.forEach { s ->
+                                    val idx = novels.indexOfFirst { it.id == s.id }
+                                    if (idx >= 0) novels[idx] = novels[idx].copy(syncStatus = SyncStatus.MISSING_LOCALLY.name)
+                                }
                             }
                         }
                     }
