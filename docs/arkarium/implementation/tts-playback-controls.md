@@ -7,7 +7,7 @@ Promoted from [`../proposal/uiux.md`](../proposal/uiux.md)'s "Read-aloud has no
 playback controls and no 'currently reading' highlight" entry, now deleted from
 that file - see this doc's history (or `git log -p` on that line) for the
 original writeup. Builds on `TtsPlaybackService`
-([`reader-playback.md`](reader-playback.md) F10), which already keeps a
+([`reader-playback.md`](../proposal/reader-playback.md) F10), which already keeps a
 read-aloud session alive across rotation and chapter navigation - this ladder
 is the "controls surface" that doc's "Still open" section flagged as not built
 yet.
@@ -34,7 +34,7 @@ would recognize as a "page"), so before wiring in real numbers, decide:
 
 - Show `chunk N of M` directly (simplest, ships now, but the number is
   meaningless to a reader - "chunk 3 of 11" isn't "page 3 of 11"), or
-- Wait for F9 in [`reader-playback.md`](reader-playback.md) (character-offset
+- Wait for F9 in [`reader-playback.md`](../proposal/reader-playback.md) (character-offset
   position) and derive a page-like estimate from that instead, the same way
   `ReaderScreen`'s existing non-TTS progress readout derives
   `estimatedTotalPages` from character count.
