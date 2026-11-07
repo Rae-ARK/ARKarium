@@ -35,7 +35,7 @@ import androidx.compose.ui.unit.dp
 import com.arkarium.app.data.Theme
 import com.arkarium.app.ui.theme.colorSchemeFor
 
-// Stage 2 (docs/arkarium/SETTINGS_REDESIGN.md, "mechanical extraction, no
+// Stage 2 (docs/arkarium/implementation/settings-tts.md, "mechanical extraction, no
 // behavior change") - the Theme radio group (plus its System Default
 // "daytime look" sub-choice) moves here verbatim from the old monolithic
 // SettingsScreen.kt, unchanged apart from the params now terminating on

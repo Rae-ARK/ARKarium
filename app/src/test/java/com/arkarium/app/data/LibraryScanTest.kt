@@ -6,7 +6,7 @@ import org.junit.Test
 
 // mergeNovelForRescan is deliberately plain Kotlin (see its doc comment in
 // LibraryScan.kt) so it can run here on the JVM with plain JUnit - no Robolectric, no
-// instrumented device/emulator, no Room. See docs/arkarium/REFACTOR_PLAN.md Stage 2.1.
+// instrumented device/emulator, no Room. See docs/arkarium/foundational/design-notes.md Stage 2.1.
 class LibraryScanTest {
 
     // Minimal-diff fixture builder: every test below only overrides the fields it

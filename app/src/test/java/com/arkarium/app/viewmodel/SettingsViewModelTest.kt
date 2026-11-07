@@ -18,7 +18,7 @@ import org.junit.Test
 // SettingsViewModel depends on SettingsPreferences (an interface implemented by
 // PreferencesManager, see data/PreferencesManager.kt), not the concrete class -
 // specifically so it can be driven here by a fake backed by plain MutableStateFlows,
-// with no DataStore, Context, or Robolectric involved. See docs/arkarium/REFACTOR_PLAN.md
+// with no DataStore, Context, or Robolectric involved. See docs/arkarium/foundational/design-notes.md
 // Stage 2.2.
 private class FakeSettingsPreferences(
     initialTheme: Theme = Theme.LIGHT,

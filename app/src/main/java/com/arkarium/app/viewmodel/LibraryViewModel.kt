@@ -18,7 +18,7 @@ import com.arkarium.app.data.mergeNovelForRescan
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-// Stage 2.3 of Phase 2 (docs/arkarium/REFACTOR_PLAN.md) - the second of the plan's
+// Stage 2.3 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the second of the plan's
 // four feature-scoped ViewModels pulled out of MainActivity. Owns the library's core
 // in-memory state - novels, the currently-loaded novel's chapters/arcs,
 // recentlyRead/inProgressNovels, and scan progress/message - plus startScan, the one
@@ -134,7 +134,7 @@ class LibraryViewModel(
                     }
                 },
                 onScanCompleted = {
-                    // See bugs.md Bug 4 / docs/arkarium/NEXT_FIXES.md #2 - a purely-local
+                    // See bugs.md Bug 4 / docs/arkarium/foundational/architecture.md, Sync invariants S6 - a purely-local
                     // novel this pass didn't rediscover is cascade-deleted; a synced
                     // novel is marked MISSING_LOCALLY instead, since its folder can
                     // always be re-fetched from its relay.

@@ -70,7 +70,7 @@ class ChapterTtsState internal constructor() {
     var speechRate by mutableFloatStateOf(1.0f)
         internal set
 
-    // Stage 3.4 of docs/arkarium/SETTINGS_REDESIGN.md. Unlike speechRate/pitch (seeded
+    // Stage 3.4 of docs/arkarium/implementation/settings-tts.md. Unlike speechRate/pitch (seeded
     // once at engine init, see rememberChapterTts below), this is kept live for the
     // whole session - see the collectAsState() wiring below - so toggling auto-continue
     // in settings/tts takes effect on the very next chapter boundary rather than
@@ -177,16 +177,16 @@ class ChapterTtsState internal constructor() {
 fun rememberChapterTts(): ChapterTtsState {
     val context = LocalContext.current
     val state = remember { ChapterTtsState() }
-    // Stage 3.3 of docs/arkarium/SETTINGS_REDESIGN.md: seeds this session's starting
+    // Stage 3.3 of docs/arkarium/implementation/settings-tts.md: seeds this session's starting
     // rate/pitch from the settings/tts defaults (Stage 3.1's keys) instead of the
     // hardcoded 1.0f/implicit-default this composable used before. Direct
     // PreferencesManager access, same as everywhere else those four keys are read -
-    // see SETTINGS_REDESIGN.md's "Open questions" for why TTS defaults don't get a
+    // see docs/arkarium/foundational/design-notes.md's "Settled decisions" for why TTS defaults don't get a
     // ViewModel of their own.
     val prefsManager = remember { PreferencesManager(context) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Stage 3.4 of docs/arkarium/SETTINGS_REDESIGN.md. Deliberately not a one-shot
+    // Stage 3.4 of docs/arkarium/implementation/settings-tts.md. Deliberately not a one-shot
     // .first() read like defaultRate/defaultPitch below - auto-continue is checked
     // every time a chapter finishes, not just once at engine construction, so it's kept
     // live via collectAsState() instead and pushed onto ChapterTtsState whenever it
@@ -212,14 +212,14 @@ fun rememberChapterTts(): ChapterTtsState {
 
             // Seeds the session's starting rate. The pill's live setRate() during
             // reading still only touches this in-memory value, same as before this
-            // stage - see SETTINGS_REDESIGN.md's last "Open question".
+            // stage - see docs/arkarium/foundational/design-notes.md's "TTS settings split".
             state.speechRate = defaultRate
 
             engine = TextToSpeech(context) { status ->
                 state.isAvailable = status == TextToSpeech.SUCCESS
                 // Pitch has no pill/mid-session control (unlike rate), so it's only
-                // ever applied here, once, at engine init - see SETTINGS_REDESIGN.md
-                // §2 for why pitch doesn't get the same live-adjustment treatment.
+                // ever applied here, once, at engine init - see docs/arkarium/foundational/design-notes.md
+                // ("TTS settings split") for why pitch doesn't get the same live-adjustment treatment.
                 if (status == TextToSpeech.SUCCESS) {
                     engine?.setPitch(defaultPitch)
                 }

@@ -8,7 +8,7 @@ import org.junit.Test
 // can run here on the JVM with plain JUnit - no Robolectric, no instrumented device/
 // emulator. This is a template for pulling more of MainActivity's decision logic out
 // into small, directly-testable functions rather than needing a full Activity/Compose
-// harness for it (see docs/arkarium/REFACTOR_PLAN.md).
+// harness for it (see docs/arkarium/foundational/design-notes.md).
 class AppThemeTest {
 
     @Test

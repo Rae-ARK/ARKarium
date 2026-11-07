@@ -149,7 +149,7 @@ private fun SettingsCard(content: @Composable () -> Unit) {
     }
 }
 
-// Stage 1 of docs/arkarium/SETTINGS_REDESIGN.md: this screen stops rendering
+// Stage 1 of docs/arkarium/implementation/settings-tts.md: this screen stops rendering
 // any control itself (Theme radio group, Library switch/buttons, Splash
 // switches all used to live here inline) and becomes a pure index of rows,
 // each navigating to its own destination - the same tappable-row pattern
@@ -265,7 +265,7 @@ fun SettingsScreen(
             // defaultConfig.versionName - the single source of truth for the app's
             // version. This is the only place in the running app's normal UI that
             // shows it; the crash screens in MainActivity read the same field. Stays
-            // on the index page per SETTINGS_REDESIGN.md §1 - it's not really "a
+            // on the index page per docs/arkarium/foundational/design-notes.md (Settings is an index) - it's not really "a
             // setting," so it doesn't get promoted to its own sub-page.
             Text(
                 "ARKarium v${BuildConfig.VERSION_NAME}",

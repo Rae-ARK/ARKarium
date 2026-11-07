@@ -8,7 +8,7 @@
     <!-- Runtime-requested (see MainActivity's notificationPermission launcher) rather
          than implied by targeting API 33+ - required to actually show the "new chapter"
          notifications NewChapterCheckWorker posts (see
-         docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md). Declaring it here is still required even
+         docs/arkarium/foundational/architecture.md, Sync: entry points). Declaring it here is still required even
          though it's requested at runtime; without it the runtime request itself is a
          no-op on API 33+. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

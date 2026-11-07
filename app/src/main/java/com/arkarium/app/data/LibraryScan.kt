@@ -5,7 +5,7 @@ import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 
 // Extracted from MainActivity.kt as Stage 2.1 of Phase 2 (see
-// docs/arkarium/REFACTOR_PLAN.md). Both functions are plain data-in/data-out logic -
+// docs/arkarium/foundational/design-notes.md). Both functions are plain data-in/data-out logic -
 // resolveLibraryRoot takes `context` as an explicit parameter instead of relying on
 // an Activity's implicit `this`, and mergeNovelForRescan never touches anything
 // beyond its own arguments - so both are usable as free functions from anywhere
@@ -34,7 +34,7 @@ fun resolveLibraryRoot(context: Context, useCustomFolder: Boolean, savedUri: Str
 // readingStatus, remote-metadata fields once a "Fetch info" lookup has run) - see the
 // long comment this was pulled out of below for the full field-by-field rationale.
 // Shared by MainActivity's startScan (onDiscovered) and scanSingleSyncedNovel (see
-// docs/arkarium/NEXT_FIXES.md #4) so both a full-library rescan and a scoped
+// docs/arkarium/foundational/architecture.md, Sync invariants S8) so both a full-library rescan and a scoped
 // single-novel sync scan apply the exact same merge rules.
 fun mergeNovelForRescan(
     scanned: NovelEntity,

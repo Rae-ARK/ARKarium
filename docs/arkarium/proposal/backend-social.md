@@ -1,11 +1,9 @@
-# Backend plan — social features, without owning a backend
+# Backend plan: social features, without owning a backend
 
-> **Status:** Design-only, not yet built. Written up after a design-review
-> conversation covering why ARKarium's sync engine deliberately avoids a
-> backend, which upcoming features are the genuine exception, and what to
-> build for those. Nothing here blocks or changes `docs/arkarium/SYNC_MVP.md` -
-> chapter sync stays exactly as designed, static-host-only, no server logic
-> involved. This is additive, for a different subset of features.
+> **Kind:** proposal · **Status:** design only, nothing built · **Verified:** 2026-11-06 @ b4fcc2f
+> **Caveat:** vendor free-tier figures (quotas, pause rules, pricing plans) were
+> written in mid-2026 and are **not re-checked**. Re-verify against vendor docs before acting on any number.
+> Chapter sync is unaffected by this doc: it stays static-host-only (see [`../foundational/architecture.md`](../foundational/architecture.md), Sync).
 
 ---
 
@@ -13,10 +11,10 @@
 
 It's "which of my features structurally need one, and which don't."
 
-Walking the existing roadmap (`docs/arkarium/FUTURE_PLANS.md`) against that question:
+Walking the existing roadmap (the proposals in this folder) against that question:
 
 - **Chapter sync (built)** - static host only, by design, not by budget
-  constraint. `docs/arkarium/SYNC_MVP.md` §2 is explicit: manifest + hash diff +
+  constraint. `architecture.md` (Sync) is explicit: manifest + hash diff +
   static host, no dynamic behavior of any kind.
 - **TTS** - proposed as an offline, publish-time build step (speaker
   attribution precomputed on the author's own machine, shipped as a static
@@ -118,7 +116,7 @@ to the reader rather than a wall:
 2. **Queue locally instead of failing the write.** Consistent with the
    app's existing local-first design (chapter sync already treats the local
    folder/`SyncedFileEntity` table as ground truth, Firebase as a mirror -
-   see `docs/arkarium/SYNC_MVP.md` §4): a comment or rating write goes into a local
+   see `architecture.md`, Sync: scan reuse): a comment or rating write goes into a local
    Room table immediately, marked `pending`, and shows up in the UI right
    away regardless of whether the remote write has landed yet. On a
    quota/`RESOURCE_EXHAUSTED`-style failure specifically (not a generic
@@ -157,8 +155,7 @@ ARKarium. It runs on a schedule outside the app (see §5).
 **On the "four layers of representation" question:** local/remote/export
 representations are a real distinction, but ARKarium mostly already has
 this shape for free. Chapter sync already treats the local Room table as
-ground truth and the remote host as a mirror (`docs/arkarium/SYNC_MVP.md`'s framing
-throughout). Comments/ratings/position just need the same treatment - a
+ground truth and the remote host as a mirror (`architecture.md`'s Sync section). Comments/ratings/position just need the same treatment - a
 local Room table is on-device ground truth, Firestore is the sync target,
 and the "export representation" doesn't need to be a different shape from
 the Room schema itself, since SQLite rows are already portable data. The
@@ -167,8 +164,7 @@ single device's local DB holds *other* readers' comments.
 
 **On conflict resolution:** smaller than it sounds for these three data
 kinds specifically, and not worth generalizing past what's actually needed
-(the project's own stated philosophy - see `docs/arkarium/SYNC_MVP.md`'s "why cut it
-down" - applies here too):
+(the project's stated philosophy of progressive sophistication, `what-is-arkarium.md` principle 7, applies here too):
 
 - Reading position, rating: one scalar per (user, novel). Last-write-wins by
   an `updatedAt` timestamp is correct, not a compromise - nobody wants a

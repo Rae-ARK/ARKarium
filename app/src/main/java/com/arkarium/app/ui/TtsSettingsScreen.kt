@@ -33,7 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
-// Stage 3.2 (docs/arkarium/SETTINGS_REDESIGN.md) - the actual TTS default
+// Stage 3.2 (docs/arkarium/implementation/settings-tts.md) - the actual TTS default
 // controls, replacing the "arrives in Stage 3" placeholder text Stage 1 left
 // here. Each control reads/writes exactly one Stage 3.1 PreferencesManager
 // key via a callback MainActivity's "settings/tts" composable hoists and
