@@ -58,6 +58,7 @@ import com.arkarium.app.ui.SplashScreen
 import com.arkarium.app.ui.SplashSettingsScreen
 import com.arkarium.app.ui.ThemeSettingsScreen
 import com.arkarium.app.ui.TtsSettingsScreen
+import com.arkarium.app.ui.TtsVoicePickerScreen
 import com.arkarium.app.ui.rememberChapterTts
 import com.arkarium.app.ui.WebViewScreen
 import com.arkarium.app.ui.SyncProgressDialog
@@ -662,6 +663,11 @@ class MainActivity : ComponentActivity() {
                 // ChapterTtsState bound inside the settings/tts composable below, same
                 // service-owned shape the proposal specifies.
                 val ttsVoiceName = prefsManager.ttsVoiceName.collectAsState(initial = null)
+                // Rung 5 of docs/arkarium/implementation/tts-settings-rework.md -
+                // collected here too, same reasoning as ttsVoiceName above, so
+                // settings/tts/voice's stars don't flash empty before the real
+                // read lands.
+                val ttsFavoriteVoiceNames = prefsManager.ttsFavoriteVoiceNames.collectAsState(initial = emptySet())
                 // uiux.md's "Arc cover enlarger is undiscoverable" - collected here
                 // too, same reasoning as the flows above. null means "DataStore hasn't
                 // answered yet", which is different from false ("answered: not seen
@@ -1409,15 +1415,43 @@ class MainActivity : ComponentActivity() {
                                     prefsManager.setTtsKeepScreenOn(enabled)
                                 }
                             },
-                            onVoiceChange = { name ->
-                                // "push live" if a service is attached (tts-voice-picker.md's
-                                // UI sketch) and always persist, so the next session picks
-                                // it up via setInitialRateAndPitch - same split
-                                // onDefaultRateChange/onPitchChange/etc. don't need since
-                                // those have no live mid-session counterpart.
-                                ttsState.setVoice(name)
+                            // Rung 4: the Voice card now opens the full
+                            // settings/tts/voice page (below) instead of an
+                            // in-place dialog; selection itself (and the
+                            // "push live" + persist split) now happens there.
+                            onOpenVoicePicker = { navController.navigate("settings/tts/voice") },
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                }
+
+                composable("settings/tts/voice") {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // Rung 4 of docs/arkarium/implementation/tts-settings-rework.md.
+                        // Binds its own ChapterTtsState the same way settings/tts above
+                        // does - rememberChapterTts()'s DisposableEffect unbinds
+                        // settings/tts's ChapterTtsState as this composable replaces it
+                        // in the NavHost (only the current destination's content stays
+                        // in composition), so there's only ever one listener attached
+                        // to TtsPlaybackService at a time; a session already playing in
+                        // the reader is a separate ChapterTtsState the service is bound
+                        // to concurrently, same as before this rung.
+                        val voicePickerState = rememberChapterTts()
+                        TtsVoicePickerScreen(
+                            availableVoices = voicePickerState.availableVoices,
+                            currentVoiceName = voicePickerState.currentVoiceName ?: ttsVoiceName.value,
+                            favoriteVoiceNames = ttsFavoriteVoiceNames.value,
+                            onVoiceSelected = { name ->
+                                // Same "push live" + persist split the old
+                                // settings/tts onVoiceChange used.
+                                voicePickerState.setVoice(name)
                                 lifecycleScope.launch {
                                     prefsManager.setTtsVoiceName(name)
+                                }
+                            },
+                            onToggleFavorite = { name ->
+                                lifecycleScope.launch {
+                                    prefsManager.toggleTtsFavoriteVoice(name)
                                 }
                             },
                             onBack = { navController.popBackStack() }

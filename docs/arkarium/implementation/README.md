@@ -8,7 +8,6 @@ Each doc is one ladder: a table of rungs, each `done`, `current`, `next`,
 | Ladder | Status | Current rung |
 |---|---|---|
 | [`tts-playback-controls.md`](tts-playback-controls.md) | 2 rungs done | 3: chunk-level progress indicator |
-| [`tts-settings-rework.md`](tts-settings-rework.md) | rung 0 done | 1: init order and "System default" in the voice path |
 | [`test-coverage.md`](test-coverage.md) | not started | 4.1 (next): `MetadataViewModelTest` |
 | [`engineering-backlog.md`](engineering-backlog.md) | 8 of 18 rungs done | 9 (next): F1/F2 Room schema, migration tests, KAPT → KSP |
 

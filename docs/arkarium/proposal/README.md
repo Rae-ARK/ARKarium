@@ -7,7 +7,6 @@ documented but **not being worked on**. This is the **future**.
 |---|---|---|
 | [`ideas.md`](ideas.md) | backlog | Small features and gaps, one row each. |
 | [`tts-multivoice.md`](tts-multivoice.md) | feature | Character-aware multi-voice TTS (the planned differentiator). |
-| [`tts-voice-picker.md`](tts-voice-picker.md) | feature | Original design for the in-app voice picker. Steps 1-4 are built; what is left moved to [`../implementation/tts-settings-rework.md`](../implementation/tts-settings-rework.md). |
 | [`reader-settings.md`](reader-settings.md) | feature | A "Reader" settings page: which of a reference app's six reader switches fit ARKarium, and what must exist first. |
 | [`relay-chain.md`](relay-chain.md) | feature | Multi-relay fallback. |
 | [`backend-social.md`](backend-social.md) | feature | Gating, comments, ratings, position sync without owning a backend. |

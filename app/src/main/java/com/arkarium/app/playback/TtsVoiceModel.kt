@@ -40,9 +40,9 @@ internal fun rowsForLanguage(voices: List<TtsVoiceInfo>, language: String): List
         .sortedWith(compareBy({ it.online }, { it.region }, { it.name }))
 
 // "India · online · high quality" - one line that states region, online/offline and
-// quality tier the same way for both cases (U1 in TtsSettingsScreen's old
-// `voiceSummary` only ever said "offline", never "online"; that function is left as-is
-// here, this is only for the rung-3 picker rework).
+// quality tier the same way for both cases. TtsSettingsScreen.kt's own `voiceSummary`
+// (the closed Voice card's summary text, not the voice page this backs) states the
+// same two cases the same way too, for the same reason - see its doc comment.
 internal fun descriptionOf(voice: TtsVoiceInfo): String {
     val parts = mutableListOf<String>()
     if (voice.region.isNotBlank()) parts.add(voice.region)
@@ -62,10 +62,21 @@ internal fun qualityLabel(quality: Int): String = when {
     else -> "very low quality"
 }
 
-// Voices whose data is actually downloaded (D5's static half; rung 4 is what marks or
-// hides the rest in the UI - not in this ladder yet).
+// Voices whose data is actually downloaded. Still not wired into
+// TtsVoicePickerScreen - a not-installed voice shows as an ordinary row
+// there today, same as before the voice page existed - so selecting one
+// still relies on TtsPlaybackService's rung-2 error handling
+// (ttsErrorMessage's ERROR_NOT_INSTALLED_YET case) rather than being
+// prevented up front. Left available for whenever that's picked up.
 internal fun installedOnly(voices: List<TtsVoiceInfo>): List<TtsVoiceInfo> =
     voices.filter { it.installed }
+
+// Rung 5: `voices` (already filtered/sorted by rowsForLanguage) with any name present in
+// `favorites` moved to the front, favorites and non-favorites each keeping their existing
+// relative order - sortedBy is a stable sort, so this only ever reorders across the
+// favorite/non-favorite boundary, never within either group.
+internal fun withFavoritesFirst(voices: List<TtsVoiceInfo>, favorites: Set<String>): List<TtsVoiceInfo> =
+    voices.sortedBy { it.name !in favorites }
 
 // Rung 1's "pure helper": given the stored voice-name preference and the names actually
 // available right now, the name setInitialRateAndPitch should hand to setVoice() - or

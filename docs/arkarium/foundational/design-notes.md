@@ -48,9 +48,30 @@ default.** Four rules:
 - **TTS settings split.** Speech rate stays in the reader pill (adjusted while
   reading). Pitch, default rate, auto-continue, keep-screen-on are global
   defaults on `settings/tts`. The pill's live rate never writes back to the
-  default. The voice is chosen in-app (`tts_voice_name`, picked from the
-  engine's own voice list). Engine choice still links out to the system TTS
-  setting; no engine switcher, no `tts_engine_package` key.
+  default. The voice is chosen on its own `settings/tts/voice` page
+  (`tts_voice_name`, picked from the engine's own voice list, one language at
+  a time) rather than in a dialog on `settings/tts` itself. Engine choice
+  still links out to the system TTS setting; no engine switcher, no
+  `tts_engine_package` key.
+- **The voice is applied after engine init, never silently dropped.**
+  `TtsPlaybackService.setInitialRateAndPitch` only records the seed
+  (rate/pitch/voice name); it's applied the moment the engine's `TextToSpeech`
+  init callback reports success, whichever of "service bound" and "engine
+  ready" happens second - never attempted while the engine might still be
+  initializing, where `setVoice`/`setSpeechRate`/`setPitch` fail silently and
+  never get a second chance. Choosing "System default" applies the engine's
+  own `TextToSpeech.getDefaultVoice()` live rather than being a no-op.
+- **A failed chunk stops the session and says why, instead of advancing.**
+  An engine error (lost connection on an online voice, a voice whose data
+  isn't installed, a synthesis failure) used to be treated as "chunk
+  finished" and silently advance, including into auto-continue. It now stops
+  the session the same way a manual Stop does and reports a message
+  (`ttsErrorMessage`) instead.
+- **A voice preview plays the same line for every voice.** The voice page's
+  own short-lived `TextToSpeech` instance (not the shared
+  `TtsPlaybackService`) speaks one fixed sample sentence whenever a row is
+  selected, so voices are being compared against the same words rather than
+  each other's.
 - **Behavior-preserving moves first.** Extractions land as mechanical moves,
   each stage independently shippable and revertable, ordered smallest and
   lowest-risk first.

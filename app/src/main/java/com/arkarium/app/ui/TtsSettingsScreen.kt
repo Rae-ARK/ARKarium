@@ -10,21 +10,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
@@ -36,22 +29,12 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.arkarium.app.playback.descriptionOf
-import com.arkarium.app.playback.languagesOf
-import com.arkarium.app.playback.rowsForLanguage
-import com.arkarium.app.playback.toTtsVoiceInfo
-import java.util.Locale
 
 // Stage 3.2 (see docs/arkarium/foundational/design-notes.md) - the actual TTS default
 // controls, replacing the "arrives in Stage 3" placeholder text Stage 1 left
@@ -102,11 +85,15 @@ fun TtsSettingsScreen(
     // TtsPlaybackService.setVoice's doc comment).
     availableVoices: List<Voice> = emptyList(),
     currentVoiceName: String? = null,
-    onVoiceChange: (String?) -> Unit = {},
+    // Rung 4 of docs/arkarium/implementation/tts-settings-rework.md: the Voice
+    // card below now navigates to the full `settings/tts/voice` page
+    // (TtsVoicePickerScreen) instead of opening an in-place AlertDialog - this
+    // screen no longer owns any picker state of its own, just the summary row
+    // that opens it.
+    onOpenVoicePicker: () -> Unit = {},
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var showVoicePicker by remember { mutableStateOf(false) }
     val currentVoice = availableVoices.firstOrNull { it.name == currentVoiceName }
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -292,7 +279,7 @@ fun TtsSettingsScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { showVoicePicker = true },
+                    .clickable(onClick = onOpenVoicePicker),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
             ) {
@@ -325,18 +312,6 @@ fun TtsSettingsScreen(
                 }
             }
 
-            if (showVoicePicker) {
-                VoicePickerDialog(
-                    availableVoices = availableVoices,
-                    currentVoiceName = currentVoice?.name,
-                    onVoiceSelected = { name ->
-                        onVoiceChange(name)
-                        showVoicePicker = false
-                    },
-                    onDismiss = { showVoicePicker = false }
-                )
-            }
-
             // Link-out engine row, per the design doc's resolved
             // engine-picker question: still no in-app *engine* chooser
             // (which TTS app provides the voices above) - that's narrower
@@ -349,6 +324,11 @@ fun TtsSettingsScreen(
             // devices); falls back to the general Accessibility settings
             // screen on the rare device where that intent doesn't resolve,
             // rather than crashing on ActivityNotFoundException.
+            //
+            // Rung 4 (U3): relabeled from "Change voice", which stopped being
+            // true the moment the Voice card above became an in-app picker -
+            // this button only ever reached the system's TTS settings, never
+            // ARKarium's own choice of voice.
             OutlinedButton(
                 onClick = {
                     try {
@@ -372,30 +352,31 @@ fun TtsSettingsScreen(
                     contentDescription = null,
                     modifier = Modifier.padding(end = 8.dp)
                 )
-                Text("Change voice")
+                Text("System speech settings")
             }
         }
     }
 }
 
 // Closed-row summary text for the Voice card above: the selected voice's
-// locale display name plus its quality tier, with a trailing "- offline
-// only" note when it doesn't require a network connection to speak (the
-// case most readers want, per tts-voice-picker.md's "Offline readers" risk)
-// and no note at all when it does require one, since that's the risk, not
-// the reassurance. `voice` is already the result of matching currentVoiceName
-// against availableVoices, so a non-resolving stored name reaches here as
-// null, same as never having picked one - see TtsSettingsScreen's doc
-// comment on `currentVoice`.
+// locale display name, its quality tier, and whether it needs a network
+// connection to speak. `voice` is already the result of matching
+// currentVoiceName against availableVoices, so a non-resolving stored name
+// reaches here as null, same as never having picked one - see
+// TtsSettingsScreen's doc comment on `currentVoice`.
+//
+// Rung 4 (U1): used to say "- offline" for a local voice and nothing at all
+// for an online one - true but asymmetric, the "requires a network
+// connection" risk tts-voice-picker.md flags was never stated on *this* row,
+// only inferred from its absence. Online and offline are now named the same
+// way, matching TtsVoiceModel.kt's descriptionOf (the full voice page's
+// equivalent text).
 private fun voiceSummary(voice: Voice?): String {
     if (voice == null) return "System default"
     val locale = voice.locale?.displayName ?: voice.name
     val quality = qualityLabel(voice.quality)
-    return if (voice.isNetworkConnectionRequired) {
-        "$locale - $quality"
-    } else {
-        "$locale - $quality - offline"
-    }
+    val network = if (voice.isNetworkConnectionRequired) "online" else "offline"
+    return "$locale - $quality - $network"
 }
 
 // Voice.quality is one of five named int constants (QUALITY_VERY_LOW=100 ..
@@ -408,125 +389,4 @@ private fun qualityLabel(quality: Int): String = when {
     quality >= Voice.QUALITY_NORMAL -> "standard quality"
     quality >= Voice.QUALITY_LOW -> "low quality"
     else -> "very low quality"
-}
-
-// Picker dialog per tts-voice-picker.md's UI sketch, reworked at rung 3
-// (tts-settings-rework.md) to group by language only via the pure TtsVoiceModel
-// functions (languagesOf/rowsForLanguage/descriptionOf) rather than by full locale
-// display name here - U2's "English (India)" and "English (United States)" no longer
-// land in separate groups; the region moves into each row's description instead, next
-// to its online/offline state and quality tier (see descriptionOf). A leading "System
-// default" row clears back to null, same as every other "unset means default" control
-// in this screen. The device's own language is listed first, same as the reference
-// screenshots. Still the dialog-based picker from Step 4 of tts-voice-picker.md - a
-// full `settings/tts/voice` page replacing it, and the online badge's wrong icon (U1),
-// are rung 4, not this pass.
-@Composable
-private fun VoicePickerDialog(
-    availableVoices: List<Voice>,
-    currentVoiceName: String?,
-    onVoiceSelected: (String?) -> Unit,
-    onDismiss: () -> Unit
-) {
-    val voiceInfos = remember(availableVoices) { availableVoices.map { it.toTtsVoiceInfo() } }
-    val deviceLanguage = remember { Locale.getDefault().language }
-    val languages = remember(voiceInfos, deviceLanguage) {
-        languagesOf(voiceInfos, deviceLanguage)
-    }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Choose a voice") },
-        text = {
-            LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
-                item {
-                    VoicePickerRow(
-                        title = "System default",
-                        subtitle = null,
-                        selected = currentVoiceName == null,
-                        networkRequired = false,
-                        onClick = { onVoiceSelected(null) }
-                    )
-                    Divider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                }
-                languages.forEach { language ->
-                    item {
-                        Text(
-                            Locale(language).displayLanguage
-                                .replaceFirstChar { it.uppercase() },
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp)
-                        )
-                    }
-                    items(rowsForLanguage(voiceInfos, language), key = { it.name }) { info ->
-                        VoicePickerRow(
-                            title = info.name,
-                            subtitle = descriptionOf(info)
-                                .replaceFirstChar { it.uppercase() },
-                            selected = info.name == currentVoiceName,
-                            networkRequired = info.online,
-                            onClick = { onVoiceSelected(info.name) }
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Close")
-            }
-        }
-    )
-}
-
-@Composable
-private fun VoicePickerRow(
-    title: String,
-    subtitle: String?,
-    selected: Boolean,
-    networkRequired: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyMedium)
-            if (subtitle != null) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                    // Flagged, not hidden, when a voice does require
-                    // network - see tts-voice-picker.md's "Offline readers"
-                    // risk: someone picking this on wifi shouldn't lose
-                    // read-aloud on their commute without having been told.
-                    if (networkRequired) {
-                        Icon(
-                            Icons.Filled.CloudOff,
-                            contentDescription = "Requires a network connection",
-                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                            modifier = Modifier
-                                .padding(start = 6.dp)
-                                .size(14.dp)
-                        )
-                    }
-                }
-            }
-        }
-        if (selected) {
-            Icon(
-                Icons.Filled.Check,
-                contentDescription = "Selected",
-                tint = MaterialTheme.colorScheme.primary
-            )
-        }
-    }
 }
