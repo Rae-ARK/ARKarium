@@ -1,5 +1,12 @@
 package com.arkarium.app.ui
 
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -24,6 +31,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoStories
@@ -101,7 +109,15 @@ fun NovelDetailScreen(
     // (see MainActivity's notificationPermission launcher) before the DB write it
     // triggers actually lands. Same non-null-gates-visibility pattern as onSyncClick.
     notifyEnabled: Boolean = false,
-    onToggleNotify: ((Boolean) -> Unit)? = null
+    onToggleNotify: ((Boolean) -> Unit)? = null,
+    // uiux.md's "Arc cover enlarger is undiscoverable" - true means the
+    // one-time ripple-plus-tooltip hint has already played, false plays it
+    // on the "All Chapters" cover below. The caller owns persistence
+    // (PreferencesManager); this composable only reads the current value and
+    // reports dismissal back up through onCoverEnlargeHintDismissed, same
+    // split as notifyEnabled/onToggleNotify above.
+    hasSeenCoverEnlargeHint: Boolean = true,
+    onCoverEnlargeHintDismissed: () -> Unit = {}
 ) {
     val selectedTabIndex = remember { mutableIntStateOf(0) }
     // Seeded from the novel's persisted page_size so the preference survives navigation
@@ -413,33 +429,53 @@ fun NovelDetailScreen(
             // and chapter count as a caption underneath, matching RR's ToC strip.
             if (tabs.size > 1) {
                 item {
-                    LazyRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        item {
-                            ArcTabCard(
-                                coverUrl = novel.coverUri ?: novel.remoteCoverUrl,
-                                label = "All Chapters",
-                                count = chapters.size,
-                                selected = selectedTabIndex.intValue == 0,
-                                onClick = { selectedTabIndex.intValue = 0 }
-                            )
+                    Column {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            item {
+                                ArcTabCard(
+                                    coverUrl = novel.coverUri ?: novel.remoteCoverUrl,
+                                    label = "All Chapters",
+                                    count = chapters.size,
+                                    selected = selectedTabIndex.intValue == 0,
+                                    onClick = { selectedTabIndex.intValue = 0 },
+                                    // The first cover in the strip is the one everyone sees
+                                    // first on opening a fiction, so that's where the
+                                    // one-time ripple plays rather than on whichever arc
+                                    // happens to be selected.
+                                    showDiscoveryRipple = !hasSeenCoverEnlargeHint,
+                                    onDiscoveryInteracted = onCoverEnlargeHintDismissed
+                                )
+                            }
+                            itemsIndexed(arcs) { index, arc ->
+                                ArcTabCard(
+                                    // Arc cover first; if this arc's folder had no cover.* file,
+                                    // fall back to the fiction's own cover rather than dropping
+                                    // straight to the placeholder - only when neither exists does
+                                    // ArcTabCard/NovelCoverThumb show the 📚 emoji. Same order as
+                                    // the reader screen's readerCoverUri resolution in
+                                    // MainActivity (arc -> fiction -> null, bugs.md Bug 3b).
+                                    coverUrl = arc.coverUri ?: novel.coverUri ?: novel.remoteCoverUrl,
+                                    label = arc.name,
+                                    count = chapterCountByArcId[arc.id] ?: 0,
+                                    selected = selectedTabIndex.intValue == index + 1,
+                                    onClick = { selectedTabIndex.intValue = index + 1 },
+                                    onDiscoveryInteracted = onCoverEnlargeHintDismissed
+                                )
+                            }
                         }
-                        itemsIndexed(arcs) { index, arc ->
-                            ArcTabCard(
-                                // Arc cover first; if this arc's folder had no cover.* file,
-                                // fall back to the fiction's own cover rather than dropping
-                                // straight to the placeholder - only when neither exists does
-                                // ArcTabCard/NovelCoverThumb show the 📚 emoji. Same order as
-                                // the reader screen's readerCoverUri resolution in
-                                // MainActivity (arc -> fiction -> null, bugs.md Bug 3b).
-                                coverUrl = arc.coverUri ?: novel.coverUri ?: novel.remoteCoverUrl,
-                                label = arc.name,
-                                count = chapterCountByArcId[arc.id] ?: 0,
-                                selected = selectedTabIndex.intValue == index + 1,
-                                onClick = { selectedTabIndex.intValue = index + 1 }
+
+                        // The ripple only hints that *something* is tappable on the
+                        // cover, not what double-tapping does - this tooltip spells
+                        // that out. Tapping it, or performing the double-tap it
+                        // describes (see onDiscoveryInteracted), both dismiss it.
+                        if (!hasSeenCoverEnlargeHint) {
+                            CoverEnlargeDiscoveryHint(
+                                modifier = Modifier.padding(start = 16.dp, top = 2.dp, bottom = 6.dp),
+                                onDismiss = onCoverEnlargeHintDismissed
                             )
                         }
                     }
@@ -643,7 +679,11 @@ private fun ArcTabCard(
     label: String,
     count: Int,
     selected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    // Only ever passed true for the "All Chapters" card - see the call site.
+    // Defaults keep every other card exactly as before.
+    showDiscoveryRipple: Boolean = false,
+    onDiscoveryInteracted: () -> Unit = {}
 ) {
     // Double-tap opens the cover enlarged; discoverability is tracked in docs/arkarium/proposal/uiux.md.
     // The card already has a single-tap
@@ -660,12 +700,17 @@ private fun ArcTabCard(
                 onDoubleClick = {
                     // Guard against the generated placeholder (no coverUrl): there is
                     // no art to see, so opening a viewer on it would be pointless.
-                    if (coverUrl != null) showEnlargedCover = true
+                    if (coverUrl != null) {
+                        showEnlargedCover = true
+                        // Performing the exact gesture the ripple advertises is as good
+                        // a signal as tapping the tooltip that the hint did its job.
+                        onDiscoveryInteracted()
+                    }
                 }
             ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(contentAlignment = Alignment.BottomEnd) {
+        Box(contentAlignment = Alignment.Center) {
             NovelCoverThumb(
                 coverUrl = coverUrl,
                 // 2:3 full-size cover aspect ratio (92dp wide -> 138dp tall), matching the
@@ -681,29 +726,11 @@ private fun ArcTabCard(
                         }
                     }
             )
-
-            // uiux.md's "Arc cover enlarger is undiscoverable": double-tap had no
-            // visible hint that it opens an enlarged view, and single-tap is already
-            // taken by arc selection so it can't be the hint itself. A small
-            // magnifier badge in the corner is that hint - shown only when there's
-            // actually a cover to enlarge (coverUrl != null), matching the same
-            // guard the double-tap handler above already uses.
-            if (coverUrl != null) {
-                Box(
-                    modifier = Modifier
-                        .padding(4.dp)
-                        .size(20.dp)
-                        .clip(CircleShape)
-                        .background(Color.Black.copy(alpha = 0.55f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Filled.Search,
-                        contentDescription = "Double-tap to enlarge cover",
-                        tint = Color.White,
-                        modifier = Modifier.size(13.dp)
-                    )
-                }
+            // Replaces the old magnifier badge: a one-time ripple instead of a
+            // permanent overlay on every cover. Only drawn when there's a cover to
+            // enlarge, matching the guard on the double-tap handler above.
+            if (showDiscoveryRipple && coverUrl != null) {
+                CoverEnlargeRipple(modifier = Modifier.matchParentSize())
             }
         }
         Text(
@@ -726,6 +753,71 @@ private fun ArcTabCard(
 
     if (showEnlargedCover && coverUrl != null) {
         EnlargedCoverDialog(coverUrl = coverUrl, onDismiss = { showEnlargedCover = false })
+    }
+}
+
+// uiux.md's "Arc cover enlarger is undiscoverable", the ripple half of the
+// hint (see CoverEnlargeDiscoveryHint below for the tooltip half). Two rings
+// expand outward from the cover's center and fade as they grow, staggered
+// 800ms apart so there's always at least one visible - a continuous pulse that
+// runs until the hint is dismissed. Purely visual: the Canvas has no pointer
+// handling, so the card's single/double-tap behavior is unaffected.
+@Composable
+private fun CoverEnlargeRipple(modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "coverEnlargeRipple")
+    val ring1 by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ring1"
+    )
+    val ring2 by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1600, delayMillis = 800, easing = LinearOutSlowInEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "ring2"
+    )
+    val ringColor = MaterialTheme.colorScheme.primary
+    Canvas(modifier = modifier) {
+        val maxRadius = size.minDimension / 2f
+        for (progress in listOf(ring1, ring2)) {
+            drawCircle(
+                color = ringColor.copy(alpha = (1f - progress) * 0.6f),
+                radius = maxRadius * (0.5f + progress * 0.5f),
+                style = Stroke(width = 2.5.dp.toPx())
+            )
+        }
+    }
+}
+
+// The tooltip half of the hint (see CoverEnlargeRipple above, and
+// PreferencesManager.hasSeenCoverEnlargeHint for why this is one-time).
+// indication = null so tapping this bubble doesn't show a ripple of its own,
+// which would be a confusing visual pun next to the ripple it explains.
+@Composable
+private fun CoverEnlargeDiscoveryHint(modifier: Modifier = Modifier, onDismiss: () -> Unit) {
+    Surface(
+        modifier = modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onDismiss
+        ),
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.inverseSurface,
+        tonalElevation = 2.dp
+    ) {
+        Text(
+            "Double-tap a cover to see it full-size",
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.inverseOnSurface,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        )
     }
 }
 
