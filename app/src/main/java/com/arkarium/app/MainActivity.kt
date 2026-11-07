@@ -663,6 +663,16 @@ class MainActivity : ComponentActivity() {
                 // ChapterTtsState bound inside the settings/tts composable below, same
                 // service-owned shape the proposal specifies.
                 val ttsVoiceName = prefsManager.ttsVoiceName.collectAsState(initial = null)
+                // reader-settings.md's "cheap" batch (suggested-order items
+                // 1-5) - collected here alongside the tts_* state above,
+                // same hoisted-at-the-Activity shape, no ReaderSettingsViewModel.
+                val readerFontSize = prefsManager.readerFontSize.collectAsState(initial = 18f)
+                val readerLineHeight = prefsManager.readerLineHeight.collectAsState(initial = 1.8f)
+                val readerReadingMode = prefsManager.readerReadingMode.collectAsState(initial = null)
+                val readerFontFamily = prefsManager.readerFontFamily.collectAsState(initial = "SERIF")
+                val readerKeepScreenOn = prefsManager.readerKeepScreenOn.collectAsState(initial = false)
+                val readerFullscreen = prefsManager.readerFullscreen.collectAsState(initial = false)
+                val readerBrightnessSliderEnabled = prefsManager.readerBrightnessSliderEnabled.collectAsState(initial = false)
                 // Rung 5 of docs/arkarium/implementation/tts-settings-rework.md -
                 // collected here too, same reasoning as ttsVoiceName above, so
                 // settings/tts/voice's stars don't flash empty before the real
@@ -1256,6 +1266,7 @@ class MainActivity : ComponentActivity() {
                             onLibraryClick = { navController.navigate("settings/library") },
                             onSplashClick = { navController.navigate("settings/splash") },
                             onTtsClick = { navController.navigate("settings/tts") },
+                            onReaderClick = { navController.navigate("settings/reader") },
                             onPrivacyPolicy = { navController.navigate("privacy_policy") },
                             onTermsAndConditions = { navController.navigate("terms") },
                             onAboutMe = { navController.navigate("about_me") },
@@ -1357,6 +1368,49 @@ class MainActivity : ComponentActivity() {
                                 lifecycleScope.launch {
                                     prefsManager.setSplashMusicEnabled(enabled)
                                 }
+                            },
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                }
+
+                composable("settings/reader") {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        // reader-settings.md's "cheap" batch. Direct
+                        // PreferencesManager access, same pattern as
+                        // settings/splash and settings/tts - no
+                        // ReaderSettingsViewModel.
+                        ReaderSettingsScreen(
+                            fontSize = readerFontSize.value,
+                            lineHeight = readerLineHeight.value,
+                            readingMode = readerReadingMode.value?.let {
+                                runCatching { com.arkarium.app.data.ReadingModeDefault.valueOf(it) }.getOrNull()
+                            },
+                            fontFamily = runCatching { ReaderFontFamily.valueOf(readerFontFamily.value) }
+                                .getOrDefault(ReaderFontFamily.SERIF),
+                            keepScreenOn = readerKeepScreenOn.value,
+                            fullscreen = readerFullscreen.value,
+                            brightnessSliderEnabled = readerBrightnessSliderEnabled.value,
+                            onFontSizeChange = { size ->
+                                lifecycleScope.launch { prefsManager.setReaderFontSize(size) }
+                            },
+                            onLineHeightChange = { height ->
+                                lifecycleScope.launch { prefsManager.setReaderLineHeight(height) }
+                            },
+                            onReadingModeChange = { mode ->
+                                lifecycleScope.launch { prefsManager.setReaderReadingMode(mode) }
+                            },
+                            onFontFamilyChange = { family ->
+                                lifecycleScope.launch { prefsManager.setReaderFontFamily(family.name) }
+                            },
+                            onKeepScreenOnToggle = { enabled ->
+                                lifecycleScope.launch { prefsManager.setReaderKeepScreenOn(enabled) }
+                            },
+                            onFullscreenToggle = { enabled ->
+                                lifecycleScope.launch { prefsManager.setReaderFullscreen(enabled) }
+                            },
+                            onBrightnessSliderToggle = { enabled ->
+                                lifecycleScope.launch { prefsManager.setReaderBrightnessSliderEnabled(enabled) }
                             },
                             onBack = { navController.popBackStack() }
                         )
