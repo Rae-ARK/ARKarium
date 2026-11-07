@@ -86,6 +86,36 @@ Index page plus `settings/theme|library|splash` (pure extractions) and the new
 seeded from them, auto-continue, keep-screen-on). Remaining work is on
 [`../implementation/settings-tts.md`](../implementation/settings-tts.md).
 
+## Theme color calibration (done)
+
+`colorSchemeFor()`'s Light and Dark cases used to call `lightColorScheme()`/
+`darkColorScheme()` bare, which means Material3's stock seed (`#6750A4`, a
+fixed violet) for every role - that's the "white with a purple gradient"
+look. `warmPaperColorScheme()` had its own hand-picked hex values, but only
+for 10 of the ~17 roles `lightColorScheme()` takes; the rest (notably
+`primaryContainer`/`onPrimaryContainer`, used by e.g. Home's "Browse All
+Novels" card) fell back to that same stock violet, clashing with the rest of
+the warm/sepia palette.
+
+Fix: every role for all three themes is now derived from one real seed color
+per theme, run through Google's Material Color Utilities (HCT + TonalSpot -
+the same algorithm `lightColorScheme()`/`darkColorScheme()`'s own baseline
+uses, just with a deliberate seed instead of the library default):
+
+- **Light / Dark** share one seed, a deep teal (`#2B6F77`), so the two read as
+  one identity rather than unrelated palettes. New functions
+  `lightColorSchemeApp()` / `darkColorSchemeApp()`.
+- **Warm Paper** keeps its existing brown primary (`#8B5E34`) and its
+  existing hand-tuned cream/sepia neutrals (background/surface/
+  surfaceVariant/onBackground/onSurface/onSurfaceVariant - already
+  well-spaced in HCT, tones 93.6/90.9/86.4, no reason to redo them), but now
+  derives secondary/tertiary/error/outline/outlineVariant/inverse*/
+  surfaceTint from that same seed too, so nothing in it falls back to stock
+  violet anymore.
+
+`colorSchemeFor()` and `AppThemeTest` are otherwise unchanged - this was a
+palette swap, not a structural one.
+
 ## Testing strategy
 
 - Plain logic: JVM unit tests in `app/src/test`, no device. Majority tier.

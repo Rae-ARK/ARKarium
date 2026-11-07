@@ -1,11 +1,13 @@
 package com.arkarium.app.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
 import coil.compose.AsyncImage
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.LibraryAdd
@@ -45,11 +48,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.arkarium.app.R
 import com.arkarium.app.data.NovelEntity
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -112,7 +117,23 @@ fun HomeScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // Top bar
         TopAppBar(
-            title = { Text("ARKarium") },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Reuses the same "AR" monogram as the splash screen
+                    // (drawable-nodpi/ic_splash_logo.png) rather than a second
+                    // copy - it's a plain white mark on transparent, so it needs
+                    // tinting to the top bar's content color or it'd disappear
+                    // against a light theme.
+                    Image(
+                        painter = painterResource(R.drawable.ic_splash_logo),
+                        contentDescription = null,
+                        colorFilter = ColorFilter.tint(MaterialTheme.colorScheme.onSurface),
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("ARKarium", fontWeight = FontWeight.Bold)
+                }
+            },
             actions = {
                 IconButton(onClick = onAddFictionClick) {
                     Icon(Icons.Default.LibraryAdd, contentDescription = "Add fiction")
