@@ -1,6 +1,6 @@
 # Bug reports
 
-> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-07 @ b4fcc2f
+> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-07 @ b39eafe
 
 Open, unfixed bugs. A fixed bug is deleted from here; if the cause taught a
 rule, it goes in [`../foundational/`](../foundational/README.md) (see sync
@@ -10,33 +10,64 @@ message is the record.
 Format: `### <short title>`, then **Seen** · **Where** · **Repro** · **Expected / Actual**, and **Cause** / **Status** when known.
 Historic ARKster-era bug history is frozen in `../../reference/arkster/bugs.md`.
 
-### Rotating the device restarts the app (splash and chord replay, state lost)
+### Rotating the device stops an active read-aloud session
 
-**Priority:** high. **Seen:** 0.8, reported by owner. Cause below comes from reading the code; not yet reproduced on a device.
-**Where:** `MainActivity` (manifest + `showSplash`), `ui/Tts.kt`.
-**Repro:** open the app, get past the splash, rotate portrait ↔ landscape.
-**Expected:** same screen, same state, no splash.
-**Actual:** the branded splash and guitar chord play again and the app appears to start over.
+**Priority:** high. **Seen:** 0.8, reported by owner (as part of a broader "rotation restarts the app" report - the splash-replay half of that report is fixed, see below; this is the half that isn't). Cause below comes from reading the code; not yet reproduced on a device.
+**Where:** `MainActivity` (manifest - no `android:configChanges`), `ui/Tts.kt` `rememberChapterTts()`.
+**Repro:** open a chapter, start read-aloud, rotate portrait ↔ landscape.
+**Expected:** playback continues from where it was.
+**Actual:** playback stops; resuming requires pressing Play again (and starts the current chunk over, not mid-chunk).
 
-**Cause (from code):**
-- The `<activity>` in `AndroidManifest.xml` declares no `android:configChanges`, so a rotation destroys and recreates `MainActivity`.
-- `showSplash` is a plain `mutableStateOf(true)` field on the Activity, so every recreation re-initializes it to `true` and the splash (and its audio) plays again. It is not saved across recreation.
-- Anything else held only in Activity fields or `remember { }` is also reset. Known case: `rememberChapterTts()` uses `remember`, so an active read-aloud session is stopped by rotation.
-- Not verified: how much else is lost (dialog state, scroll positions, current NavHost route). The `NavHost` back stack and `rememberScrollState()` should survive, but check on a device.
+**Cause (from code):** the `<activity>` in `AndroidManifest.xml` declares no
+`android:configChanges`, so any config change (not just rotation - dark
+mode, locale, font scale too) destroys and recreates `MainActivity`.
+`rememberChapterTts()` holds its `TextToSpeech` engine and chunk queue in
+`remember { ChapterTtsState() }` plus a `DisposableEffect(Unit)` that builds
+the engine; both are torn down and rebuilt from scratch on recreation, same
+as every other `remember`-scoped composable in the tree. Unlike `showSplash`
+below, this one has no cheap fix: a live `TextToSpeech` engine and its
+in-flight utterance aren't the kind of state `rememberSaveable` can persist
+through a Bundle (it isn't serializable, and "resume what was mid-utterance
+when destroyed" isn't something either reconstructs).
 
-**Direction (options, not decided):** (a) make `showSplash` survive recreation (hold it in a ViewModel or `rememberSaveable`) so the splash is once-per-process, not once-per-Activity; (b) additionally handle orientation without recreation via `configChanges`. (a) is the real fix; (b) alone hides the problem for rotation but not for other config changes (dark mode, locale, font scale). Then audit what state is lost on recreation, starting with TTS.
+**Direction:** this is the same restructuring [`reader-playback.md`](reader-playback.md)
+F10 already calls for independent of this bug - moving playback into a
+`MediaSessionService` makes it survive Activity recreation (and backgrounding,
+and navigation away from the reader) for free, since a Service's lifecycle is
+independent of the Activity's. Not worth a narrower one-off fix here; fix F10
+and this bug is fixed as a side effect.
 
-### "Notify me when new chapters are available" toggle is not visible
+**Not verified:** how much else besides TTS is lost on recreation (dialog
+state, scroll positions, current `NavHost` route). The `NavHost` back stack
+and `rememberScrollState()` should survive via their own `rememberSaveable`
+use, but this hasn't been checked on a device.
 
-**Seen:** 0.8, reported by owner. **Status:** needs triage; likely hidden by design, but the design is unexplained to the user.
+### "Notify me when new chapters are available" toggle needs on-device confirmation
+
+**Seen:** 0.8, reported by owner (as "toggle is not visible"). **Status:** the undiscoverability half is fixed (see below); step 1 and the device check in step 3 below are still open and need the owner, not just code.
 **Where:** `ui/NovelDetailScreen.kt` (the toggle row), `MainActivity.kt` (what it passes as `onToggleNotify`).
-**Repro:** open a novel's detail page and look for the toggle under the description.
-**Expected:** a way to turn on new-chapter notifications.
-**Actual:** no toggle on the page, and none in Settings.
 
-**Cause (from code):** the feature exists. The row renders only when `onToggleNotify != null`, and `MainActivity` passes it only when `novel.syncSourceUrl != null`. So it is hidden for any novel that is not synced: one added by dropping a folder in by hand, or one that was unlinked (see sync invariant S6 in `architecture.md`). The background worker only checks novels whose toggle is on.
+**Cause (from code), as originally found:** the row rendered only when
+`onToggleNotify != null`, and `MainActivity` passes that only when
+`novel.syncSourceUrl != null` - so the row was entirely absent, not just
+disabled, for any novel that isn't synced (one added by dropping a folder in
+by hand, or one that was unlinked - see sync invariant S6 in
+`architecture.md`). The background worker only checks novels whose toggle is
+on.
 
-**To resolve:**
-1. Confirm which novel was open. If it was added via "Add fiction" or "Sync all" and the toggle is still missing, that is a real bug in the gating or the layout: capture the novel's `syncSourceUrl`.
-2. If it was a local novel, nothing is broken, but the feature is undiscoverable. Options: show the row disabled with a one-line reason ("Only available for synced fictions"), and/or a global switch in `settings/`.
-3. Either way, check on a device that turning it on on API 33+ prompts for `POST_NOTIFICATIONS` and that a notification actually arrives; that end-to-end path has no test.
+**Fixed:** the row now always renders. For a local novel it shows disabled
+with "Only available for fictions synced from a source" instead of
+disappearing, so the feature is discoverable even where it can't be turned
+on (resolve option 2 from the original writeup).
+
+**Still open - needs the owner on a real device, not something fixable from reading the code:**
+1. Confirm which novel the original report was actually about. If it was
+   added via "Add fiction" or "Sync all" (so `syncSourceUrl` should be set)
+   and the toggle was *still* missing rather than just unlabeled, that's a
+   second, different bug in the sync-detection path itself - re-open this
+   entry with that novel's details if so.
+2. Check that turning the toggle on, on API 33+, actually prompts for
+   `POST_NOTIFICATIONS` and that a notification arrives when a new chapter
+   shows up - `MainActivity`'s `notificationPermission` launcher and
+   `NewChapterCheckWorker` exist and read correctly in isolation, but that
+   end-to-end path has no test and hasn't been run on a device.

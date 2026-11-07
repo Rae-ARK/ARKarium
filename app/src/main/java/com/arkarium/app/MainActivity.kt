@@ -25,6 +25,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
@@ -160,11 +161,12 @@ class MainActivity : ComponentActivity() {
     // same "state lives in the Activity, screen just renders it" pattern as chapters/arcs.
     private val authorPageAuthor = mutableStateOf<AuthorEntity?>(null)
     private val authorPageNovels = mutableStateListOf<NovelEntity>()
-    // Gates the branded splash (see SplashScreen.kt) shown for a moment on every
-    // cold launch before the real UI (Home, or wherever NavHost's back stack already
-    // points) becomes visible. Lives here rather than as a NavHost destination since
-    // it's not a navigable one - nothing ever navigates back to it.
-    private val showSplash = mutableStateOf(true)
+    // showSplash itself moved into renderMainContent()'s composable scope as a
+    // rememberSaveable (see bugs.md, "Rotating the device restarts the app") - it used
+    // to live here as a plain mutableStateOf field, which reset to true on every
+    // Activity recreation (any config change, not just rotation), replaying the
+    // splash and its audio every time. rememberSaveable survives recreation the same
+    // way the rest of the Activity's saved instance state does.
     // Set when a "new chapter" notification is tapped (see onNewIntent/handleNotificationIntent
     // below) and read by the LaunchedEffect in renderMainContent that navigates to it -
     // null the rest of the time. Kept as Activity state rather than acted on directly
@@ -583,6 +585,15 @@ class MainActivity : ComponentActivity() {
             // onCreate the way currentTheme/currentSystemDefaultLightVariant are
             // collected would miss the system flipping while the app stays open.
             val systemInDarkTheme = isSystemInDarkTheme()
+            // Gates the branded splash (see SplashScreen.kt) shown for a moment on
+            // every cold launch before the real UI becomes visible. rememberSaveable,
+            // not plain remember/mutableStateOf - this needs to survive the Activity
+            // being destroyed and recreated on a config change (rotation, dark-mode
+            // switch, locale, font scale), or it resets to true on every one of those
+            // and replays the splash - see bugs.md, "Rotating the device restarts the
+            // app". Still resets on process death same as before; that's fine, a cold
+            // process restart showing the splash once is the intended case.
+            val showSplash = rememberSaveable { mutableStateOf(true) }
             // Read here (rather than down with savedUri/useCustomFolder below) since
             // resolvedTheme, computed immediately below, needs them before
             // MaterialTheme{} even opens.
