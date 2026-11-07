@@ -1,7 +1,10 @@
 package com.arkarium.app.ui
 
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.IBinder
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -14,240 +17,189 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.arkarium.app.data.PreferencesManager
+import com.arkarium.app.playback.TtsPlaybackService
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-// Android's TextToSpeech.speak() silently truncates (or on some engines rejects
-// outright) input longer than TextToSpeech.getMaxSpeechInputLength() - around 4000
-// characters on the system engine, but chapter bodies routinely run well past that.
-// Long text is split into utterance-sized pieces and queued back-to-back (see speak()
-// below) rather than handed to speak() whole, which would just cut off mid-chapter
-// with no warning to the reader.
-private const val TTS_MAX_CHUNK_CHARS = 3800
-
-// Splits `text` into pieces no longer than TTS_MAX_CHUNK_CHARS, preferring to break at
-// the last paragraph/sentence boundary inside each window so a split lands between
-// sentences rather than mid-word. Falls back to a hard cutoff only when a chunk has no
-// such boundary at all (e.g. one very long unbroken line).
-private fun splitForTts(text: String): List<String> {
-    val trimmed = text.trim()
-    if (trimmed.isEmpty()) return emptyList()
-    if (trimmed.length <= TTS_MAX_CHUNK_CHARS) return listOf(trimmed)
-
-    val chunks = mutableListOf<String>()
-    var start = 0
-    while (start < trimmed.length) {
-        val hardEnd = (start + TTS_MAX_CHUNK_CHARS).coerceAtMost(trimmed.length)
-        if (hardEnd == trimmed.length) {
-            chunks.add(trimmed.substring(start, hardEnd))
-            break
-        }
-        val window = trimmed.substring(start, hardEnd)
-        val breakIndex = window.lastIndexOfAny(charArrayOf('\n', '.', '!', '?'))
-        val splitAt = if (breakIndex >= 0) breakIndex + 1 else window.length
-        chunks.add(trimmed.substring(start, start + splitAt))
-        start += splitAt
-    }
-    return chunks.map { it.trim() }.filter { it.isNotBlank() }
-}
-
-// Thin Compose-facing wrapper around a single android.speech.tts.TextToSpeech engine,
-// scoped to one ReaderScreen session via rememberChapterTts() below. Purely on-device -
-// no bundled voice data and no network calls, matching the rest of the app's offline
-// design - and uses whichever TTS engine/voice the user already has configured
-// system-wide (Settings > Accessibility > Text-to-speech on most devices), so ARKarium
-// doesn't need to ship or manage voices itself.
+// Thin Compose-facing controller for read-aloud, scoped to one ReaderScreen call site
+// via rememberChapterTts() below. The TextToSpeech engine and chunk queue themselves no
+// longer live here - they moved to TtsPlaybackService (see docs/arkarium/proposal/
+// reader-playback.md F10) precisely because this class used to own them directly and
+// die with the composable (rotation, leaving the reader) along with them. This class is
+// now just a live mirror of the service's state plus a couple of pass-through calls,
+// re-attached to whichever service instance is actually running by rememberChapterTts's
+// DisposableEffect below.
 class ChapterTtsState internal constructor() {
     var isSpeaking by mutableStateOf(false)
         internal set
 
-    // False until engine init finishes, and stays false permanently if init fails (no
-    // TTS engine installed - rare, but possible on stripped-down ROMs/emulators). The
-    // play control checks this and hides itself rather than doing nothing when tapped.
+    // False until the engine (owned by the service now) finishes initializing, and
+    // stays false permanently if init fails (no TTS engine installed - rare, but
+    // possible on stripped-down ROMs/emulators) or while no service is attached yet.
+    // The play control checks this and hides itself rather than doing nothing when
+    // tapped.
     var isAvailable by mutableStateOf(false)
         internal set
 
     var speechRate by mutableFloatStateOf(1.0f)
         internal set
 
-    // Stage 3.4 of docs/arkarium/implementation/settings-tts.md. Unlike speechRate/pitch (seeded
-    // once at engine init, see rememberChapterTts below), this is kept live for the
-    // whole session - see the collectAsState() wiring below - so toggling auto-continue
-    // in settings/tts takes effect on the very next chapter boundary rather than
-    // requiring the reader to leave and reopen the reader. Off by default, matching
-    // TTS_AUTO_CONTINUE_KEY's own default in PreferencesManager.
-    var autoContinueEnabled by mutableStateOf(false)
-        internal set
+    // Stage 3.4 of docs/arkarium/implementation/settings-tts.md. Pushed straight through
+    // to the attached service (which is where the live flag now actually lives, so it
+    // survives rotation same as everything else about an in-progress session) whenever
+    // it changes - see rememberChapterTts's collectAsState wiring below.
+    var autoContinueEnabled: Boolean = false
+        internal set(value) {
+            field = value
+            service?.autoContinueEnabled = value
+        }
 
-    // Invoked from onUtteranceFinished below in place of merely dropping isSpeaking back
-    // to false, once the last chunk in a chapter finishes and autoContinueEnabled is
-    // true. Set by ReaderScreen to its existing onNext callback - ChapterTtsState has no
-    // access to chapter navigation itself (that lives with libraryViewModel.chapters in
-    // MainActivity), so this is the seam between "TTS finished" and "advance to the next
-    // chapter," same division of responsibility Tts.kt already keeps from ReaderScreen
-    // elsewhere in this file. Null (ReaderScreen leaves it unset, or onNext itself is
-    // null because there's no next chapter) means "do nothing beyond stopping," same
-    // "null means disabled" contract onNext already uses.
+    // Invoked once the last chunk in a chapter finishes and autoContinueEnabled is
+    // true. Set by ReaderScreen to its existing onNext callback - ChapterTtsState has
+    // no access to chapter navigation itself, so this is the seam between "TTS
+    // finished" and "advance to the next chapter." Null (ReaderScreen leaves it unset,
+    // or onNext itself is null because there's no next chapter) means "do nothing
+    // beyond stopping," same "null means disabled" contract onNext already uses.
     var onChapterFinished: (() -> Unit)? = null
 
-    internal var engine: TextToSpeech? = null
-    private var pendingChunks: List<String> = emptyList()
-    private var pendingIndex: Int = 0
-    private var lastQueuedUtteranceId: String? = null
+    private var service: TtsPlaybackService? = null
 
-    // Only sets the rate on the engine; does NOT touch anything already queued. Android's
-    // TextToSpeech.setSpeechRate() only affects speak() calls made *after* it returns - it
-    // has no effect on utterances that were already submitted to the engine's synthesis
-    // queue, even if they haven't started playing yet. Chunks are queued one at a time (see
-    // speakNextChunk() below) precisely so that a rate change here reaches the *next* chunk
-    // rather than being silently dropped because every chunk for the chapter was already
-    // queued up front.
+    private val listener = object : TtsPlaybackService.Listener {
+        override fun onSpeakingChanged(isSpeaking: Boolean) {
+            this@ChapterTtsState.isSpeaking = isSpeaking
+        }
+
+        override fun onAvailabilityChanged(isAvailable: Boolean) {
+            this@ChapterTtsState.isAvailable = isAvailable
+        }
+
+        override fun onChapterFinished() {
+            // Qualified explicitly: the method being overridden here and the
+            // ChapterTtsState property it forwards to share a name, and an
+            // unqualified reference inside this override would shadow the property
+            // with the method itself rather than reading it.
+            this@ChapterTtsState.onChapterFinished?.invoke()
+        }
+    }
+
+    // Called from rememberChapterTts's ServiceConnection once bound (including after a
+    // rotation re-binds to the still-running service) - pulls this controller's visible
+    // state up to date with whatever the service is already doing, rather than
+    // resetting it to defaults the way a freshly-constructed TextToSpeech used to.
+    internal fun attach(svc: TtsPlaybackService) {
+        service = svc
+        svc.listener = listener
+        isSpeaking = svc.isSpeaking
+        isAvailable = svc.isAvailable
+        speechRate = svc.speechRate
+        svc.autoContinueEnabled = autoContinueEnabled
+    }
+
+    // Called on unbind (including the transient unbind a rotation causes). Deliberately
+    // does *not* stop or shut down anything on the service side - that's the whole
+    // point of this split; see TtsPlaybackService's doc comment on started-vs-bound.
+    internal fun detach() {
+        if (service?.listener === listener) {
+            service?.listener = null
+        }
+        service = null
+    }
+
+    // Only sets the rate on the engine; does NOT touch anything already queued -
+    // see TtsPlaybackService.setRate's doc comment.
     fun setRate(rate: Float) {
         speechRate = rate
-        engine?.setSpeechRate(rate)
+        service?.setRate(rate)
     }
 
-    // Stops whatever's currently queued and starts reading `text` from the top.
-    fun speak(text: String) {
-        val tts = engine ?: return
-        val chunks = splitForTts(text)
-        if (chunks.isEmpty()) return
-        pendingChunks = chunks
-        pendingIndex = 0
-        isSpeaking = true
-        speakNextChunk(TextToSpeech.QUEUE_FLUSH)
-    }
-
-    // Queues exactly one chunk - the one at pendingIndex - rather than the whole chapter at
-    // once. The engine's current speechRate is applied immediately beforehand so that a
-    // setRate() call made while a previous chunk is still playing takes effect on this
-    // chunk, instead of this chunk having already been queued (and its rate locked in)
-    // before the user touched the slider. The next chunk is only queued once this one
-    // finishes, from onUtteranceFinished() below, keeping the same "one queued rate change
-    // ahead" behavior for every chunk boundary in a long chapter.
-    private fun speakNextChunk(queueMode: Int) {
-        val tts = engine ?: return
-        if (pendingIndex !in pendingChunks.indices) return
-        val chunk = pendingChunks[pendingIndex]
-        val utteranceId = "arkarium_chunk_${pendingIndex}_${chunk.hashCode()}"
-        lastQueuedUtteranceId = utteranceId
-        tts.setSpeechRate(speechRate)
-        tts.speak(chunk, queueMode, null, utteranceId)
+    // Starts (or restarts) the attached service and begins reading `text` aloud under
+    // `chapterTitle`, which only ever reaches the read-aloud notification - nothing
+    // else reads it back. No-ops if no service is attached yet (shouldn't happen in
+    // practice - isAvailable, which gates the play control in ReaderScreen, only ever
+    // goes true once a service has attached and its engine has finished initializing).
+    fun speak(context: Context, chapterTitle: String, text: String) {
+        service?.start(context, chapterTitle, text)
     }
 
     fun stop() {
-        engine?.stop()
-        isSpeaking = false
-        pendingChunks = emptyList()
-        pendingIndex = 0
-        lastQueuedUtteranceId = null
-    }
-
-    // Called from the engine's UtteranceProgressListener (see rememberChapterTts) on
-    // both successful completion and error, for any queued chunk. Ignores callbacks that
-    // don't match the chunk we most recently queued - a late onDone/onError arriving after
-    // stop() (or after a fresh speak() call replaced the queue) would otherwise advance a
-    // read that's no longer current. Otherwise, advances to the next chunk if there is one,
-    // or drops isSpeaking back to false once the last chunk in the chapter finishes.
-    internal fun onUtteranceFinished(utteranceId: String?) {
-        if (utteranceId != null && utteranceId != lastQueuedUtteranceId) return
-        pendingIndex++
-        if (pendingIndex in pendingChunks.indices) {
-            speakNextChunk(TextToSpeech.QUEUE_ADD)
-        } else {
-            isSpeaking = false
-            // Stage 3.4: off by default, so this is a no-op until a reader opts in on
-            // settings/tts - see autoContinueEnabled's doc comment above.
-            if (autoContinueEnabled) {
-                onChapterFinished?.invoke()
-            }
-        }
+        service?.stop()
     }
 }
 
-// Creates and owns a TextToSpeech engine for as long as the calling composable stays in
-// composition. ReaderScreen's call site in MainActivity is reused across
-// Previous/Next chapter navigation rather than torn down and recreated (see the
-// chapter.id-keyed LaunchedEffect elsewhere in this file for the same reuse behavior
-// with scroll state), so in practice one engine instance lives for the whole reading
-// session instead of being reinitialized every chapter. It's shut down via
-// TextToSpeech.shutdown() once ReaderScreen itself leaves composition (navigating back
-// to Home/the fiction page).
+// Binds a ChapterTtsState to TtsPlaybackService for as long as the calling composable
+// stays in composition. ReaderScreen's call site in MainActivity is reused across
+// Previous/Next chapter navigation (see the chapter.id-keyed LaunchedEffect elsewhere
+// in this file for the same reuse behavior with scroll state), so in practice one
+// ChapterTtsState persists for the whole reading session, same as before this change -
+// what's different is that rotating the device (which recreates MainActivity, and with
+// it this composable) now just unbinds and rebinds to the *same still-running* service
+// rather than tearing down and recreating the TextToSpeech engine itself. See
+// docs/arkarium/proposal/reader-playback.md F10 and bugs.md's rotation entry.
 @Composable
 fun rememberChapterTts(): ChapterTtsState {
     val context = LocalContext.current
     val state = remember { ChapterTtsState() }
-    // Stage 3.3 of docs/arkarium/implementation/settings-tts.md: seeds this session's starting
-    // rate/pitch from the settings/tts defaults (Stage 3.1's keys) instead of the
-    // hardcoded 1.0f/implicit-default this composable used before. Direct
-    // PreferencesManager access, same as everywhere else those four keys are read -
-    // see docs/arkarium/foundational/design-notes.md's "Settled decisions" for why TTS defaults don't get a
-    // ViewModel of their own.
     val prefsManager = remember { PreferencesManager(context) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Stage 3.4 of docs/arkarium/implementation/settings-tts.md. Deliberately not a one-shot
-    // .first() read like defaultRate/defaultPitch below - auto-continue is checked
-    // every time a chapter finishes, not just once at engine construction, so it's kept
-    // live via collectAsState() instead and pushed onto ChapterTtsState whenever it
-    // changes.
+    // Stage 3.4 of docs/arkarium/implementation/settings-tts.md. Deliberately not a
+    // one-shot .first() read - auto-continue is checked every time a chapter finishes,
+    // not just once, so it's kept live via collectAsState() and pushed onto the
+    // attached service (via ChapterTtsState.autoContinueEnabled's setter above)
+    // whenever it changes.
     val autoContinue by prefsManager.ttsAutoContinue.collectAsState(initial = false)
     LaunchedEffect(autoContinue) {
         state.autoContinueEnabled = autoContinue
     }
 
     DisposableEffect(Unit) {
-        var engine: TextToSpeech? = null
-
-        // Reading the defaults is a suspend call (DataStore's Flow.first()), so engine
-        // construction moves inside this coroutine rather than happening synchronously
-        // in the DisposableEffect body as before. TextToSpeech(context) {...}'s own
-        // init callback was already asynchronous, so this just adds one more (already
-        // in-memory/cached, effectively instant) suspension ahead of it - a chapter
-        // opened in that brief window sees isAvailable == false, same as it already
-        // could while waiting on the engine's own init callback.
-        val job = coroutineScope.launch {
-            val defaultRate = prefsManager.ttsDefaultRate.first()
-            val defaultPitch = prefsManager.ttsPitch.first()
-
-            // Seeds the session's starting rate. The pill's live setRate() during
-            // reading still only touches this in-memory value, same as before this
-            // stage - see docs/arkarium/foundational/design-notes.md's "TTS settings split".
-            state.speechRate = defaultRate
-
-            engine = TextToSpeech(context) { status ->
-                state.isAvailable = status == TextToSpeech.SUCCESS
-                // Pitch has no pill/mid-session control (unlike rate), so it's only
-                // ever applied here, once, at engine init - see docs/arkarium/foundational/design-notes.md
-                // ("TTS settings split") for why pitch doesn't get the same live-adjustment treatment.
-                if (status == TextToSpeech.SUCCESS) {
-                    engine?.setPitch(defaultPitch)
+        var bound = false
+        val connection = object : ServiceConnection {
+            override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
+                val svc = (binder as? TtsPlaybackService.LocalBinder)?.service() ?: return
+                state.attach(svc)
+                // Stage 3.3 of docs/arkarium/implementation/settings-tts.md: seeds this
+                // service instance's starting rate/pitch from the settings/tts defaults
+                // the first time it's ever attached to - see
+                // TtsPlaybackService.setInitialRateAndPitch's doc comment for why it's
+                // a no-op on every attach after the first, so a rotation mid-chapter
+                // doesn't stomp a rate the reader already changed. Reading the defaults
+                // is a suspend call (DataStore's Flow.first()), same as it was when
+                // this lived inline in the old DisposableEffect before this change.
+                coroutineScope.launch {
+                    val defaultRate = prefsManager.ttsDefaultRate.first()
+                    val defaultPitch = prefsManager.ttsPitch.first()
+                    svc.setInitialRateAndPitch(defaultRate, defaultPitch)
+                    state.speechRate = svc.speechRate
                 }
             }
-            engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) {}
 
-                override fun onDone(utteranceId: String?) {
-                    state.onUtteranceFinished(utteranceId)
-                }
-
-                @Deprecated("Deprecated in Java, but still the callback older API levels invoke")
-                override fun onError(utteranceId: String?) {
-                    state.onUtteranceFinished(utteranceId)
-                }
-
-                override fun onError(utteranceId: String?, errorCode: Int) {
-                    state.onUtteranceFinished(utteranceId)
-                }
-            })
-            state.engine = engine
+            override fun onServiceDisconnected(name: ComponentName?) {
+                // Only the system calls this (the service process crashing), not a
+                // normal unbindService() - detach() below already covers the ordinary
+                // unbind-on-dispose path. Covered here too so a crash doesn't leave
+                // this controller pointing at a dead binder.
+                state.detach()
+            }
         }
 
+        // BIND_AUTO_CREATE: creates the service on first bind (e.g. the very first time
+        // a reader opens a chapter) if it isn't already running. Does not by itself
+        // start() the service in the Service.startService sense - see
+        // TtsPlaybackService's doc comment on why ChapterTtsState.speak() separately
+        // calls ContextCompat.startForegroundService before binding would matter, i.e.
+        // the gap this bind alone would not survive across a rotation.
+        bound = context.bindService(
+            Intent(context, TtsPlaybackService::class.java),
+            connection,
+            Context.BIND_AUTO_CREATE
+        )
+
         onDispose {
-            job.cancel()
-            engine?.stop()
-            engine?.shutdown()
-            state.engine = null
+            if (bound) {
+                context.unbindService(connection)
+            }
+            state.detach()
         }
     }
 
