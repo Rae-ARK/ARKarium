@@ -48,8 +48,9 @@ default.** Four rules:
 - **TTS settings split.** Speech rate stays in the reader pill (adjusted while
   reading). Pitch, default rate, auto-continue, keep-screen-on are global
   defaults on `settings/tts`. The pill's live rate never writes back to the
-  default. Engine choice links out to the system TTS setting; no in-app
-  picker, no `tts_engine_package` key.
+  default. The voice is chosen in-app (`tts_voice_name`, picked from the
+  engine's own voice list). Engine choice still links out to the system TTS
+  setting; no engine switcher, no `tts_engine_package` key.
 - **Behavior-preserving moves first.** Extractions land as mechanical moves,
   each stage independently shippable and revertable, ordered smallest and
   lowest-risk first.

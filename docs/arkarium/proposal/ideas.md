@@ -7,6 +7,8 @@ Small items live here. An item that needs real design gets its own file in this 
 
 | Idea | Notes |
 |---|---|
+| TTS sleep timer | Stop read-aloud after a chosen time. A "Timer" row in the reference app's TTS settings; also called out as table stakes in [`peer-app-survey.md`](peer-app-survey.md). The service already has `stop()`; the open part is the UI and whether "end of chapter" is an option. |
+| TTS multilingual mode | A "Multilingual mode" switch in the reference app, for books that mix languages. ARKarium speaks a whole chapter in one voice, so Japanese inside an English chapter is read by an English voice. Would mean choosing a voice per chunk, probably from the text's script. Related to, and much smaller than, [`tts-multivoice.md`](tts-multivoice.md). |
 | Chapter-content search | Library search matches title and author only. Fine for a few novels, weak once a dozen 400-chapter novels are synced. |
 | EPUB/PDF ingestion | Not implemented. Prior art (staged plan, `epub://` source scheme, `epublib` LGPL suggestion) in [`../../reference/arkster/EPUB_SUPPORT.md`](../../reference/arkster/EPUB_SUPPORT.md): it describes ARKster's schema and must be re-specified for ARKarium's schema and sync manifest. |
 | Publisher pipeline (ARKlight) | Manifest generation is a throwaway script. A maintained publish-side tool is needed before a multi-author ecosystem. A diff preview and a hidden/draft publish channel, modeled on itch.io, are suggested in [`peer-app-survey.md`](peer-app-survey.md) Suggestion 4; pairs with [`manifest-signing.md`](manifest-signing.md) D5 (sign at publish time, in this same pipeline). |
