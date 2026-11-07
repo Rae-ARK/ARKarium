@@ -1,8 +1,10 @@
 package com.arkarium.app.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +59,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.arkarium.app.data.ArcEntity
 import com.arkarium.app.data.ChapterEntity
@@ -626,6 +630,7 @@ private fun ChapterTag(label: String) {
 // Selected state is a 2dp primary-color border plus bolded/colored caption -
 // deliberately not relying on color alone, since the cover art itself varies
 // wildly and a color-only highlight can get lost against a busy image.
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ArcTabCard(
     coverUrl: String?,
@@ -634,10 +639,24 @@ private fun ArcTabCard(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    // Simplest fix for "Arc covers are too small to see" (docs/arkarium/proposal/uiux.md):
+    // double-tap opens the cover enlarged. The card already has a single-tap
+    // (select this arc), so combinedClickable is required here rather than a
+    // second clickable - two stacked `clickable`s on the same node would just
+    // have the outer one win and silently swallow the double-tap.
+    var showEnlargedCover by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .width(92.dp)
-            .clickable(onClick = onClick),
+            .combinedClickable(
+                onClick = onClick,
+                onDoubleClick = {
+                    // Guard against the generated placeholder (no coverUrl): there is
+                    // no art to see, so opening a viewer on it would be pointless.
+                    if (coverUrl != null) showEnlargedCover = true
+                }
+            ),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         NovelCoverThumb(
@@ -671,6 +690,37 @@ private fun ArcTabCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center
         )
+    }
+
+    if (showEnlargedCover && coverUrl != null) {
+        EnlargedCoverDialog(coverUrl = coverUrl, onDismiss = { showEnlargedCover = false })
+    }
+}
+
+// Full-screen, uncropped view of a cover - the minimal version of the "open it
+// enlarged" idea in uiux.md. Pinch-to-zoom is left as a later enhancement;
+// this just lets the art be seen at a real size. Dismiss by tapping the image
+// or the scrim behind it, or the system back button (default Dialog behavior).
+@Composable
+private fun EnlargedCoverDialog(coverUrl: String, onDismiss: () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+                .clickable(onClick = onDismiss),
+            contentAlignment = Alignment.Center
+        ) {
+            AsyncImage(
+                model = coverUrl,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
+                modifier = Modifier.fillMaxSize()
+            )
+        }
     }
 }
 
