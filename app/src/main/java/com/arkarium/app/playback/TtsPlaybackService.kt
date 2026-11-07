@@ -109,6 +109,14 @@ class TtsPlaybackService : Service() {
     var speechRate = 1.0f
         private set
 
+    // Opaque id of what the current session is reading (ReaderScreen passes the chapter
+    // id), set by start() and cleared by stop(). Lets a reader that re-attaches - back
+    // from the TTS settings page, after a rotation, or reopened while a session played
+    // on - tell "this session is reading the chapter on screen" from "this is a stale
+    // session for another chapter". Null when no session was started with a key.
+    var sessionKey: String? = null
+        private set
+
     // Stage 3.4 of docs/arkarium/implementation/settings-tts.md, moved here unchanged:
     // kept live (the Compose side pushes every DataStore change straight through) so
     // toggling auto-continue in settings/tts takes effect on the next chapter boundary
@@ -208,10 +216,11 @@ class TtsPlaybackService : Service() {
     // the Context this needs for ContextCompat.startForegroundService - the service
     // itself only takes it as a parameter here rather than holding a Context of its own
     // outside applicationContext (used internally for the engine and notification).
-    fun start(context: Context, chapterTitle: String, text: String) {
+    fun start(context: Context, chapterTitle: String, text: String, sessionKey: String? = null) {
         val tts = engine ?: return
         val chunks = splitForTts(text)
         if (chunks.isEmpty()) return
+        this.sessionKey = sessionKey
         // Set before starting the service so that whenever onStartCommand actually
         // runs - always, on every startForegroundService call, whether this service
         // instance already exists or is only now being created - buildNotification()
@@ -244,6 +253,7 @@ class TtsPlaybackService : Service() {
         pendingChunks = emptyList()
         pendingIndex = 0
         lastQueuedUtteranceId = null
+        sessionKey = null
         listener?.onSpeakingChanged(false)
         listener?.onPausedChanged(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
