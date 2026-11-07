@@ -35,7 +35,7 @@ data class NovelEntity(
     @ColumnInfo(name = "published_date") val publishedDate: String? = null,
     @ColumnInfo(name = "external_source_url") val externalSourceUrl: String? = null,
     @ColumnInfo(name = "metadata_fetched_at") val metadataFetchedAt: Long? = null,  // null = never fetched
-    // Sync relay tracking (see docs/arkarium/SYNC_MVP.md) - deliberately separate from
+    // Sync relay tracking (see docs/arkarium/foundational/architecture.md, Sync) - deliberately separate from
     // externalSourceUrl/metadataFetchedAt above, which are about optional
     // display-metadata lookups (NovelMetadataProvider), not this novel's content
     // relay. `syncSourceUrl` null means "purely local, not synced from anywhere";
@@ -51,11 +51,11 @@ data class NovelEntity(
     // the folder can be named after the fiction itself (readable when browsing the
     // library folder) without that name also having to double as sync's own identity
     // key - see SyncManager.sync's folder-relocation comment and
-    // docs/arkarium/NEXT_FIXES.md #5. Null for a purely local novel (syncSourceUrl ==
+    // docs/arkarium/foundational/architecture.md, Sync invariants S9. Null for a purely local novel (syncSourceUrl ==
     // null, this is simply never set) and, transiently, for a novel synced by a
     // pre-MIGRATION_10_11 build until its next successful sync backfills it.
     @ColumnInfo(name = "sync_folder_name") val syncFolderName: String? = null,
-    // Only meaningful when syncSourceUrl != null (see docs/arkarium/NEXT_FIXES.md #2). ACTIVE =
+    // Only meaningful when syncSourceUrl != null (see docs/arkarium/foundational/architecture.md, Sync invariants S6). ACTIVE =
     // normal state. MISSING_LOCALLY = this novel's on-disk folder disappeared out from
     // under a synced novel (user deleted it, SAF re-permission minted a new tree, etc)
     // - the row is deliberately kept rather than cascade-deleted so the user can choose
@@ -65,7 +65,7 @@ data class NovelEntity(
     // a purely-local (syncSourceUrl == null) novel.
     @ColumnInfo(name = "sync_status") val syncStatus: String = SyncStatus.ACTIVE.name,
     // "Notify me when new chapters are available" toggle on NovelDetailScreen (see
-    // docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md). Only ever meaningful for a synced novel
+    // docs/arkarium/foundational/architecture.md, Sync: entry points). Only ever meaningful for a synced novel
     // (syncSourceUrl != null) - the toggle is hidden on the fiction page for a purely
     // local one, same gating as onSyncClick - but the column itself carries no
     // constraint against that, so a novel that's later unlinked from its sync source
@@ -233,7 +233,7 @@ data class ScanFingerprintEntity(
 )
 
 // One row per file the sync client has actually downloaded and written for a synced
-// novel (see docs/arkarium/SYNC_MVP.md, "Future considerations" #1). This is the diff's source
+// novel (see docs/arkarium/foundational/architecture.md, Sync invariants S1). This is the diff's source
 // of truth on both sides - a sync pass downloads manifest paths missing from this
 // table, and deletes rows (and their on-disk files) present here but missing from the
 // new manifest. Deliberately its own table rather than reusing ScanFingerprintEntity,
@@ -254,7 +254,7 @@ data class SyncedFileEntity(
     @ColumnInfo(name = "novel_id") val novelId: String,
     // Sanitized, manifest-relative path (e.g. "arcs/arc-1/001.txt", "cover.png") -
     // never trusted as-is from a manifest without validation first (see
-    // docs/arkarium/SYNC_MVP.md "Future considerations" #2); validation happens in the sync
+    // docs/arkarium/foundational/architecture.md, Sync invariants S2); validation happens in the sync
     // client before a row like this is ever created, not here.
     @ColumnInfo(name = "relative_path") val relativePath: String,
     @ColumnInfo val sha256: String,

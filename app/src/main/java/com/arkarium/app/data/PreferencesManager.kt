@@ -25,7 +25,7 @@ enum class Theme {
 }
 
 // The slice of PreferencesManager's surface that SettingsViewModel (Stage 2.2 of
-// docs/arkarium/REFACTOR_PLAN.md's Phase 2) wraps as StateFlows. Pulled out as an
+// docs/arkarium/foundational/design-notes.md's Phase 2) wraps as StateFlows. Pulled out as an
 // interface - rather than SettingsViewModel depending on the concrete
 // PreferencesManager class directly - purely so a JVM unit test can hand it a fake
 // backed by plain MutableStateFlows instead of a real DataStore/Context, matching
@@ -68,12 +68,12 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         private val SPLASH_ANIMATION_ENABLED_KEY = booleanPreferencesKey("splash_animation_enabled")
         private val SPLASH_MUSIC_ENABLED_KEY = booleanPreferencesKey("splash_music_enabled")
 
-        // TTS default-settings keys (see docs/arkarium/SETTINGS_REDESIGN.md, Stage 3.1).
+        // TTS default-settings keys (see docs/arkarium/implementation/settings-tts.md, Stage 3.1).
         // Added ahead of TtsSettingsScreen.kt (Stage 3.2) and ahead of anything in
         // Tts.kt actually reading them (Stages 3.3-3.5) - purely additive, nothing
         // downstream consults these yet. Same flat-key shape as the splash toggles
-        // above rather than a wrapped ViewModel: see SETTINGS_REDESIGN.md's "Open
-        // questions" section for why TTS defaults don't get their own ViewModel.
+        // above rather than a wrapped ViewModel: see docs/arkarium/foundational/design-notes.md's "Settled
+        // decisions" for why TTS defaults don't get their own ViewModel.
         private val TTS_DEFAULT_RATE_KEY = floatPreferencesKey("tts_default_rate")
         private val TTS_PITCH_KEY = floatPreferencesKey("tts_pitch")
         private val TTS_AUTO_CONTINUE_KEY = booleanPreferencesKey("tts_auto_continue")
@@ -142,13 +142,13 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     // to it (Stage 3.3) - not read anywhere yet. Default 1.0f matches the hardcoded
     // rate ChapterTtsState uses today, so wiring this up later is a no-op for anyone
     // who hasn't visited settings/tts. The pill's live setRate() during a session
-    // never writes back here - see SETTINGS_REDESIGN.md's last "Open question".
+    // never writes back here - see docs/arkarium/foundational/design-notes.md's "TTS settings split".
     val ttsDefaultRate: Flow<Float> = safePrefs.map { prefs ->
         prefs[TTS_DEFAULT_RATE_KEY] ?: 1.0f
     }
 
     // Applied once at TTS engine init (Stage 3.3), no pill exposure - see
-    // SETTINGS_REDESIGN.md §2 for why pitch doesn't get a mid-session control the
+    // docs/arkarium/foundational/design-notes.md ("TTS settings split") for why pitch doesn't get a mid-session control the
     // way rate does. Default 1.0f is TextToSpeech's own neutral pitch.
     val ttsPitch: Flow<Float> = safePrefs.map { prefs ->
         prefs[TTS_PITCH_KEY] ?: 1.0f

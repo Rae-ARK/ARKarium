@@ -18,7 +18,7 @@ import java.net.URL
 import java.security.MessageDigest
 import java.util.UUID
 
-// See docs/arkarium/SYNC_MVP.md for the full design. This file is the sync engine itself -
+// See docs/arkarium/foundational/architecture.md, Sync for the full design. This file is the sync engine itself -
 // manifest fetch/parse, hash diff, and the actual file IO. It never touches Room
 // directly (no AppDatabase/Dao references anywhere below); callers persist the
 // SyncOutcome it returns. That mirrors ScannerImpl's own split between "walk
@@ -26,7 +26,7 @@ import java.util.UUID
 // that in the DB" - keeps this class testable without a database and keeps the two
 // concerns (network/IO vs. persistence) from tangling.
 
-// One entry from a manifest.json's "files" map - see docs/arkarium/SYNC_MVP.md §1. relativePath
+// One entry from a manifest.json's "files" map - see docs/arkarium/foundational/architecture.md, Sync: manifest. relativePath
 // here has already been through SyncPaths.sanitize by the time a Manifest exists; a
 // Manifest is never constructed with an unsafe path in it.
 data class ManifestFileEntry(
@@ -45,13 +45,13 @@ class ManifestParseException(message: String) : IOException(message)
 // Thrown when a manifest file entry's path would escape the novel's own folder (see
 // SyncPaths.sanitize). Treated as a whole-manifest failure rather than skipping just
 // that one entry - a manifest containing an unsafe path is a trust problem with the
-// manifest itself (see docs/arkarium/SYNC_MVP.md "Future considerations" #2), not a one-off bad
+// manifest itself (see docs/arkarium/foundational/architecture.md, Sync invariants S2), not a one-off bad
 // file worth silently dropping and continuing past.
 class UnsafePathException(path: String) : IOException("Unsafe path in manifest: $path")
 
 // Thrown specifically when a relay 404s on a novel's manifest.json - distinguished from
 // a generic IOException so callers can tell "this source doesn't exist anymore" apart
-// from a transient network blip (see docs/arkarium/NEXT_FIXES.md #2). Never thrown for a 404 on
+// from a transient network blip (see docs/arkarium/foundational/architecture.md, Sync invariants S6). Never thrown for a 404 on
 // an individual file download - only the manifest fetch itself, since that's the one
 // request whose absence means "this fiction isn't served here anymore" rather than "one
 // file is temporarily unreachable."
@@ -59,7 +59,7 @@ class SourceGoneException(baseUrl: String) : IOException("No manifest found at $
 
 // Thrown by SyncManager.sync() when a previously-synced novel's on-disk folder can't be
 // found by either id (findNovelFolder) or its deterministic slug name, and the caller
-// hasn't explicitly opted into recreating it (see docs/arkarium/NEXT_FIXES.md #2). Distinguishes
+// hasn't explicitly opted into recreating it (see docs/arkarium/foundational/architecture.md, Sync invariants S6). Distinguishes
 // "the user (or something else) removed this folder" from every other sync failure, so
 // a caller can ask before silently redownloading the whole fiction.
 class MissingLocalFolderException(val novelId: String) : IOException("Local folder for novel $novelId is missing")
@@ -68,7 +68,7 @@ object SyncPaths {
     // Rejects absolute paths, empty/"."/".." segments, and backslashes before a
     // manifest path is ever used to create a file or directory. A manifest is
     // untrusted input the moment "Add fiction from URL" accepts an arbitrary base
-    // URL - see docs/arkarium/SYNC_MVP.md "Future considerations" #2.
+    // URL - see docs/arkarium/foundational/architecture.md, Sync invariants S2.
     fun sanitize(relativePath: String): String {
         val normalized = relativePath.replace('\\', '/').trim()
         if (normalized.isEmpty() || normalized.startsWith("/")) {
@@ -112,7 +112,7 @@ class SyncClient {
     suspend fun fetchManifest(baseUrl: String): Manifest = withContext(Dispatchers.IO) {
         // manifestBaseUrl is threaded through so a 404 here specifically (as opposed to
         // a 404 on an individual file download below) surfaces as SourceGoneException -
-        // see docs/arkarium/NEXT_FIXES.md #2.
+        // see docs/arkarium/foundational/architecture.md, Sync invariants S6.
         parseManifest(fetchText(joinUrl(baseUrl, "manifest.json"), manifestBaseUrl = baseUrl))
     }
 
@@ -220,7 +220,7 @@ data class SyncOutcome(
 
 // Handles the file IO for a sync pass: downloading new/changed files into a novel's
 // on-disk folder, and removing files the new manifest no longer lists (see
-// docs/arkarium/SYNC_MVP.md "Future considerations" #1). Never deletes or overwrites a file
+// docs/arkarium/foundational/architecture.md, Sync invariants S1). Never deletes or overwrites a file
 // this class didn't itself write - see the `existing`/SyncedFileEntity plumbing below,
 // which is exactly what limits a resync's blast radius to files sync actually owns
 // (Consideration #3).
@@ -237,7 +237,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         // without needing to persist a separate folder reference across app restarts.
         // Mirrors ScannerImpl.scanRoot's own id formula exactly
         // (UUID.nameUUIDFromBytes(root.uri + ":" + child.uri)) - since sync always
-        // reuses a folder the scanner itself discovered (see docs/arkarium/SYNC_MVP.md §4), this
+        // reuses a folder the scanner itself discovered (see docs/arkarium/foundational/architecture.md, Sync: scan reuse), this
         // is guaranteed to find the same folder the scanner assigned that id to, in
         // either storage mode (SAF tree or default app-private dir).
         fun findNovelFolder(libraryRoot: DocumentFile, novelId: String): DocumentFile? =
@@ -291,7 +291,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
     // downloads every file the manifest lists into it. The returned SyncOutcome's files
     // all carry novelId = "" - the real novel id isn't known until the very next
     // library scan discovers this folder for the first time, same as any other novel
-    // folder (see docs/arkarium/SYNC_MVP.md §4). Callers must .copy(novelId = ...) each entry
+    // folder (see docs/arkarium/foundational/architecture.md, Sync: scan reuse). Callers must .copy(novelId = ...) each entry
     // once that id is known, before persisting.
     // `displayName` is the fiction's human-readable title (what the user typed/picked,
     // e.g. via FictionLut) - it becomes the actual on-disk folder name (sanitized +
@@ -321,13 +321,13 @@ class SyncManager(private val context: Context, private val client: SyncClient =
 
     // Re-syncs an already-added fiction. Fetches the manifest and returns immediately
     // (changed = false) if `novel.syncSourceVersion` already matches - see
-    // docs/arkarium/SYNC_MVP.md "Future considerations" #5, this is the cheap-skip the schema's
+    // docs/arkarium/foundational/architecture.md, Sync invariants S5, this is the cheap-skip the schema's
     // sync_source_version column exists to enable. Otherwise downloads new/changed
     // files and deletes local files the new manifest no longer lists.
     // `allowRecreateMissingFolder` defaults to false: if the novel's folder can't be
     // found by either its derived id (findNovelFolder) or its deterministic slug name,
     // this throws MissingLocalFolderException rather than silently recreating it and
-    // redownloading everything - see docs/arkarium/NEXT_FIXES.md #2. The caller (MainActivity)
+    // redownloading everything - see docs/arkarium/foundational/architecture.md, Sync invariants S6. The caller (MainActivity)
     // only ever passes true once the user has explicitly confirmed they want that
     // (the "Sync again" resolution action), never from an automatic/background check.
     suspend fun sync(
@@ -360,7 +360,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         //     title from colliding with an unrelated folder. Persisting the *actual*
         //     resolved name once and just reading it back is what keeps "where does
         //     this novel's content live" decoupled from "what is this folder named" -
-        //     see docs/arkarium/NEXT_FIXES.md #5.
+        //     see docs/arkarium/foundational/architecture.md, Sync invariants S9.
         //  2. findNovelFolder(novel.id) - re-derive by re-hashing every child's URI
         //     against novel.id. Still correct as a fallback (novel.id itself was fixed
         //     at creation and never changes), and is what covers a syncFolderName
@@ -384,8 +384,8 @@ class SyncManager(private val context: Context, private val client: SyncClient =
 
         val records = downloadManifestFiles(baseUrl, manifest, folder, libraryRoot, existing = knownFiles, onProgress)
 
-        // Delete local files the new manifest no longer lists (docs/arkarium/SYNC_MVP.md
-        // "Future considerations" #1) - only ever files previously tracked in
+        // Delete local files the new manifest no longer lists (docs/arkarium/foundational/architecture.md, Sync invariants
+        // S1) - only ever files previously tracked in
         // knownFiles, i.e. files this sync client itself wrote. A hand-added or
         // manually-edited file living alongside synced content in the same folder is
         // never in knownFiles, so it's never touched here (Consideration #3).
@@ -410,7 +410,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
     // `existing` (by path+hash+size), and returns the complete new file-record set
     // (unchanged entries carried over as-is). Every downloaded file's hash is verified
     // against the manifest's claimed sha256 before it's written or counted as synced -
-    // per docs/arkarium/SYNC_MVP.md "Future considerations" #4, a file is only ever recorded as
+    // per docs/arkarium/foundational/architecture.md, Sync invariants S4, a file is only ever recorded as
     // synced once it's actually been verified and written successfully; a failure here
     // throws and aborts the whole sync pass rather than committing a partial result,
     // which is why this whole method's caller (sync/downloadInitial) never persists
@@ -567,7 +567,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         val segments = relativePath.split("/")
         val dir = dirCache.resolve(folder, segments.dropLast(1))
         val fileName = segments.last()
-        // Replace-on-write, matching docs/arkarium/SYNC_MVP.md §3 ("no delta/binary patching,
+        // Replace-on-write, matching docs/arkarium/foundational/architecture.md, Sync: client flow ("no delta/binary patching,
         // whole-file replace on any mismatch") rather than trying to patch in place.
         dir.findFile(fileName)?.delete()
         // Deliberately NOT guessMimeType(fileName) (e.g. "application/json" for a .json

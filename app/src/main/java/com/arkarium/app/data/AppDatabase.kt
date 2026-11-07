@@ -174,7 +174,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // Migration from v8 to v9: adds sync relay tracking (see docs/arkarium/SYNC_MVP.md).
+        // Migration from v8 to v9: adds sync relay tracking (see docs/arkarium/foundational/architecture.md, Sync).
         // Three new nullable columns on novels (sync_source_url/sync_source_version/
         // last_synced_at - all null = "purely local", same backfill-friendly pattern
         // as MIGRATION_5_6's metadata columns) plus the new synced_files table, which
@@ -198,8 +198,8 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // Migration from v9 to v10: adds sync_status to novels (see docs/arkarium/NEXT_FIXES.md
-        // #2 - "no graceful handling when a synced novel's folder disappears"). Backfills
+        // Migration from v9 to v10: adds sync_status to novels (see docs/arkarium/foundational/architecture.md,
+        // Sync invariants S6 - "no graceful handling when a synced novel's folder disappears"). Backfills
         // to 'ACTIVE' for every existing row, synced or not; the column is simply unused
         // for a purely-local novel (syncSourceUrl == null).
         val MIGRATION_9_10 = object : Migration(9, 10) {
@@ -209,7 +209,7 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         // Migration from v10 to v11: adds sync_folder_name to novels (see
-        // docs/arkarium/NEXT_FIXES.md #5 and Entities.kt's doc comment on the column). Null-
+        // docs/arkarium/foundational/architecture.md, Sync invariants S9 and Entities.kt's doc comment on the column). Null-
         // backfilled for every existing row, synced or not; a synced novel created by an
         // older build picks up a real value the next time it successfully syncs (see
         // SyncManager.sync's folder-relocation fallback chain), a purely-local novel
@@ -230,7 +230,7 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         // Migration from v11 to v12: adds notify_new_chapters to novels (see
-        // Entities.kt's doc comment on the column and docs/arkarium/NEW_CHAPTER_NOTIFICATIONS.md).
+        // Entities.kt's doc comment on the column and docs/arkarium/foundational/architecture.md, Sync: entry points).
         // Backfills to 0 (off) for every existing row, synced or not - nobody is
         // opted into background notifications by a version bump they didn't ask for.
         val MIGRATION_11_12 = object : Migration(11, 12) {

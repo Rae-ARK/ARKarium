@@ -126,7 +126,7 @@ private fun readingModeFor(theme: Theme): ReadingMode = when (theme) {
 // Compose's LocalContext.current isn't guaranteed to be the Activity itself - it can be
 // a ContextWrapper (e.g. a ContextThemeWrapper) sitting in front of one - so this walks
 // up to find the real Activity instead of assuming a direct cast holds. Used below
-// (Stage 3.5 of SETTINGS_REDESIGN.md) to reach the reader's window for
+// (Stage 3.5 of docs/arkarium/implementation/settings-tts.md) to reach the reader's window for
 // FLAG_KEEP_SCREEN_ON; a silent no-op (window stays null, flag never set) is a safer
 // failure mode here than crashing on a bad cast.
 private tailrec fun Context.findActivity(): Activity? = when (this) {
@@ -185,7 +185,7 @@ fun ReaderScreen(
     // Read-aloud. See Tts.kt - one engine instance persists for the whole reading
     // session (including across Previous/Next), same reuse behavior as the state above.
     val tts = rememberChapterTts()
-    // Stage 3.4 of docs/arkarium/SETTINGS_REDESIGN.md: reassigned every recomposition
+    // Stage 3.4 of docs/arkarium/implementation/settings-tts.md: reassigned every recomposition
     // so the closure always captures whichever onNext this screen currently has (it
     // changes chapter-to-chapter, and is null at the last chapter) - cheap and
     // idempotent, so no LaunchedEffect/key needed. Passes 1f rather than
@@ -196,11 +196,11 @@ fun ReaderScreen(
     // gates this on autoContinueEnabled (off by default), so onChapterFinished being
     // set here is not itself a behavior change until a reader opts in on settings/tts.
     tts.onChapterFinished = { onNext?.invoke(1f) }
-    // Stage 3.5 of docs/arkarium/SETTINGS_REDESIGN.md: keeps the screen on for exactly
+    // Stage 3.5 of docs/arkarium/implementation/settings-tts.md: keeps the screen on for exactly
     // the duration of active read-aloud, gated by tts_keep_screen_on (off by default,
     // same reasoning as auto-continue above). Direct PreferencesManager access, same
     // pattern as everywhere else these four TTS keys are read - see
-    // SETTINGS_REDESIGN.md's "Open questions" for why TTS settings don't get a
+    // docs/arkarium/foundational/design-notes.md's "Settled decisions" for why TTS settings don't get a
     // ViewModel of their own. TTS is specifically a screen-off-friendly use case
     // (listening, not reading) that the rest of the reader isn't, so this ties the flag
     // to tts.isSpeaking rather than to the reader screen merely being open.

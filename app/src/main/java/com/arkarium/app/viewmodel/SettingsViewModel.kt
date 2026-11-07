@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
-// Stage 2.2 of Phase 2 (docs/arkarium/REFACTOR_PLAN.md) - the first of the plan's four
+// Stage 2.2 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the first of the plan's four
 // feature-scoped ViewModels pulled out of MainActivity. Deliberately the smallest of
 // the four: it owns no state MainActivity didn't already have (currentTheme,
 // currentSystemDefaultLightVariant, useCustomFolder, savedUri), it just re-exposes
