@@ -26,30 +26,66 @@ import com.arkarium.app.R
 // the chunking logic - see docs/arkarium/proposal/reader-playback.md F10.
 private const val TTS_MAX_CHUNK_CHARS = 3800
 
-// Splits `text` into pieces no longer than TTS_MAX_CHUNK_CHARS, preferring to break at
-// the last paragraph/sentence boundary inside each window so a split lands between
-// sentences rather than mid-word. Falls back to a hard cutoff only when a chunk has no
-// such boundary at all (e.g. one very long unbroken line).
-private fun splitForTts(text: String): List<String> {
+// Splits `text` into pieces no longer than `maxChunk`, breaking between sentences.
+// Sentence boundaries come from java.text.BreakIterator (ICU-backed on Android, no new
+// dependency), which handles CJK terminators (。！？), doesn't treat "3.14" / "Mr." as
+// sentence ends the way a bare '.' search did, and never reports a boundary inside a
+// surrogate pair. Whole sentences are packed greedily into each chunk. Only a single
+// sentence longer than `maxChunk` is hard-cut, and even then at the last whitespace /
+// CJK comma inside the window if there is one, and never between the two halves of a
+// surrogate pair. No text is dropped or duplicated; only whitespace at chunk edges is
+// trimmed. See docs/arkarium/proposal/robustness.md F11.
+internal fun splitForTts(
+    text: String,
+    maxChunk: Int = TTS_MAX_CHUNK_CHARS,
+    locale: java.util.Locale = java.util.Locale.getDefault()
+): List<String> {
+    require(maxChunk >= 2) { "maxChunk must be at least 2 (one surrogate pair)" }
     val trimmed = text.trim()
     if (trimmed.isEmpty()) return emptyList()
-    if (trimmed.length <= TTS_MAX_CHUNK_CHARS) return listOf(trimmed)
+    if (trimmed.length <= maxChunk) return listOf(trimmed)
 
     val chunks = mutableListOf<String>()
-    var start = 0
-    while (start < trimmed.length) {
-        val hardEnd = (start + TTS_MAX_CHUNK_CHARS).coerceAtMost(trimmed.length)
-        if (hardEnd == trimmed.length) {
-            chunks.add(trimmed.substring(start, hardEnd))
-            break
+    var chunkStart = 0
+    val iterator = java.text.BreakIterator.getSentenceInstance(locale)
+    iterator.setText(trimmed)
+
+    var sentenceStart = iterator.first()
+    var sentenceEnd = iterator.next()
+    while (sentenceEnd != java.text.BreakIterator.DONE) {
+        if (sentenceEnd - chunkStart > maxChunk) {
+            // This sentence doesn't fit on top of what's already in the chunk.
+            if (sentenceStart > chunkStart) {
+                chunks.add(trimmed.substring(chunkStart, sentenceStart))
+                chunkStart = sentenceStart
+            }
+            // Still too long on its own: hard-cut it into pieces.
+            while (sentenceEnd - chunkStart > maxChunk) {
+                val cut = hardCutIndex(trimmed, chunkStart, maxChunk)
+                chunks.add(trimmed.substring(chunkStart, cut))
+                chunkStart = cut
+            }
         }
-        val window = trimmed.substring(start, hardEnd)
-        val breakIndex = window.lastIndexOfAny(charArrayOf('\n', '.', '!', '?'))
-        val splitAt = if (breakIndex >= 0) breakIndex + 1 else window.length
-        chunks.add(trimmed.substring(start, start + splitAt))
-        start += splitAt
+        sentenceStart = sentenceEnd
+        sentenceEnd = iterator.next()
     }
+    if (chunkStart < trimmed.length) chunks.add(trimmed.substring(chunkStart))
     return chunks.map { it.trim() }.filter { it.isNotBlank() }
+}
+
+// Where to cut `text` when a single sentence starting at `start` is longer than
+// `maxChunk`: the last whitespace or CJK comma within the window if there is one,
+// otherwise the window's end - pulled back by one if that would land between a high
+// and low surrogate.
+private fun hardCutIndex(text: String, start: Int, maxChunk: Int): Int {
+    val windowEnd = start + maxChunk
+    var i = windowEnd
+    while (i > start + 1) {
+        val c = text[i - 1]
+        if (c.isWhitespace() || c == '\u3001' || c == '\uff0c') return i
+        i--
+    }
+    return if (Character.isHighSurrogate(text[windowEnd - 1])) windowEnd - 1 else windowEnd
 }
 
 /**

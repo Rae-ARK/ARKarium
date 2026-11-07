@@ -1,6 +1,6 @@
 # Robustness: cancellation, silent failure, duplicate state, input handling
 
-> **Kind:** proposal · **Status:** F6/F7 fixed in code, rest open · **Verified:** 2026-11-07 @ 5426a3d
+> **Kind:** proposal · **Status:** all fixed in code · **Verified:** 2026-11-07 @ 9cc65b9
 > **Origin:** [`engineering-review.md`](engineering-review.md) F6–F8, F11, F18, F20.
 
 ### F6. Cancellation swallowed in the new-chapter worker — fixed
@@ -33,20 +33,20 @@ or been deleted all produced the same result as a genuinely empty chapter
 file: blank reader content, with nothing to tell the two cases apart or let
 the user retry.
 
-**Fixed (commit 5426a3d):** the catch rethrows `CancellationException` and
-otherwise throws a new `ChapterReadException` instead of returning empty
-bytes. The one call site (`MainActivity.kt`, the reader's `LaunchedEffect`)
-now catches `ChapterReadException` and shows "Couldn't load this chapter.
-Pull to refresh or try again later." instead of silently rendering nothing.
+**Fixed, first pass (commit 5426a3d):** the catch rethrew
+`CancellationException` and otherwise threw a new `ChapterReadException`
+instead of returning empty bytes; the reader showed an error string in place
+of the chapter body. That string was still handed to `ReaderScreen` as if it
+were chapter text, and there was no retry.
 
-**Still open:** this is a minimal fix (an error string in place of the
-chapter body), not the sealed `Ok`/`Failed` result type the original review
-suggested, and there's no retry action yet — only the message. A proper fix
-would give `ChapterContentRepository` a sealed return type so the reader can
-offer a real retry button rather than requiring the user to navigate away and
-back.
+**Fixed, remainder:** `ChapterContentRepository.getTextContent` now returns a
+sealed `ChapterLoadResult` (`Ok` / `Failed`), still rethrowing
+`CancellationException`; `ChapterReadException` is removed. On `Failed`,
+`MainActivity` shows `ui/ChapterLoadErrorScreen` ("Try again" re-runs the
+load in place, "Back" leaves the reader) instead of `ReaderScreen`, so
+read-aloud and progress-saving never see error text as content.
 
-### F8. `MainActivity` and the worker each build their own `AppDatabase`
+### F8. `MainActivity` and the worker each build their own `AppDatabase` — fixed
 
 **Severity:** Low. **Tags:** V, E (Room's own singleton guidance not re-checked this pass).
 **Where:** `MainActivity.kt:493` (`db = AppDatabase.create(this)`),
@@ -64,10 +64,12 @@ small `object`-held singleton inside `AppDatabase.create()` itself (build once
 per process, return the cached instance on subsequent calls), not sharing a
 reference across Activity/Worker boundaries.
 
-### F11. `splitForTts` can cut mid-surrogate-pair, and only breaks on ASCII punctuation
+**Fixed:** `AppDatabase.create()` now returns that per-process instance.
+
+### F11. `splitForTts` can cut mid-surrogate-pair, and only breaks on ASCII punctuation — fixed
 
 **Severity:** Low. **Tags:** V (code read), I (CJK/emoji breakage not run on a device).
-**Where:** `ui/Tts.kt`, `splitForTts()`.
+**Where:** `playback/TtsPlaybackService.kt`, `splitForTts()` (was `ui/Tts.kt` when this was written).
 
 The hard cut at `TTS_MAX_CHUNK_CHARS` (3800) operates on `String` indices,
 which are UTF-16 code units; a surrogate pair (most emoji, some rare CJK
@@ -88,7 +90,16 @@ chunk exceeds the limit, no text is lost or duplicated across the returned
 chunks, and a CJK-only chapter actually produces more than one chunk when it
 exceeds the limit.
 
-### F18. `WebViewScreen` enables JS and DOM storage, and follows any link in-WebView
+**Fixed:** `splitForTts` packs whole `BreakIterator` sentences into each
+chunk and only hard-cuts a single sentence that is longer than the limit
+itself, at the last whitespace or CJK comma in the window, never between the
+two halves of a surrogate pair. `SplitForTtsTest` covers the three properties
+above plus decimal points and emoji. One limit worth knowing: `BreakIterator`
+has no abbreviation list, so "Mr. Smith" can still be a sentence boundary.
+That only matters when it happens to land on a chunk edge, and a break there
+is harmless for speech. Not run on a device.
+
+### F18. `WebViewScreen` enables JS and DOM storage, and follows any link in-WebView — fixed (links)
 
 **Severity:** Low. **Tags:** V.
 **Where:** `ui/WebViewScreen.kt`.
@@ -105,7 +116,15 @@ browser via an `Intent`, so a link embedded in author-controlled page content
 can't pivot the user to an arbitrary site while still appearing to be inside
 ARKarium.
 
-### F20. Some icons have `contentDescription = null` with no check that they're decorative
+**Fixed (links):** `shouldOverrideUrlLoading` keeps a tap inside the WebView only
+when its host matches the page the screen was opened to (`isSameSite`, ignoring
+`www.` and case). Any other `http(s)` or `mailto:` link goes to the system via
+`ACTION_VIEW`; any other scheme (`intent:`, `file:`, `javascript:`) is dropped.
+JS and DOM storage stay on deliberately: the author's site needs them, and
+with navigation restricted to that site the exposure is the site's own code.
+`WebViewLinkPolicyTest` covers `isSameSite`.
+
+### F20. Some icons have `contentDescription = null` with no check that they're decorative — audited
 
 **Severity:** Low. **Tags:** V.
 **Where:** at least one occurrence each in `AuthorPageScreen.kt`,
@@ -124,3 +143,20 @@ adjacent label has no accessible name at all with `null`).
 every icon-only `IconButton`/`Icon` specifically; give each a real
 `contentDescription` unless it sits directly beside visible text that already
 says the same thing.
+
+**Audited:** all 32 `contentDescription = null` sites across those files were
+read. 29 are decorative: an icon beside its own text label, or a cover or
+avatar image beside the title it belongs to. Left as `null`. Fixed:
+
+- `NovelDetailScreen`'s enlarged-cover dialog: the image is the only content,
+  now "Enlarged cover".
+- `ReaderScreen`'s title row under the top bar: the row's only text is the
+  fiction's name, so it gained `onClickLabel = "Back to fiction"`.
+- `NovelDetailScreen`'s notify row: merged into one accessibility node so a
+  disabled (not-synced) row doesn't leave an unlabeled switch.
+- Arc covers: a TalkBack custom action "View cover full-size", since a
+  double-tap is TalkBack's "activate" gesture and can never reach the app's own
+  double-tap-to-enlarge.
+
+Not done: nobody has run this with a screen reader on a device, which this
+entry's **Direction** called for. It was done by reading each site in context.

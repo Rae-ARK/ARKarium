@@ -9,7 +9,7 @@ Each doc is one ladder: a table of rungs, each `done`, `current`, `next`,
 |---|---|---|
 | [`tts-playback-controls.md`](tts-playback-controls.md) | 2 rungs done | 3: chunk-level progress indicator |
 | [`test-coverage.md`](test-coverage.md) | not started | 4.1 (next): `MetadataViewModelTest` |
-| [`engineering-backlog.md`](engineering-backlog.md) | 2 of 18 rungs done | 3 (next): two `AppDatabase` instances (F8) |
+| [`engineering-backlog.md`](engineering-backlog.md) | 8 of 18 rungs done | 9 (next): F1/F2 Room schema, migration tests, KAPT → KSP |
 
 **Rules for this folder**
 

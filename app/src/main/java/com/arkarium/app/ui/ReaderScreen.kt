@@ -413,7 +413,11 @@ fun ReaderScreen(
                     ReaderCoverThumbnail(coverUri = coverUri, modifier = Modifier.size(width = 40.dp, height = 56.dp))
                     Column(modifier = Modifier.padding(start = 12.dp)) {
                         Row(
-                            modifier = Modifier.clickable { onBackToFiction(currentProgress()) },
+                            // The row's only visible text is the fiction's title, which on
+                            // its own doesn't say that activating it goes back to the fiction.
+                            modifier = Modifier.clickable(onClickLabel = "Back to fiction") {
+                                onBackToFiction(currentProgress())
+                            },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
