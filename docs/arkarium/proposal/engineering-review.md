@@ -1,8 +1,8 @@
 # Engineering review: findings and proposed work
 
-> **Kind:** proposal · **Status:** **awaiting review** · **Verified:** 2026-11-07 @ b4fcc2f
+> **Kind:** proposal · **Status:** **awaiting review** — F1 (partially), F6, F7 fixed in code; detail docs written for every finding; rest undecided · **Verified:** 2026-11-07 @ 5426a3d
 > **Origin:** notes from a separate review session (code read plus web research), not an authoritative audit.
-> **Checked since:** each finding was re-read against the code on 2026-11-07. External guidance (library, platform, vendor behavior) was **not** re-checked.
+> **Checked since:** each finding was re-read against the code on 2026-11-07. External guidance (library, platform, vendor behavior) was **not** re-checked. The detail docs this file links to did not exist when this table was first written; they were filled in and F3 was corrected (see C3/C4) on the same date.
 
 Nothing here is decided or built. This file is the review entry point: it lists
 every finding, how well it is established, and what the owner must decide.
@@ -23,13 +23,13 @@ Severity is the reviewer's judgment of impact if left alone.
 
 | ID | Finding | Sev | Tags | Detail |
 |---|---|---|---|---|
-| F1 | Room wipes all user data when a migration is missing (`fallbackToDestructiveMigration`) | High | V | [`data-safety.md`](data-safety.md) |
-| F2 | No exported schema, no migration tests, KAPT instead of KSP | High | V, E | [`data-safety.md`](data-safety.md) |
-| F3 | `novelId` depends on SAF URIs; re-picking the folder or restoring a backup orphans overrides and progress | Med | V, I | [`data-safety.md`](data-safety.md) |
-| F4 | Manifest proves integrity, not authenticity; no rollback or freeze protection | Med | V, E | [`manifest-signing.md`](manifest-signing.md) |
-| F5 | SAF scan and sync cost several provider queries per file | Med | V, E | [`performance.md`](performance.md) |
-| F6 | Cancellation swallowed in the new-chapter worker | Med | V | [`robustness.md`](robustness.md) |
-| F7 | Unreadable chapter is shown as an empty chapter | Med | V | [`robustness.md`](robustness.md) |
+| F1 | Room wipes all user data when a migration is missing (`fallbackToDestructiveMigration`) | High | V | **Fixed** (fallback removed, 5426a3d); schema export + migration tests still open — [`data-safety.md`](data-safety.md) |
+| F2 | No exported schema, no migration tests, KAPT instead of KSP | High | V, E | Open — [`data-safety.md`](data-safety.md) |
+| F3 | `novelId` depends on SAF URIs for every novel, synced included; re-picking the folder deletes local novels' history and duplicates synced ones (corrected, see C3) | Med | V, I | Open — [`data-safety.md`](data-safety.md) |
+| F4 | Manifest proves integrity, not authenticity; no rollback or freeze protection | Med | V, E | Open — [`manifest-signing.md`](manifest-signing.md) |
+| F5 | SAF scan and sync cost several provider queries per file | Med | V, E | Open — [`performance.md`](performance.md) |
+| F6 | Cancellation swallowed in the new-chapter worker | Med | V | **Fixed** (5426a3d) — [`robustness.md`](robustness.md) |
+| F7 | Unreadable chapter is shown as an empty chapter | Med | V | **Fixed**, minimal (5426a3d); sealed result type still open — [`robustness.md`](robustness.md) |
 | F8 | Two code paths create separate `AppDatabase` instances | Low | V, E | [`robustness.md`](robustness.md) |
 | F9 | Reading position is a scroll fraction, so it drifts with font, spacing, width | Med | V, I | [`reader-playback.md`](reader-playback.md) |
 | F10 | TTS lives in a composable, so it dies on rotation or leaving the reader | High | V | [`reader-playback.md`](reader-playback.md) |
@@ -49,6 +49,8 @@ Severity is the reviewer's judgment of impact if left alone.
 
 - **C1.** [`relay-chain.md`](relay-chain.md) said the hash check makes a mirror safe to trust. It does not: a mirror can serve a self-consistent manifest and matching files. Fixed in the same change; signing (F4) is a prerequisite for that proposal.
 - **C2.** The review noted a source claiming `catch (e: Exception)` does not catch coroutine cancellation. That source is wrong; on the JVM `CancellationException` is an `IllegalStateException`, so it is caught. F6 stands.
+- **C3.** F3 assumed a synced novel's id is stable (derived from the relay slug) and only a local novel's id depends on the SAF URI. Re-reading `ScannerImpl.buildNovelEntity()` shows every novel's id — synced included — is `UUID.nameUUIDFromBytes(root.uri + ":" + child.uri)`; the relay slug only names the on-disk folder, not the Room row. Re-picking the library root therefore affects synced novels too, and `LibraryViewModel.startScan`'s stale-row handling makes the practical effect worse than "orphaned": a stale **local** novel is cascade-deleted (real data loss), a stale **synced** novel is kept at `MISSING_LOCALLY` while a duplicate fresh row is created under the new id. See [`data-safety.md`](data-safety.md) F3 for the corrected writeup.
+- **C4.** D3 below referred to "bug 5 in `bugs.md`". No such entry exists — `bugs.md` currently holds two open bugs, neither about local-folder identity. There never was a bug 5; the decision this review needs is answered directly in [`data-safety.md`](data-safety.md) F3 instead, see D3's corrected wording.
 
 ## What the review judged sound (no action)
 
@@ -60,7 +62,7 @@ Hash-verified sync, invariants S1–S9, incremental fingerprinting, the docs che
 |---|---|---|
 | D1 | For each finding: accept, defer, or reject? (fill in the table below) | all |
 | D2 | Adopt instrumented tests for Room migrations? [`design-notes.md`](../foundational/design-notes.md) currently ranks instrumented tests "not a priority"; F2 needs them. | F2 |
-| D3 | Outcome of bug 5 in [`bugs.md`](bugs.md) (local folders hidden or kept)? It shrinks or removes F3. | F3, F5 |
+| D3 | Give novels an id independent of the SAF root+child URI (see [`data-safety.md`](data-safety.md) F3), or accept the current cascade-delete-on-rescan/duplicate-row behavior as a known limitation? | F3, F5 |
 | D4 | Upgrade Kotlin to 2.x, Compose BOM and Navigation as one enabling step? It unlocks KSP, strong skipping, shared-element transitions, predictive back. | F2, F12, F14, F17 |
 | D5 | Who holds the manifest signing key, and how are rotation and expiry handled? | F4 |
 | D6 | Splash policy: once per install/update, tap to skip, chord default? | F13 |
