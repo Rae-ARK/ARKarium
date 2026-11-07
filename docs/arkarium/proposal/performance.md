@@ -1,6 +1,6 @@
 # Performance: SAF I/O, build/startup, recomposition, images
 
-> **Kind:** proposal · **Status:** nothing built yet; measurement should come before most of it · **Verified:** 2026-11-07 @ 5426a3d
+> **Kind:** proposal · **Status:** nothing built yet; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-07 @ b777145
 > **Origin:** [`engineering-review.md`](engineering-review.md) F5, F12–F15.
 
 ### F5. SAF scan and sync cost several provider queries per file

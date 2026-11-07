@@ -1,6 +1,6 @@
 # Bug reports
 
-> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-07 @ 291e6a1
+> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-07 @ b777145
 
 Open, unfixed bugs, one file per bug. A fixed bug's file is deleted; if the
 cause taught a rule, it goes in
@@ -25,4 +25,5 @@ Historic ARKster-era bug history is frozen in
 
 | Bug | Severity |
 |---|---|
+| [`critical/scan-reconcile-treats-errors-as-absence.md`](critical/scan-reconcile-treats-errors-as-absence.md) | critical |
 | [`other/notify-toggle-confirmation.md`](other/notify-toggle-confirmation.md) | other |
