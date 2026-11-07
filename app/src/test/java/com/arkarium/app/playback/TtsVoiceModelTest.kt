@@ -106,6 +106,30 @@ class TtsVoiceModelTest {
     }
 
     @Test
+    fun withFavoritesFirst_movesFavoritesToTheFront() {
+        val voices = listOf(voice("a", "en"), voice("b", "en"), voice("c", "en"))
+        assertEquals(
+            listOf("b", "a", "c"),
+            withFavoritesFirst(voices, favorites = setOf("b")).map { it.name }
+        )
+    }
+
+    @Test
+    fun withFavoritesFirst_preservesOrderWithinEachGroup() {
+        val voices = listOf(voice("a", "en"), voice("b", "en"), voice("c", "en"), voice("d", "en"))
+        assertEquals(
+            listOf("b", "d", "a", "c"),
+            withFavoritesFirst(voices, favorites = setOf("b", "d")).map { it.name }
+        )
+    }
+
+    @Test
+    fun withFavoritesFirst_noFavorites_leavesOrderUnchanged() {
+        val voices = listOf(voice("a", "en"), voice("b", "en"))
+        assertEquals(listOf("a", "b"), withFavoritesFirst(voices, favorites = emptySet()).map { it.name })
+    }
+
+    @Test
     fun voiceNameToApply_nullWhenNoStoredName() {
         assertNull(voiceNameToApply(null, listOf("a", "b")))
     }

@@ -134,4 +134,47 @@ class PreferencesManagerTest {
 
         assertEquals("en-gb-x-gbb#male_1-local", ttsVoiceNameOf(prefs))
     }
+
+    // --- rung 5 (tts-settings-rework.md): favorite voices -----------------------------
+
+    @Test
+    fun ttsFavoriteVoiceNames_withNoStoredValue_fallsBackToEmptySet() {
+        assertEquals(emptySet<String>(), ttsFavoriteVoiceNamesOf(emptyPreferences()))
+    }
+
+    @Test
+    fun ttsFavoriteVoiceNames_roundTripsAStoredSet() {
+        val prefs = mutablePreferencesOf()
+        prefs[TTS_FAVORITE_VOICES_KEY] = setOf("en-us-x-sfg#female_1-local", "en-gb-x-gbb#male_1-local")
+
+        assertEquals(
+            setOf("en-us-x-sfg#female_1-local", "en-gb-x-gbb#male_1-local"),
+            ttsFavoriteVoiceNamesOf(prefs)
+        )
+    }
+
+    // Mirrors toggleTtsFavoriteVoice's own read-current/flip/write-back shape
+    // (PreferencesManager.kt) against the pure reader, so the "add" half of
+    // that logic has JVM coverage without a real DataStore.
+    @Test
+    fun ttsFavoriteVoiceNames_toggleAddsAnAbsentName() {
+        val prefs = mutablePreferencesOf()
+        prefs[TTS_FAVORITE_VOICES_KEY] = setOf("voice-a")
+
+        val current = ttsFavoriteVoiceNamesOf(prefs)
+        prefs[TTS_FAVORITE_VOICES_KEY] = if ("voice-b" in current) current - "voice-b" else current + "voice-b"
+
+        assertEquals(setOf("voice-a", "voice-b"), ttsFavoriteVoiceNamesOf(prefs))
+    }
+
+    @Test
+    fun ttsFavoriteVoiceNames_toggleRemovesAPresentName() {
+        val prefs = mutablePreferencesOf()
+        prefs[TTS_FAVORITE_VOICES_KEY] = setOf("voice-a", "voice-b")
+
+        val current = ttsFavoriteVoiceNamesOf(prefs)
+        prefs[TTS_FAVORITE_VOICES_KEY] = if ("voice-a" in current) current - "voice-a" else current + "voice-a"
+
+        assertEquals(setOf("voice-b"), ttsFavoriteVoiceNamesOf(prefs))
+    }
 }

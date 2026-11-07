@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -35,6 +36,13 @@ internal val TTS_KEEP_SCREEN_ON_KEY = booleanPreferencesKey("tts_keep_screen_on"
 // ttsVoiceNameOf below and PreferencesManagerTest can both reach it without
 // a Context, same reasoning as those four.
 internal val TTS_VOICE_NAME_KEY = stringPreferencesKey("tts_voice_name")
+
+// Rung 5 of docs/arkarium/implementation/tts-settings-rework.md. A plain
+// Set<String> of Voice.getName() values - same name shape TTS_VOICE_NAME_KEY
+// already stores one of, so no new "how do I identify a voice" format is
+// introduced. File-scoped alongside the other tts_* keys for the same
+// JVM-testable, Context-free reason as those.
+internal val TTS_FAVORITE_VOICES_KEY = stringSetPreferencesKey("tts_favorite_voices")
 
 // Rung 4 of docs/arkarium/foundational/design-notes.md: the default-fallback logic for
 // the four tts_* keys, pulled out of PreferencesManager's property getters into plain
@@ -66,6 +74,14 @@ internal fun ttsKeepScreenOnOf(prefs: Preferences): Boolean =
 // here the way the other three have.
 internal fun ttsVoiceNameOf(prefs: Preferences): String? =
     prefs[TTS_VOICE_NAME_KEY]
+
+// Rung 5: empty set (no favorites) is the unset default, same "absence means
+// the harmless case" posture as the rest of this file. DataStore returns an
+// immutable Set from a stringSetPreferencesKey read; toggleTtsFavoriteVoice
+// below never mutates it in place, only writes a fresh `current - name` or
+// `current + name` set back.
+internal fun ttsFavoriteVoiceNamesOf(prefs: Preferences): Set<String> =
+    prefs[TTS_FAVORITE_VOICES_KEY] ?: emptySet()
 
 enum class Theme {
     LIGHT, DARK, WARM_PAPER,
@@ -218,6 +234,12 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     // only TtsSettingsScreen's voice picker calls setTtsVoiceName.
     val ttsVoiceName: Flow<String?> = safePrefs.map(::ttsVoiceNameOf)
 
+    // Rung 5 of docs/arkarium/implementation/tts-settings-rework.md: the
+    // voice page's star toggles membership in this set; favorites sort first
+    // within a language there (TtsVoiceModel.kt's withFavoritesFirst). Empty
+    // by default - see TTS_FAVORITE_VOICES_KEY's doc comment.
+    val ttsFavoriteVoiceNames: Flow<Set<String>> = safePrefs.map(::ttsFavoriteVoiceNamesOf)
+
     // Default false - see HAS_SEEN_COVER_ENLARGE_HINT_KEY's doc comment above.
     val hasSeenCoverEnlargeHint: Flow<Boolean> = safePrefs.map { prefs ->
         prefs[HAS_SEEN_COVER_ENLARGE_HINT_KEY] ?: false
@@ -303,6 +325,22 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
                 prefs.remove(TTS_VOICE_NAME_KEY)
             } else {
                 prefs[TTS_VOICE_NAME_KEY] = name
+            }
+        }
+    }
+
+    // Rung 5: flips `name`'s membership in the favorites set and writes the
+    // result back in the same `edit {}` transaction, so two taps in quick
+    // succession (the star is easy to double-tap) can't race each other the
+    // way a separate read-then-write pair could. `name` is a Voice.getName(),
+    // same identity TTS_VOICE_NAME_KEY already uses.
+    suspend fun toggleTtsFavoriteVoice(name: String) {
+        context.dataStore.edit { prefs ->
+            val current = prefs[TTS_FAVORITE_VOICES_KEY] ?: emptySet()
+            prefs[TTS_FAVORITE_VOICES_KEY] = if (name in current) {
+                current - name
+            } else {
+                current + name
             }
         }
     }
