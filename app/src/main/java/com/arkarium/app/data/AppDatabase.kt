@@ -7,6 +7,26 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
+// Thrown by AppDatabase.create() instead of Room's own IllegalStateException
+// specifically when the unhandled version Room hit is a downgrade (the running app's
+// migration list only goes up to some version lower than what's already on disk) -
+// see F23 in docs/arkarium/proposal/data-safety.md. Kept as an IllegalStateException
+// subtype so anything that already catches IllegalStateException around
+// AppDatabase.create() still catches this; callers that want the friendlier message
+// specifically (MainActivity.onCreate) catch this subtype first.
+class DatabaseDowngradeException(message: String) : IllegalStateException(message)
+
+// @Database must sit directly above the RoomDatabase subclass it annotates - an
+// annotation binds to the very next declaration, and with DatabaseDowngradeException's
+// class declaration (not just its doc comment) between this annotation and
+// `abstract class AppDatabase` below, @Database was annotating DatabaseDowngradeException
+// instead. Room's kapt pass then failed exactly as that implies: "Classes annotated
+// with @Database should extend androidx.room.RoomDatabase" (DatabaseDowngradeException
+// extends IllegalStateException, not RoomDatabase) and a second error trying to
+// generate DatabaseDowngradeException_Impl as a subclass of a class Kotlin makes
+// final by default. Moving the annotation back down here - after
+// DatabaseDowngradeException, not before it - is the fix; AppDatabase itself, its
+// entities list, and its version number are unchanged.
 @Database(
     entities = [
         NovelEntity::class,
@@ -21,15 +41,6 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     ],
     version = 13
 )
-// Thrown by AppDatabase.create() instead of Room's own IllegalStateException
-// specifically when the unhandled version Room hit is a downgrade (the running app's
-// migration list only goes up to some version lower than what's already on disk) -
-// see F23 in docs/arkarium/proposal/data-safety.md. Kept as an IllegalStateException
-// subtype so anything that already catches IllegalStateException around
-// AppDatabase.create() still catches this; callers that want the friendlier message
-// specifically (MainActivity.onCreate) catch this subtype first.
-class DatabaseDowngradeException(message: String) : IllegalStateException(message)
-
 abstract class AppDatabase : RoomDatabase() {
     abstract fun novelDao(): NovelDao
     abstract fun authorDao(): AuthorDao
