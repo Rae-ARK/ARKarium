@@ -73,6 +73,13 @@ Navigation 2.8+ (unlocks predictive back, F17). Treat as one coordinated
 upgrade rather than four separate ones, since they share the same
 compatibility matrix.
 
+**Decided (D4):** yes, but staged rather than as one single bump — Kotlin
+2.x plus the Compose compiler plugin first, then the Compose BOM, then
+Navigation, each as its own change. Benchmark (once the `:benchmark` module
+in step 2 above exists) between each step, so that if cold start or scroll
+performance regresses, there's exactly one suspect rather than three
+simultaneous candidate causes.
+
 ### F13. Splash: ~2.75s per cold start, per-frame recomposition, main-thread synthesis
 
 **Severity:** Medium. **Tags:** V for what the code does; cost itself unmeasured (no Macrobenchmark exists yet, see F12).
@@ -107,6 +114,14 @@ back.
   and cache the PCM (or ship a small pre-rendered OGG) instead of
   regenerating it every cold start.
 - Default the chord off, or request transient audio focus before playing it.
+
+**Decided (D6):** full ~2.75s splash sequence once per install/update
+(the `BuildConfig.VERSION_CODE` comparison already proposed above), a short
+~300ms fade on every other launch, tap-to-skip always available, and the
+chord **off by default** rather than requesting audio focus — simpler than
+building and maintaining transient-focus handling for a one-off decorative
+sound, and it removes F13's "plays over whatever else the user has playing"
+problem outright instead of just making it briefer.
 
 ### F14. Lazy lists mostly unkeyed; derived data not remembered; non-lifecycle-aware Flow collection
 
