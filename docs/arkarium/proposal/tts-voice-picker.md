@@ -1,6 +1,6 @@
 # In-app TTS voice and language picker
 
-> **Kind:** proposal · **Status:** design only · **Verified:** 2026-11-07 @ 291e6a1
+> **Kind:** proposal · **Status:** steps 1-4 built; remaining work moved to [`../implementation/tts-settings-rework.md`](../implementation/tts-settings-rework.md) · **Verified:** 2026-11-07 @ 8e0a937
 > **Builds on:** single-voice system TTS already shipped (see
 > [`../foundational/architecture.md`](../foundational/architecture.md),
 > Text-to-speech) and `settings/tts`
@@ -16,6 +16,13 @@
 > feature. See "Relationship to multi-voice" below.
 
 ## The actual gap
+
+> **Written before steps 1-4 shipped.** The preference key, the service's voice
+> list and `setVoice()`, the `ChapterTtsState` pass-through and a voice picker on
+> `settings/tts` now exist; the picker is a dialog and the "Change voice" button
+> still opens the system settings. What is left, and the defects found in what
+> was built, are in the implementation ladder linked above. The paragraphs
+> below describe the gap as it was.
 
 `TtsSettingsScreen`'s "Change voice" button does not do what its label
 implies. It fires an intent to the *system* TTS settings
