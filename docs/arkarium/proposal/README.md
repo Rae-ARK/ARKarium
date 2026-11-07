@@ -7,7 +7,7 @@ documented but **not being worked on**. This is the **future**.
 |---|---|---|
 | [`ideas.md`](ideas.md) | backlog | Small features and gaps, one row each. |
 | [`tts-multivoice.md`](tts-multivoice.md) | feature | Character-aware multi-voice TTS (the planned differentiator). |
-| [`reader-settings.md`](reader-settings.md) | feature | A "Reader" settings page: which of a reference app's six reader switches fit ARKarium, and what must exist first. |
+| [`reader-settings.md`](reader-settings.md) | feature | A "Reader" settings page: which of a reference app's six reader switches fit ARKarium, and what must exist first. The cheap batch (defaults, font family, keep-screen-on, fullscreen, opt-in brightness slider) is built - see [`architecture.md`](../foundational/architecture.md)'s "Reading and local state"; this doc now covers what's left (multi-document, day/night button, volume slider, column count, bookmarks). |
 | [`relay-chain.md`](relay-chain.md) | feature | Multi-relay fallback. |
 | [`backend-social.md`](backend-social.md) | feature | Gating, comments, ratings, position sync without owning a backend. |
 | [`bugs/`](bugs/README.md) | reports | Open bugs, split into `critical/` and `other/`. |
