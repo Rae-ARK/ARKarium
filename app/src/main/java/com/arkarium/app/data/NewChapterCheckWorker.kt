@@ -53,6 +53,12 @@ class NewChapterCheckWorker(
         for (novel in candidates) {
             try {
                 checkOneNovel(db, scanner, syncManager, libraryRoot, novel)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // The worker's scope has been cancelled (WorkManager stopping us, e.g.
+                // constraints no longer met) - propagate instead of swallowing, or this
+                // loop keeps hitting the network for every remaining novel after the
+                // coroutine is supposed to have stopped.
+                throw e
             } catch (e: Exception) {
                 // One novel's manifest fetch failing (network blip, relay hiccup) shouldn't
                 // block every other novel in this pass from being checked - same
