@@ -52,7 +52,9 @@ import com.arkarium.app.ui.MetadataSearchDialog
 import com.arkarium.app.ui.NovelDetailScreen
 import com.arkarium.app.data.ChapterLoadResult
 import com.arkarium.app.ui.ChapterLoadErrorScreen
+import com.arkarium.app.ui.ReaderFontFamily
 import com.arkarium.app.ui.ReaderScreen
+import com.arkarium.app.ui.ReaderSettingsScreen
 import com.arkarium.app.ui.SettingsScreen
 import com.arkarium.app.ui.SplashScreen
 import com.arkarium.app.ui.SplashSettingsScreen
