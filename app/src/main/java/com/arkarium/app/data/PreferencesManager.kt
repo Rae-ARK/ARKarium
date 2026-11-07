@@ -26,6 +26,15 @@ internal val TTS_DEFAULT_RATE_KEY = floatPreferencesKey("tts_default_rate")
 internal val TTS_PITCH_KEY = floatPreferencesKey("tts_pitch")
 internal val TTS_AUTO_CONTINUE_KEY = booleanPreferencesKey("tts_auto_continue")
 internal val TTS_KEEP_SCREEN_ON_KEY = booleanPreferencesKey("tts_keep_screen_on")
+// Step 1 of docs/arkarium/proposal/tts-voice-picker.md's suggested path.
+// Stores Voice.getName() (not a Locale) since the name alone is what
+// TtsPlaybackService.setVoice() needs to re-resolve a Voice out of
+// TextToSpeech.getVoices() - see that proposal's "New preference key"
+// section. File-scoped alongside the four keys above (not inside
+// PreferencesManager's companion object, where it originally lived) so
+// ttsVoiceNameOf below and PreferencesManagerTest can both reach it without
+// a Context, same reasoning as those four.
+internal val TTS_VOICE_NAME_KEY = stringPreferencesKey("tts_voice_name")
 
 // Rung 4 of docs/arkarium/foundational/design-notes.md: the default-fallback logic for
 // the four tts_* keys, pulled out of PreferencesManager's property getters into plain
@@ -46,6 +55,17 @@ internal fun ttsAutoContinueOf(prefs: Preferences): Boolean =
 
 internal fun ttsKeepScreenOnOf(prefs: Preferences): Boolean =
     prefs[TTS_KEEP_SCREEN_ON_KEY] ?: false
+
+// Step 1/5 of docs/arkarium/proposal/tts-voice-picker.md, added alongside the
+// four tts_* functions above rather than left as an inline prefs[KEY] read
+// on the ttsVoiceName flow below - same reason as those four: a
+// Context/DataStore-free function PreferencesManagerTest can exercise
+// directly against mutablePreferencesOf()/emptyPreferences(). Default null
+// ("engine/system default") is TTS_VOICE_NAME_KEY's own documented fallback
+// on the flow this backs; there's no Float/Boolean default to fall back to
+// here the way the other three have.
+internal fun ttsVoiceNameOf(prefs: Preferences): String? =
+    prefs[TTS_VOICE_NAME_KEY]
 
 enum class Theme {
     LIGHT, DARK, WARM_PAPER,
@@ -99,12 +119,6 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         // (repeat launches, sound in a quiet/public setting, etc.).
         private val SPLASH_ANIMATION_ENABLED_KEY = booleanPreferencesKey("splash_animation_enabled")
         private val SPLASH_MUSIC_ENABLED_KEY = booleanPreferencesKey("splash_music_enabled")
-
-        // Step 1 of docs/arkarium/proposal/tts-voice-picker.md's suggested path. Stores
-        // Voice.getName() (not a Locale) since the name alone is what
-        // TtsPlaybackService.setVoice() needs to re-resolve a Voice out of
-        // TextToSpeech.getVoices() - see that proposal's "New preference key" section.
-        private val TTS_VOICE_NAME_KEY = stringPreferencesKey("tts_voice_name")
     }
 
     // libraryUri.collect() and theme.collect() run unattended in MainActivity.onCreate,
@@ -193,9 +207,7 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     // once into the engine by setInitialRateAndPitch alongside rate/pitch (see
     // TtsPlaybackService) and never written back by a live, mid-session control -
     // only TtsSettingsScreen's voice picker calls setTtsVoiceName.
-    val ttsVoiceName: Flow<String?> = safePrefs.map { prefs ->
-        prefs[TTS_VOICE_NAME_KEY]
-    }
+    val ttsVoiceName: Flow<String?> = safePrefs.map(::ttsVoiceNameOf)
 
     override suspend fun setLibraryUri(uri: String) {
         context.dataStore.edit { prefs ->

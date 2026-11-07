@@ -40,95 +40,111 @@ data class LegalSection(
 // must not describe ARKarium as if it still only reads files you already have
 // lying around on disk. Keep this file in sync if the app's actual network/data
 // behavior changes (a new network call, a new local data store, etc.).
+// Wording pass: rewritten in the register of a standard consumer-app privacy
+// policy / terms of service (defined terms, formal but plain language,
+// present-tense statements of fact rather than first-person asides) rather
+// than the earlier conversational "here's what the code does" phrasing.
+// Factual content is unchanged from the previous version except where noted
+// inline (e.g. the sync destination no longer names its specific hostname -
+// see "Content synchronization" below).
 object LegalContent {
 
     val privacyPolicy = listOf(
         LegalSection(
             "Overview",
-            "ARKarium is a local-first, privacy-first app: your library lives on " +
-                "your device, reading works fully offline once content is synced, and " +
-                "there are no user accounts, no sign-in, no analytics, no " +
-                "crash-reporting services, and no ads. ARKarium does make network " +
-                "requests as a normal part of how it works - syncing fiction from its " +
-                "distribution relay is the whole point of the app - and the sections " +
-                "below describe exactly what those requests are and are not.",
+            "This Privacy Policy explains what information ARKarium (\"the App\") " +
+                "accesses, stores, and transmits, and why. The App is designed to be " +
+                "local-first: your library is stored on your device, reading works " +
+                "fully offline once content has been synchronized, and the App has " +
+                "no user accounts, no sign-in, no analytics, no crash-reporting " +
+                "services, and no advertising. The App does make network requests as " +
+                "part of its normal operation - synchronizing fiction from its " +
+                "distribution service is a core function of the App - and each " +
+                "section below describes exactly what those requests do and do not " +
+                "involve.",
             icon = Icons.Filled.PrivacyTip
         ),
         LegalSection(
             "Your library folder",
-            "ARKarium reads from, and writes synced fiction into, the single folder " +
-                "you choose via Android's Storage Access Framework (SAF). It only " +
-                "writes files it downloaded for a fiction you explicitly added or " +
-                "re-synced (see \"Content sync\" below), and it only removes files " +
-                "inside that folder that it previously wrote itself as part of a " +
-                "sync - it never touches, deletes, or reorganizes files you placed " +
-                "there by hand. It never copies, uploads, or otherwise sends the " +
-                "existing contents of your library anywhere; all scanning and " +
-                "indexing of your files happens entirely on your device.",
+            "The App reads from, and writes synchronized content into, a single " +
+                "folder you select using Android's Storage Access Framework (SAF). " +
+                "It writes only the files it downloads for a title you have " +
+                "explicitly added or re-synchronized (see \"Content synchronization\" " +
+                "below), and it removes only files within that folder that it " +
+                "previously wrote as part of a synchronization; it does not modify, " +
+                "delete, or reorganize any file you placed there yourself. The App " +
+                "does not copy, upload, or otherwise transmit the existing contents " +
+                "of your library; all scanning and indexing of your files takes " +
+                "place entirely on your device.",
             icon = Icons.Filled.Folder
         ),
         LegalSection(
-            "Content sync (core feature, not a side lookup)",
-            "When you add a fiction from ARKarium's built-in list, or tap to sync " +
-                "one again, the app makes an HTTPS request to Rae-ARK's own content " +
-                "relay (currently hosted at novels.horizonarkstudio.workers.dev) to " +
-                "fetch that fiction's manifest and chapter files, and writes them " +
-                "into your library folder. This is first-party infrastructure run by " +
-                "the same project as ARKarium itself, not an unrelated third-party " +
-                "service, and it requires no account or sign-in. Each request only " +
-                "identifies the fiction being fetched (by a fixed, built-in slug) - " +
-                "nothing about your device, your library contents, or your reading " +
-                "history is included or needed. As with any network request, the " +
-                "relay sees ordinary connection metadata (such as your IP address) " +
-                "that any server sees from any client; ARKarium does not layer any " +
-                "additional tracking, identifiers, or analytics on top of that.",
+            "Content synchronization",
+            "When you add a title from the App's built-in catalog, or request that " +
+                "an existing title be re-synchronized, the App makes an HTTPS " +
+                "request to the publisher's own content distribution service to " +
+                "retrieve that title's manifest and chapter files, and writes them " +
+                "into your library folder. This service is first-party " +
+                "infrastructure operated by the same project as the App, is not an " +
+                "unaffiliated third-party service, and requires no account or " +
+                "sign-in. Each request identifies only the title being retrieved, by " +
+                "a fixed identifier built into the App; no information about your " +
+                "device, your library contents, or your reading history is included " +
+                "or required. As with any network request, the distribution service " +
+                "receives ordinary connection metadata (such as your IP address) " +
+                "that any server receives from any client; the App does not add any " +
+                "further tracking, identifiers, or analytics to that request.",
             icon = Icons.Filled.CloudSync
         ),
         LegalSection(
-            "Metadata lookup (opt-in, per novel)",
-            "Separately from sync, ARKarium can look up cover art, description, and " +
-                "genre tags for a novel already in your library. This only happens " +
-                "when you manually tap \"Fetch info\" on that novel, and it sends " +
-                "only that novel's title to the Google Books API - nothing else " +
-                "about your library or device is sent with that request. Google's " +
-                "handling of that request is governed by their own privacy policy, " +
-                "not this one.",
+            "Metadata lookup (optional, per title)",
+            "Separately from synchronization, the App can look up cover art, a " +
+                "description, and genre tags for a title already in your library. " +
+                "This occurs only when you select \"Fetch info\" for that title, and " +
+                "the request sent includes only that title's name - no other " +
+                "information about your library or device is included. This lookup " +
+                "is performed using the Google Books API; Google's handling of that " +
+                "request is governed by Google's own privacy policy, not this one.",
             icon = Icons.Filled.Wifi
         ),
         LegalSection(
-            "Data stored on your device",
-            "Novel, arc, chapter, and author details discovered while scanning or " +
-                "syncing are stored locally in an on-device database, along with your " +
-                "reading progress, which fictions you've synced and at what version, " +
-                "and app preferences (theme, selected library folder, and similar " +
-                "settings). None of this leaves your device as part of normal app " +
-                "use - it exists only so ARKarium can tell what's already synced, " +
-                "what's changed, and where you left off.",
+            "Information stored on your device",
+            "Title, arc, chapter, and author information discovered while scanning " +
+                "or synchronizing is stored locally in an on-device database, along " +
+                "with your reading progress, a record of which titles you have " +
+                "synchronized and at what version, and your app preferences (such as " +
+                "theme and selected library folder). None of this information leaves " +
+                "your device during normal use of the App; it exists solely so the " +
+                "App can determine what has already been synchronized, what has " +
+                "changed, and where you left off reading.",
             icon = Icons.Filled.Storage
         ),
         LegalSection(
             "Crash reports",
-            "If ARKarium crashes, a trace is saved locally on your device so it can " +
-                "be shown to you on the next launch to help with debugging. This " +
-                "trace stays on your device and is never sent anywhere automatically.",
+            "If the App crashes, a diagnostic trace is saved locally on your device " +
+                "and may be shown to you on the next launch to assist with " +
+                "troubleshooting. This trace remains on your device and is never " +
+                "transmitted automatically.",
             icon = Icons.Filled.BugReport
         ),
         LegalSection(
             "Third parties",
-            "ARKarium does not sell, share, or otherwise disclose your data to third " +
-                "parties. The two network destinations described above are: " +
-                "ARKarium's own content relay (first-party, run by the same project, " +
-                "used to deliver the fiction you choose to sync) and, only if you " +
-                "opt in per novel, the Google Books API (used solely for metadata " +
-                "lookup). Outside of those two, ARKarium does not collect data to " +
-                "share in the first place.",
+            "The App does not sell, share, or otherwise disclose your information " +
+                "to third parties. The only two network destinations described in " +
+                "this policy are: the App's own content distribution service " +
+                "(first-party, operated by the same project, used to deliver the " +
+                "titles you choose to synchronize) and, only where you have opted " +
+                "in for a specific title, the Google Books API (used solely for " +
+                "metadata lookup). Outside of these two destinations, the App does " +
+                "not collect information that could be shared in the first place.",
             icon = Icons.Filled.Groups
         ),
         LegalSection(
             "Changes to this policy",
-            "ARKarium is under active development. This policy may be updated " +
-                "alongside the app; the project's official repository is the source " +
-                "of truth for the current version.",
+            "The App is under active development, and this Privacy Policy may be " +
+                "updated from time to time to reflect changes to the App. The " +
+                "project's official repository is the authoritative source for the " +
+                "current version of this policy.",
             icon = Icons.Filled.Update
         )
     )
@@ -136,33 +152,36 @@ object LegalContent {
     val termsAndConditions = listOf(
         LegalSection(
             "Acceptance of terms",
-            "By installing or using ARKarium, you agree to these terms. If you don't " +
-                "agree with them, please don't use the app.",
+            "By installing or using ARKarium (\"the App\"), you agree to be bound by " +
+                "these Terms and Conditions (\"these Terms\"). If you do not agree to " +
+                "these Terms, you should not install or use the App.",
             icon = Icons.Filled.Gavel
         ),
         LegalSection(
             "What ARKarium is",
-            "ARKarium is a reader built around direct, author-to-reader distribution " +
-                "of independently published fiction: it syncs fiction published by " +
-                "Rae ARK's own content relay directly into a local library on your " +
-                "device, then reads it fully offline afterward. It also indexes and " +
-                "displays any other novel files (txt/md, with more formats planned) " +
-                "you already have in that same library folder. Either way, ARKarium " +
-                "is a client, not a publisher: it doesn't host content on a server of " +
-                "its own on your behalf, and for files you've added yourself it " +
-                "doesn't endorse, moderate, or take a position on where they came " +
-                "from.",
+            "The App is a reading application built around direct, author-to-reader " +
+                "distribution of independently published fiction: it synchronizes " +
+                "titles made available through its publisher's own content " +
+                "distribution service directly into a local library on your device, " +
+                "which can then be read fully offline. The App also indexes and " +
+                "displays other compatible novel files (currently .txt and .md, with " +
+                "additional formats planned) that you have placed in that same " +
+                "library folder yourself. In either case, the App functions solely " +
+                "as a client: it does not host content on a server on your behalf, " +
+                "and with respect to files you have added yourself, it does not " +
+                "endorse, moderate, or take any position on their source.",
             icon = Icons.Filled.Info
         ),
         LegalSection(
-            "Content you sync vs. content you add yourself",
-            "Fiction you sync through ARKarium's built-in list is the author's own " +
-                "work, distributed under whatever terms the author sets for it - " +
-                "that's separate from, and not affected by, ARKarium's own software " +
-                "license below. For any other files you place in your library folder " +
-                "yourself, you are solely responsible for their legality; ARKarium " +
-                "doesn't inspect, moderate, or take a position on the source of files " +
-                "it didn't put there.",
+            "Content you synchronize vs. content you add yourself",
+            "Fiction synchronized through the App's built-in catalog remains the " +
+                "property of its respective author and is distributed under " +
+                "whatever terms that author sets for it; this is separate from, and " +
+                "not affected by, the App's own software license described below. " +
+                "For any other files you place in your library folder yourself, you " +
+                "are solely responsible for ensuring you have the right to possess " +
+                "and use them; the App does not inspect, moderate, or take any " +
+                "position on the source of files it did not place there.",
             icon = Icons.Filled.MenuBook
         ),
         LegalSection(
@@ -174,32 +193,35 @@ object LegalContent {
             // the same legal claim made in two places, and having them disagree is
             // worse than either one alone. If the project's actual license ever
             // changes, update both together.
-            "ARKarium is proprietary software. Copyright \u00A9 2026 Rae-ARK. All " +
-                "rights reserved. No permission is granted to copy, modify, " +
-                "distribute, sublicense, or otherwise use this software or its " +
-                "source code, in whole or in part, without prior written permission " +
-                "from the copyright holder.",
+            "The App is proprietary software. Copyright \u00A9 2026 Rae-ARK. All " +
+                "rights reserved. No part of this software or its source code may be " +
+                "copied, modified, distributed, sublicensed, or otherwise used, in " +
+                "whole or in part, without the prior written permission of the " +
+                "copyright holder.",
             icon = Icons.Filled.Description
         ),
         LegalSection(
-            "No warranty",
-            "ARKarium is provided \"as is\", without warranty of any kind, express or " +
-                "implied, including but not limited to warranties of merchantability, " +
-                "fitness for a particular purpose, or non-infringement, to the maximum " +
-                "extent permitted by applicable law. Use it at your own risk.",
+            "Disclaimer of warranty",
+            "The App is provided \"as is\", without warranty of any kind, express or " +
+                "implied, including but not limited to the implied warranties of " +
+                "merchantability, fitness for a particular purpose, and " +
+                "non-infringement, to the maximum extent permitted by applicable " +
+                "law. You use the App at your own risk.",
             icon = Icons.Filled.VerifiedUser
         ),
         LegalSection(
-            "No accounts, no purchases",
-            "ARKarium has no accounts, subscriptions, or in-app purchases. There is " +
-                "nothing to manage beyond the app's own local settings.",
+            "No accounts or purchases",
+            "The App does not offer user accounts, subscriptions, or in-app " +
+                "purchases. There is nothing to manage beyond the App's own local " +
+                "settings.",
             icon = Icons.Filled.Block
         ),
         LegalSection(
-            "Changes to the app",
-            "ARKarium is actively developed and features, screens, and behavior may " +
-                "change between versions. The project's GitHub repository tracks the " +
-                "current state and history of those changes.",
+            "Changes to the App",
+            "The App is under active development, and its features, screens, and " +
+                "behavior are subject to change between versions. The project's " +
+                "official repository is the authoritative record of the current " +
+                "state of the App and the history of such changes.",
             icon = Icons.Filled.Update
         )
     )
