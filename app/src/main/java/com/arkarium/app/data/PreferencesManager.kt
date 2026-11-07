@@ -78,6 +78,11 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         private val TTS_PITCH_KEY = floatPreferencesKey("tts_pitch")
         private val TTS_AUTO_CONTINUE_KEY = booleanPreferencesKey("tts_auto_continue")
         private val TTS_KEEP_SCREEN_ON_KEY = booleanPreferencesKey("tts_keep_screen_on")
+        // Step 1 of docs/arkarium/proposal/tts-voice-picker.md's suggested path. Stores
+        // Voice.getName() (not a Locale) since the name alone is what
+        // TtsPlaybackService.setVoice() needs to re-resolve a Voice out of
+        // TextToSpeech.getVoices() - see that proposal's "New preference key" section.
+        private val TTS_VOICE_NAME_KEY = stringPreferencesKey("tts_voice_name")
     }
 
     // libraryUri.collect() and theme.collect() run unattended in MainActivity.onCreate,
@@ -169,6 +174,15 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         prefs[TTS_KEEP_SCREEN_ON_KEY] ?: false
     }
 
+    // null means "engine/system default" - same "unset means default" posture as
+    // ttsAutoContinue/ttsKeepScreenOn above, not a third false-ish sentinel. Seeded
+    // once into the engine by setInitialRateAndPitch alongside rate/pitch (see
+    // TtsPlaybackService) and never written back by a live, mid-session control -
+    // only TtsSettingsScreen's voice picker calls setTtsVoiceName.
+    val ttsVoiceName: Flow<String?> = safePrefs.map { prefs ->
+        prefs[TTS_VOICE_NAME_KEY]
+    }
+
     override suspend fun setLibraryUri(uri: String) {
         context.dataStore.edit { prefs ->
             prefs[LIBRARY_URI_KEY] = uri
@@ -237,6 +251,19 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     suspend fun setTtsKeepScreenOn(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[TTS_KEEP_SCREEN_ON_KEY] = enabled
+        }
+    }
+
+    // `name` null clears back to "engine/system default" by removing the key
+    // entirely, rather than storing an empty string - keeps ttsVoiceName's
+    // null-means-default read above a single, unambiguous case.
+    suspend fun setTtsVoiceName(name: String?) {
+        context.dataStore.edit { prefs ->
+            if (name == null) {
+                prefs.remove(TTS_VOICE_NAME_KEY)
+            } else {
+                prefs[TTS_VOICE_NAME_KEY] = name
+            }
         }
     }
 }

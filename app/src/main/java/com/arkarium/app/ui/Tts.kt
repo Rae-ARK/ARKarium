@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
 import android.os.IBinder
+import android.speech.tts.Voice
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +51,17 @@ class ChapterTtsState internal constructor() {
         internal set
 
     var speechRate by mutableFloatStateOf(1.0f)
+        internal set
+
+    // Step 3 of docs/arkarium/proposal/tts-voice-picker.md: mirrors
+    // TtsPlaybackService.availableVoices/currentVoiceName the same way the properties
+    // above mirror its speaking/available/paused state - pulled fresh in attach()
+    // below, not pushed live mid-session (the engine's voice list doesn't change
+    // during a session the way isSpeaking does).
+    var availableVoices by mutableStateOf<List<Voice>>(emptyList())
+        internal set
+
+    var currentVoiceName by mutableStateOf<String?>(null)
         internal set
 
     // Stage 3.4 of docs/arkarium/implementation/settings-tts.md. Pushed straight through
@@ -105,6 +117,8 @@ class ChapterTtsState internal constructor() {
         isAvailable = svc.isAvailable
         isPaused = svc.isPaused
         speechRate = svc.speechRate
+        availableVoices = svc.availableVoices
+        currentVoiceName = svc.currentVoiceName
         svc.autoContinueEnabled = autoContinueEnabled
     }
 
@@ -123,6 +137,17 @@ class ChapterTtsState internal constructor() {
     fun setRate(rate: Float) {
         speechRate = rate
         service?.setRate(rate)
+    }
+
+    // Pass-through to TtsPlaybackService.setVoice() - "push live" the same way
+    // setRate() does, per tts-voice-picker.md's UI sketch ("Selecting a row calls
+    // ChapterTtsState.setVoice() immediately if a service is attached"). Only
+    // advances currentVoiceName when the service actually resolved the name (its
+    // own silent-no-op rule), so picking a voice that fails to resolve doesn't make
+    // this controller claim a voice is active that the engine never actually set.
+    fun setVoice(name: String?) {
+        service?.setVoice(name)
+        currentVoiceName = service?.currentVoiceName
     }
 
     // Starts (or restarts) the attached service and begins reading `text` aloud under
@@ -208,8 +233,17 @@ fun rememberChapterTts(): ChapterTtsState {
                 coroutineScope.launch {
                     val defaultRate = prefsManager.ttsDefaultRate.first()
                     val defaultPitch = prefsManager.ttsPitch.first()
-                    svc.setInitialRateAndPitch(defaultRate, defaultPitch)
+                    // tts-voice-picker.md Step 2/3: the voice list isn't populated until
+                    // the engine's onInit callback runs, which can land after or before
+                    // this attach - svc.availableVoices is read fresh right after the
+                    // seed call below rather than cached from the connection callback's
+                    // own earlier read, so a voice list that only became non-empty in
+                    // between isn't missed here.
+                    val defaultVoiceName = prefsManager.ttsVoiceName.first()
+                    svc.setInitialRateAndPitch(defaultRate, defaultPitch, defaultVoiceName)
                     state.speechRate = svc.speechRate
+                    state.availableVoices = svc.availableVoices
+                    state.currentVoiceName = svc.currentVoiceName
                 }
             }
 

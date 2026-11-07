@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.IBinder
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.arkarium.app.MainActivity
@@ -109,12 +110,30 @@ class TtsPlaybackService : Service() {
     var speechRate = 1.0f
         private set
 
+    // Step 2 of docs/arkarium/proposal/tts-voice-picker.md. Populated once from
+    // engine?.voices inside onInit below, alongside isAvailable - empty until the
+    // engine finishes initializing, same timing as isAvailable itself. Exposed as a
+    // plain List (not a Flow) since, like isSpeaking/isAvailable above, it's state
+    // this service owns outright and pushes through Listener/attach(), not something
+    // DataStore-backed.
+    var availableVoices: List<Voice> = emptyList()
+        private set
+
     // Opaque id of what the current session is reading (ReaderScreen passes the chapter
     // id), set by start() and cleared by stop(). Lets a reader that re-attaches - back
     // from the TTS settings page, after a rotation, or reopened while a session played
     // on - tell "this session is reading the chapter on screen" from "this is a stale
     // session for another chapter". Null when no session was started with a key.
     var sessionKey: String? = null
+        private set
+
+    // Mirrors whatever voice is actually active on the engine right now (null = still
+    // on the engine's own default). Updated by setInitialRateAndPitch's seed-once call
+    // and by setVoice() below - TtsSettingsScreen's "current selection" row reads this
+    // (via ChapterTtsState, Step 3) rather than re-deriving it from the raw preference,
+    // since a stored name that no longer resolves (see setVoice's doc comment) must
+    // show as "System default" here too, not as a stale string.
+    var currentVoiceName: String? = null
         private set
 
     // Stage 3.4 of docs/arkarium/implementation/settings-tts.md, moved here unchanged:
@@ -151,6 +170,11 @@ class TtsPlaybackService : Service() {
         ensureChannel()
         engine = TextToSpeech(applicationContext) { status ->
             isAvailable = status == TextToSpeech.SUCCESS
+            // engine?.voices can itself be null on some engines/OEM builds even after a
+            // SUCCESS init - orEmpty() keeps availableVoices a plain empty list rather
+            // than forcing every caller (TtsSettingsScreen's grouping, Step 4) to
+            // null-check it too.
+            availableVoices = engine?.voices?.toList().orEmpty()
             listener?.onAvailabilityChanged(isAvailable)
         }
         engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
@@ -194,12 +218,33 @@ class TtsPlaybackService : Service() {
     // defaultsApplied's doc comment above. Harmless to call again (it's a no-op after
     // the first time), so ui/Tts.kt calls it unconditionally on every attach rather
     // than tracking "did I already do this" on the Compose side too.
-    fun setInitialRateAndPitch(rate: Float, pitch: Float) {
+    // `voiceName` grows this beyond rate/pitch per docs/arkarium/proposal/tts-voice-picker.md's
+    // "New preference key" section - seeded once per service instance exactly like
+    // rate and pitch already were, via the same defaultsApplied guard. Defaults to
+    // null (engine/system default) for anyone who hasn't visited the voice picker,
+    // same "no-op until opted into" shape rate/pitch already had before Stage 3.3.
+    fun setInitialRateAndPitch(rate: Float, pitch: Float, voiceName: String? = null) {
         if (defaultsApplied) return
         defaultsApplied = true
         speechRate = rate
         engine?.setSpeechRate(rate)
         engine?.setPitch(pitch)
+        if (voiceName != null) setVoice(voiceName)
+    }
+
+    // Resolves `name` against availableVoices and applies it. A null name, or a name
+    // that doesn't resolve (uninstalled language pack, engine switched since it was
+    // stored), is a silent no-op that leaves the engine on whatever voice it already
+    // had - the same "unknown ⇒ treat as default, never crash" posture
+    // tts-multivoice.md uses for its own segment format - rather than throwing or
+    // falling back to some other voice the reader didn't ask for. currentVoiceName
+    // only advances when the resolve actually succeeds, so a failed call doesn't make
+    // the settings UI claim a voice is active when the engine is still on its old one.
+    fun setVoice(name: String?) {
+        if (name == null) return
+        val voice = availableVoices.firstOrNull { it.name == name } ?: return
+        engine?.setVoice(voice)
+        currentVoiceName = name
     }
 
     // Only sets the rate on the engine; does NOT touch anything already queued -
