@@ -1031,7 +1031,14 @@ class MainActivity : ComponentActivity() {
                         // previous chapter's text.
                         val chapterContentState = remember(chapterId) { mutableStateOf<String?>(null) }
                         LaunchedEffect(chapterId) {
-                            chapterContentState.value = contentRepo.getTextContent(chapter.sourcePath).body
+                            chapterContentState.value = try {
+                                contentRepo.getTextContent(chapter.sourcePath).body
+                            } catch (e: com.arkarium.app.data.ChapterReadException) {
+                                // Lost SAF permission, provider hiccup, file moved/deleted
+                                // underneath us, etc. - show this plainly rather than
+                                // silently rendering an empty chapter (see ChapterContentRepository).
+                                "Couldn't load this chapter. Pull to refresh or try again later."
+                            }
                         }
                         val content = chapterContentState.value
                         if (content != null) {

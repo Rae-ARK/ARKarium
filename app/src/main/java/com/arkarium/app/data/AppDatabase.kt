@@ -262,12 +262,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // NOTE: deliberately no fallbackToDestructiveMigration() here. That fallback
+        // would silently drop and recreate the whole database - including
+        // chapter_overrides (manual edits a rescan can't rebuild), reading_progress
+        // and chapter_read_events (streaks) - on any version Room can't find an
+        // explicit migration path for. An unhandled version bump should surface as a
+        // crash during development, not as silent data loss for a real user. If a
+        // destructive reset is ever genuinely needed for a specific old version (e.g.
+        // an unsupported pre-release install), add a scoped
+        // fallbackToDestructiveMigrationFrom(startVersion = ...) rather than reaching
+        // for the global fallback again.
         fun create(context: Context): AppDatabase = Room.databaseBuilder(
             context.applicationContext,
             AppDatabase::class.java,
             "arkarium.db"
         ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
-            .fallbackToDestructiveMigration()
             .build()
     }
 }

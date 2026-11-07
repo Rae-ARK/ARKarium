@@ -10,6 +10,12 @@ sealed class ChapterContent {
     data class Text(val body: String) : ChapterContent()
 }
 
+// Thrown by TextChapterContentRepository.getTextContent when the chapter's bytes
+// can't be read at all (lost SAF permission, provider hiccup, file moved/deleted
+// underneath us). Previously such failures were swallowed into an empty ByteArray,
+// which rendered as a silent, indistinguishable-from-genuinely-empty chapter.
+class ChapterReadException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
 interface ChapterContentRepository {
     suspend fun getTextContent(sourcePath: String): ChapterContent.Text
 }
@@ -19,8 +25,15 @@ class TextChapterContentRepository(private val context: Context) : ChapterConten
         val uri = Uri.parse(sourcePath)
         val bytes = try {
             context.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            ByteArray(0)
+            // Swallowing read failures (lost SAF permission, provider hiccup, file
+            // moved/deleted underneath us) here used to render as a silent empty
+            // chapter, indistinguishable from a genuinely empty file. Surface it
+            // instead so the reader can show a real error with a retry rather than
+            // quietly losing the chapter's content.
+            throw ChapterReadException("Couldn't read chapter content from $sourcePath", e)
         }
         
         // Try UTF-8 first, fallback to ISO-8859-1. Note: bytes.toString(Charsets.UTF_8)
