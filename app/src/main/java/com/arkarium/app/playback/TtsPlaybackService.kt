@@ -136,7 +136,7 @@ class TtsPlaybackService : Service() {
     var currentVoiceName: String? = null
         private set
 
-    // Stage 3.4 of docs/arkarium/implementation/settings-tts.md, moved here unchanged:
+    // Stage 3.4 (see docs/arkarium/foundational/design-notes.md), moved here unchanged:
     // kept live (the Compose side pushes every DataStore change straight through) so
     // toggling auto-continue in settings/tts takes effect on the next chapter boundary
     // rather than needing the reader to leave and reopen the reader.

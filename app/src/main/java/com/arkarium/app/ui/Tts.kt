@@ -64,7 +64,7 @@ class ChapterTtsState internal constructor() {
     var currentVoiceName by mutableStateOf<String?>(null)
         internal set
 
-    // Stage 3.4 of docs/arkarium/implementation/settings-tts.md. Pushed straight through
+    // Stage 3.4 (see docs/arkarium/foundational/design-notes.md). Pushed straight through
     // to the attached service (which is where the live flag now actually lives, so it
     // survives rotation same as everything else about an in-progress session) whenever
     // it changes - see rememberChapterTts's collectAsState wiring below.
@@ -206,7 +206,7 @@ fun rememberChapterTts(): ChapterTtsState {
     val prefsManager = remember { PreferencesManager(context) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Stage 3.4 of docs/arkarium/implementation/settings-tts.md. Deliberately not a
+    // Stage 3.4 (see docs/arkarium/foundational/design-notes.md). Deliberately not a
     // one-shot .first() read - auto-continue is checked every time a chapter finishes,
     // not just once, so it's kept live via collectAsState() and pushed onto the
     // attached service (via ChapterTtsState.autoContinueEnabled's setter above)
@@ -222,7 +222,7 @@ fun rememberChapterTts(): ChapterTtsState {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
                 val svc = (binder as? TtsPlaybackService.LocalBinder)?.service() ?: return
                 state.attach(svc)
-                // Stage 3.3 of docs/arkarium/implementation/settings-tts.md: seeds this
+                // Stage 3.3 (see docs/arkarium/foundational/design-notes.md): seeds this
                 // service instance's starting rate/pitch from the settings/tts defaults
                 // the first time it's ever attached to - see
                 // TtsPlaybackService.setInitialRateAndPitch's doc comment for why it's

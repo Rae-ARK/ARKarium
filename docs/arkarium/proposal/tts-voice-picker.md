@@ -4,7 +4,8 @@
 > **Builds on:** single-voice system TTS already shipped (see
 > [`../foundational/architecture.md`](../foundational/architecture.md),
 > Text-to-speech) and `settings/tts`
-> ([`../implementation/settings-tts.md`](../implementation/settings-tts.md)).
+> (see [`../foundational/design-notes.md`](../foundational/design-notes.md),
+> "Settings redesign: outcome").
 > **Revisits (does not reject):** the "no in-app picker" half of the
 > **TTS settings split** decision in
 > [`../foundational/design-notes.md`](../foundational/design-notes.md) — see
@@ -163,8 +164,8 @@ this proposal's `ttsVoiceName` value, reused rather than redesigned.
 
 ## Suggested path
 
-Small enough to be its own implementation ladder, same shape as
-`settings-tts.md`:
+Small enough to be its own implementation ladder, same shape as the now-done
+`settings-tts` ladder (see design-notes.md):
 
 1. `PreferencesManager`: `ttsVoiceName` key, flow, setter.
 2. `TtsPlaybackService`: `availableVoices`, `setVoice()`, seed-once wiring
@@ -173,6 +174,7 @@ Small enough to be its own implementation ladder, same shape as
    `setVoice()`.
 4. `TtsSettingsScreen.kt`: voice row + picker UI, grouped by locale, quality
    and network badges.
-5. Tests for the new preference's round-trip — bundle with `settings-tts.md`
-   rung 4 (the still-open tests for the other three `tts_*` keys) rather
-   than opening a second gap of the same kind.
+5. A test for this preference's round-trip, same shape as
+   `PreferencesManagerTest`'s coverage of the other four `tts_*` keys
+   (a pure `ttsVoiceNameOf(prefs: Preferences)`-style function, not a
+   Robolectric/instrumented test).
