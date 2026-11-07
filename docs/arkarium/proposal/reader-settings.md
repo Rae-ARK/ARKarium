@@ -1,12 +1,24 @@
 # Reader settings page
 
-> **Kind:** proposal · **Status:** design only · **Verified:** 2026-11-08 @ 8e0a937
+> **Kind:** proposal · **Status:** suggested-order items 1-5 built, 6-10 still design only · **Verified:** 2026-11-08 @ 8e0a937
 > **Origin:** a screenshot of a reference reader app's settings (2026-11-07) showing six reader switches, plus three items the owner raised separately on 2026-11-08 (multi-document's TTS collision, column count, volume). Related: [`peer-app-survey.md`](peer-app-survey.md) lists "per-title reader settings" among features seen in other apps.
 
-Nothing here is built or decided. This sorts the six switches from the
-screenshot, plus the three items added on 2026-11-08, into what ARKarium
-could adopt, what needs something else first, and what it shouldn't copy,
-against what the reader does today.
+**2026-11-08 update:** the owner approved building the "cheap" batch now -
+suggested-order items 1 through 5 below - and documenting the rest for a
+later pass. That batch is built: persisted font size/line height/reading-mode
+defaults plus the `settings/reader` page, the font family row,
+`reader_keep_screen_on`, `reader_fullscreen`, and an opt-in brightness slider
+in the pill (see `design-notes.md`'s "Reader settings split" entry for the
+shape that landed - the brightness slider in particular is opt-in via a
+switch on `settings/reader`, which this proposal's own Brightness section
+below did not call for). Items 6-10 (multi-document, day/night button,
+volume slider, column count, bookmarks) are unchanged from this proposal -
+still design only, nothing built.
+
+This sorts the six switches from the screenshot, plus the three items added
+on 2026-11-08, into what ARKarium could adopt, what needs something else
+first, and what it shouldn't copy, against what the reader did before this
+pass.
 
 ## What the reader does today
 
@@ -238,9 +250,11 @@ this proposal (first question below).
 
 ## Open questions for the owner
 
-- Should the Reader page also hold defaults for font size, line height and
+- ~~Should the Reader page also hold defaults for font size, line height and
   reading mode (and should "per-title" overrides come later, as the survey
-  notes another app doing)?
+  notes another app doing)?~~ **Answered 2026-11-08:** yes, defaults for all
+  three; "per-title" overrides are not part of this pass. Unset reading mode
+  keeps following the app theme rather than getting a pinned-default option.
 - Brightness: slider in the pill, or a left-edge gesture despite the scroll
   conflict?
 - Corner tap zones: wanted at all, or are buttons enough?

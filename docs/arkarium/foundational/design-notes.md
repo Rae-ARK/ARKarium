@@ -78,6 +78,28 @@ default.** Four rules:
 - **"Early development" is a description, not a label to change.** The version
   and status earn a 1.0 by lowering real risk (untested, hard-to-change core),
   not by editing a string.
+- **Reader settings split (reader-settings.md).** Font size, line height and
+  reading mode stay live-adjustable in the reader's "Reader Preferences"
+  pill, seeded once per chapter from `settings/reader` defaults the pill
+  never writes back to - same split TTS settings already use for rate.
+  Reading mode's unset state means "follow the app theme", not a fourth
+  concrete mode, so it's stored as an absent key rather than a sentinel
+  value. Font family left the pill entirely for its own `settings/reader`
+  row (it's "set and forget", not something read in-session). Reader
+  keep-screen-on is a second flag alongside (not instead of) the TTS one;
+  either being true keeps the screen on, and only the plain
+  `FLAG_KEEP_SCREEN_ON` is used - no idle timer. The brightness slider is
+  opt-in and only appears in the pill once enabled on `settings/reader`;
+  there is no persisted brightness value, matching Speed's pill-only,
+  session-scoped behavior. Multi-document, the day/night button, the volume
+  slider and column count remain documented-only in reader-settings.md,
+  not built - see that doc's own suggested order for what's next.
+- **Flag decisions instead of guessing.** When a change involves a real
+  decision with more than one reasonable answer - not just a style
+  preference, but something that changes behavior, scope or what gets
+  built - ask the owner rather than picking silently and moving on. Default
+  to asking before proceeding on anything that fits that bar; this applies
+  to work on this codebase generally, not to any one feature.
 
 ## MainActivity refactor: outcome (done)
 

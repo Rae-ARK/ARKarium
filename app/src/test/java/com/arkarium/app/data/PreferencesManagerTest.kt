@@ -177,4 +177,126 @@ class PreferencesManagerTest {
 
         assertEquals(setOf("voice-b"), ttsFavoriteVoiceNamesOf(prefs))
     }
+
+    // --- reader-settings.md's "cheap" batch: same Context-free functions/mutablePreferencesOf ---
+    // --- shape as the tts_* coverage above, against the reader_* keys PreferencesManager.kt ----
+    // --- added alongside them. -------------------------------------------------------------
+
+    @Test
+    fun readerFontSize_withNoStoredValue_fallsBackTo18() {
+        assertEquals(18f, readerFontSizeOf(emptyPreferences()), 0.0001f)
+    }
+
+    @Test
+    fun readerLineHeight_withNoStoredValue_fallsBackTo1_8() {
+        assertEquals(1.8f, readerLineHeightOf(emptyPreferences()), 0.0001f)
+    }
+
+    // Null here means "follow the app theme" (the owner's answer to
+    // reader-settings.md's first open question) - same "absence is the
+    // meaningful default" shape as ttsVoiceName_withNoStoredValue_fallsBackToNull.
+    @Test
+    fun readerReadingMode_withNoStoredValue_fallsBackToNull() {
+        assertEquals(null, readerReadingModeOf(emptyPreferences()))
+    }
+
+    @Test
+    fun readerFontFamily_withNoStoredValue_fallsBackToSerif() {
+        assertEquals("SERIF", readerFontFamilyOf(emptyPreferences()))
+    }
+
+    @Test
+    fun readerKeepScreenOn_withNoStoredValue_fallsBackToFalse() {
+        assertEquals(false, readerKeepScreenOnOf(emptyPreferences()))
+    }
+
+    @Test
+    fun readerFullscreen_withNoStoredValue_fallsBackToFalse() {
+        assertEquals(false, readerFullscreenOf(emptyPreferences()))
+    }
+
+    @Test
+    fun readerBrightnessSliderEnabled_withNoStoredValue_fallsBackToFalse() {
+        assertEquals(false, readerBrightnessSliderEnabledOf(emptyPreferences()))
+    }
+
+    @Test
+    fun readerFontSize_roundTripsAStoredValue() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_FONT_SIZE_KEY] = 22f
+
+        assertEquals(22f, readerFontSizeOf(prefs), 0.0001f)
+    }
+
+    @Test
+    fun readerLineHeight_roundTripsAStoredValue() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_LINE_HEIGHT_KEY] = 2.2f
+
+        assertEquals(2.2f, readerLineHeightOf(prefs), 0.0001f)
+    }
+
+    // Same round-trip shape as ttsVoiceName_roundTripsAStoredValue, against
+    // setReaderReadingMode's own `prefs[READER_READING_MODE_KEY] = mode.name`
+    // write - the stored shape is a plain ReadingModeDefault.name string,
+    // resolved back to a concrete override by the caller (ReaderScreen),
+    // same "this function only reports what's stored" split as
+    // ttsVoiceNameOf's own doc comment.
+    @Test
+    fun readerReadingMode_roundTripsAStoredValue() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_READING_MODE_KEY] = ReadingModeDefault.DARK.name
+
+        assertEquals("DARK", readerReadingModeOf(prefs))
+    }
+
+    @Test
+    fun readerReadingMode_afterRemoval_fallsBackToNull() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_READING_MODE_KEY] = ReadingModeDefault.SEPIA.name
+        prefs.remove(READER_READING_MODE_KEY)
+
+        assertEquals(null, readerReadingModeOf(prefs))
+    }
+
+    @Test
+    fun readerFontFamily_roundTripsAStoredValue() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_FONT_FAMILY_KEY] = "DYSLEXIC"
+
+        assertEquals("DYSLEXIC", readerFontFamilyOf(prefs))
+    }
+
+    @Test
+    fun readerKeepScreenOn_roundTripsAStoredValue() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_KEEP_SCREEN_ON_KEY] = true
+
+        assertEquals(true, readerKeepScreenOnOf(prefs))
+    }
+
+    @Test
+    fun readerFullscreen_roundTripsAStoredValue() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_FULLSCREEN_KEY] = true
+
+        assertEquals(true, readerFullscreenOf(prefs))
+    }
+
+    @Test
+    fun readerBrightnessSliderEnabled_roundTripsAStoredValue() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_BRIGHTNESS_SLIDER_ENABLED_KEY] = true
+
+        assertEquals(true, readerBrightnessSliderEnabledOf(prefs))
+    }
+
+    @Test
+    fun readerFontSize_secondWriteOverwritesTheFirst() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_FONT_SIZE_KEY] = 22f
+        prefs[READER_FONT_SIZE_KEY] = 14f
+
+        assertEquals(14f, readerFontSizeOf(prefs), 0.0001f)
+    }
 }

@@ -7,10 +7,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Cloud
@@ -246,8 +249,23 @@ private fun LanguageDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Language") },
+        // Plain Column with no scroll modifier used to just keep growing
+        // past the dialog's own bounds on a device with many TTS languages
+        // installed - AlertDialog doesn't clip or scroll its `text` content
+        // for you, so anything past the visible dialog height was simply
+        // unreachable, with no indication more existed. heightIn(max = ...)
+        // caps the dialog at a sane height instead of letting it grow to fit
+        // every language (which would itself overflow the screen on a
+        // long-enough list), and verticalScroll makes everything past that
+        // cap reachable rather than just invisible. 360.dp is enough to show
+        // 6-7 rows before scrolling kicks in, comfortable on a typical phone
+        // screen alongside the dialog's title/button chrome.
         text = {
-            Column {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 360.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
                 languages.forEach { language ->
                     val label = Locale(language).displayLanguage.replaceFirstChar { it.uppercase() }
                     Row(
