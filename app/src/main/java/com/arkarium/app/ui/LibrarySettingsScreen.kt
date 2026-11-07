@@ -28,7 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-// Stage 2 (docs/arkarium/implementation/settings-tts.md, "mechanical extraction, no
+// Stage 2 (see docs/arkarium/foundational/design-notes.md, "mechanical extraction, no
 // behavior change") - the "Use custom folder" switch, Select/Change Folder
 // button, and Rescan Library button move here verbatim from the old
 // monolithic SettingsScreen.kt. MainActivity's "settings/library" composable

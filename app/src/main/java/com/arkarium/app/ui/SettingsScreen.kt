@@ -149,7 +149,7 @@ private fun SettingsCard(content: @Composable () -> Unit) {
     }
 }
 
-// Stage 1 of docs/arkarium/implementation/settings-tts.md: this screen stops rendering
+// Stage 1 (see docs/arkarium/foundational/design-notes.md): this screen stops rendering
 // any control itself (Theme radio group, Library switch/buttons, Splash
 // switches all used to live here inline) and becomes a pure index of rows,
 // each navigating to its own destination - the same tappable-row pattern

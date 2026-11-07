@@ -632,7 +632,7 @@ class MainActivity : ComponentActivity() {
                 // above, and both default to true to match PreferencesManager's own default.
                 val splashAnimationEnabled = prefsManager.splashAnimationEnabled.collectAsState(initial = true)
                 val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = true)
-                // TTS default-settings state (docs/arkarium/implementation/settings-tts.md, Stage
+                // TTS default-settings state (see docs/arkarium/foundational/design-notes.md, Stage
                 // 3.2) - collected here too, same reasoning as savedUri/useCustomFolder
                 // above. Initial values match PreferencesManager's own fallbacks (see
                 // ttsDefaultRate/ttsPitch/ttsAutoContinue/ttsKeepScreenOn) so the
@@ -1190,7 +1190,7 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 1 of docs/arkarium/implementation/settings-tts.md: SettingsScreen
+                        // Stage 1 (see docs/arkarium/foundational/design-notes.md): SettingsScreen
                         // is now a pure index/menu - it no longer takes
                         // currentTheme/useCustomFolder/splash* state or their setter
                         // callbacks, just navigation into each row's own destination.
@@ -1218,7 +1218,7 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/theme") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 2 of docs/arkarium/implementation/settings-tts.md: the Theme radio
+                        // Stage 2 (see docs/arkarium/foundational/design-notes.md): the Theme radio
                         // group's callback wiring, unchanged from the old "settings"
                         // composable - just terminating on this screen instead of the
                         // index. See that composable's own history for why these route
@@ -1237,7 +1237,7 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/library") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 2 of docs/arkarium/implementation/settings-tts.md: the Library
+                        // Stage 2 (see docs/arkarium/foundational/design-notes.md): the Library
                         // switch/buttons' callback wiring, unchanged from the old
                         // "settings" composable - just terminating on this screen
                         // instead of the index.
@@ -1291,7 +1291,7 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/splash") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 2 of docs/arkarium/implementation/settings-tts.md: the Splash
+                        // Stage 2 (see docs/arkarium/foundational/design-notes.md): the Splash
                         // switches' callback wiring, unchanged from the old "settings"
                         // composable - just terminating on this screen instead of the
                         // index.
@@ -1315,7 +1315,7 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/tts") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 3.2 of docs/arkarium/implementation/settings-tts.md: direct
+                        // Stage 3.2 (see docs/arkarium/foundational/design-notes.md): direct
                         // PreferencesManager access hoisted at the Activity, same
                         // pattern settings/splash above already uses - no
                         // TtsSettingsViewModel. UI-and-persistence only; nothing in

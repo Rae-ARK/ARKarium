@@ -79,12 +79,17 @@ what they resolve to.
 Phase 4 (closing the ViewModel test gap) is not done: see
 [`../implementation/test-coverage.md`](../implementation/test-coverage.md).
 
-## Settings redesign: outcome (Stages 0–3 done)
+## Settings redesign: outcome (done)
 
 Index page plus `settings/theme|library|splash` (pure extractions) and the new
 `settings/tts` page (four `PreferencesManager` keys, `rememberChapterTts()`
-seeded from them, auto-continue, keep-screen-on). Remaining work is on
-[`../implementation/settings-tts.md`](../implementation/settings-tts.md).
+seeded from them, auto-continue, keep-screen-on). The four keys' defaults and
+write/read shape are covered by `PreferencesManagerTest`, against pure,
+Context-free functions (`ttsDefaultRateOf`/etc.) `PreferencesManager.kt`'s
+flows map through - not a Robolectric/instrumented test, and not a
+`SettingsPreferences`-style interface seam (no second implementation is
+planned for these four keys, and nothing but `PreferencesManager` would
+consume one - see "Code philosophy" #1 above).
 
 ## Theme color calibration (done)
 
