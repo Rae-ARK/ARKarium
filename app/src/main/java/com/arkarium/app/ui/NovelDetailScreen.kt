@@ -5,11 +5,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -19,6 +21,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -41,6 +44,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -55,6 +59,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -697,10 +702,18 @@ private fun ArcTabCard(
     }
 }
 
-// Full-screen, uncropped view of a cover - the minimal version of the "open it
+// Enlarged, uncropped view of a cover - the minimal version of the "open it
 // enlarged" idea in uiux.md. Pinch-to-zoom is left as a later enhancement;
-// this just lets the art be seen at a real size. Dismiss by tapping the image
-// or the scrim behind it, or the system back button (default Dialog behavior).
+// this just lets the art be seen at a real size.
+//
+// Used to be a plain full-bleed black screen with no controls at all - just the
+// image, dismissed only by tapping it or the system back button, neither of
+// which is discoverable. Now it's the same floating-card language as
+// SyncProgressDialog (see SyncDialogs.kt: a rounded, elevated Surface centered
+// over a dimmed scrim) with an explicit back button overlaid on the image, so
+// there's always a visible, obvious way out. Dismiss is wired three ways:
+// the back button, tapping the scrim outside the card, and the system back
+// button/gesture (all Dialog's default onDismissRequest).
 @Composable
 private fun EnlargedCoverDialog(coverUrl: String, onDismiss: () -> Unit) {
     Dialog(
@@ -710,16 +723,64 @@ private fun EnlargedCoverDialog(coverUrl: String, onDismiss: () -> Unit) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black)
-                .clickable(onClick = onDismiss),
+                .background(Color.Black.copy(alpha = 0.7f))
+                // Tapping the scrim (anywhere the card below doesn't consume the
+                // tap first) dismisses - this is the "clicking outside the card"
+                // requirement. No ripple/indication here since a full-screen scrim
+                // flashing a ripple on every tap would look broken.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onDismiss
+                ),
             contentAlignment = Alignment.Center
         ) {
-            AsyncImage(
-                model = coverUrl,
-                contentDescription = null,
-                contentScale = androidx.compose.ui.layout.ContentScale.Fit,
-                modifier = Modifier.fillMaxSize()
-            )
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+                modifier = Modifier
+                    .padding(32.dp)
+                    .fillMaxWidth(0.85f)
+                    // Swallows taps on the card itself (the cover, the back button's
+                    // own ripple) so they don't also fall through to the scrim's
+                    // dismiss-on-outside-tap above - tapping the cover now does
+                    // nothing, rather than also closing the dialog like the old
+                    // full-screen version did.
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {}
+                    )
+            ) {
+                Box {
+                    AsyncImage(
+                        model = coverUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(2f / 3f)
+                    )
+                    // Explicit back button, top-start over the art - a dark circular
+                    // scrim behind the icon keeps it legible over bright cover art,
+                    // same idea as SyncProgressDialog's spinner scrim.
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(8.dp)
+                            .clip(CircleShape)
+                            .background(Color.Black.copy(alpha = 0.45f))
+                    ) {
+                        Icon(
+                            Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
+                    }
+                }
+            }
         }
     }
 }
