@@ -62,6 +62,7 @@ import com.arkarium.app.ui.SyncResolutionDialog
 import com.arkarium.app.ui.FictionBrowseScreen
 import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.AuthorEntity
+import com.arkarium.app.data.DatabaseDowngradeException
 import com.arkarium.app.data.ChapterOverrideEntity
 import com.arkarium.app.data.ChapterReadEventEntity
 import com.arkarium.app.data.GoogleBooksMetadataProvider
@@ -510,6 +511,14 @@ class MainActivity : ComponentActivity() {
                 this,
                 SyncViewModel.factory(application, db, scanner, syncManager, libraryViewModel, metadataViewModel)
             ).get(SyncViewModel::class.java)
+        } catch (e: DatabaseDowngradeException) {
+            // See F23 in docs/arkarium/proposal/data-safety.md - this is Room
+            // refusing to open a database written by a newer version of the app, not
+            // the "crashed before drawing a single frame" failure the catch-all below
+            // is for. The message is already user-facing (AppDatabase.create()), so
+            // show it directly instead of the class-name-plus-stack-trace screen.
+            renderCrashScreen("Can't open your library", e.message ?: "")
+            return
         } catch (e: Throwable) {
             renderCrashScreen(e)
             return
