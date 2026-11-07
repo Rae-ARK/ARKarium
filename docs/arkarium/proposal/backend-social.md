@@ -27,7 +27,17 @@ Walking the existing roadmap (the proposals in this folder) against that questio
 - **Comments, ratings, reading-position sync** - the other real exception.
   These are per-user *writes* that need to persist, be queried back, and be
   attributed to someone. That's inherently a small backend, not a design
-  failure to route around.
+  failure to route around. **Narrower exception:** if the only goal is
+  syncing *position* between a reader's own devices (not comments/ratings,
+  and not syncing to a device with no prior connection to the others), a
+  sidecar `progress.json` written into the library folder — synced by
+  whatever folder-sync tool the user already runs — or an OPDS-Progression-
+  shaped GET/PUT endpoint needs no backend `backend-social.md` is scoping
+  for here. See [`peer-app-survey.md`](peer-app-survey.md) Suggestion 3.
+  Worth having as a documented option alongside the Firebase plan below, not
+  a replacement for it — it solves same-network/same-account devices, not
+  "sync from an arbitrary new device with no prior setup," which is what the
+  plan below is actually for.
 
 So the honest scope of "needs a real backend" is small and specific: gating,
 and a handful of small social/sync features. Everything else was never going

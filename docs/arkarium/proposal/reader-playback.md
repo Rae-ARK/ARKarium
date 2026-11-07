@@ -1,7 +1,7 @@
 # Reader position and TTS playback lifecycle
 
-> **Kind:** proposal · **Status:** F10 fixed in code, F9 still open · **Verified:** 2026-11-07 @ 823c914
-> **Origin:** [`engineering-review.md`](engineering-review.md) F9, F10. Related: the playback-controls gap in [`uiux.md`](uiux.md).
+> **Kind:** proposal · **Status:** F10 fixed in code, F9 and F22 open · **Verified:** 2026-11-07 @ b777145
+> **Origin:** [`engineering-review.md`](engineering-review.md) F9, F10, F22. Related: the playback-controls gap in [`uiux.md`](uiux.md).
 
 ### F9. Reading position is stored as a scroll fraction, not an anchor
 
@@ -86,3 +86,41 @@ the controls/highlight work in `uiux.md` as one coordinated change with
 F10 — the chunk index ↔ text-offset mapping the service's queue uses is the
 same mapping F9's anchor needs to restore a position precisely, so building
 F9 separately risks two slightly different position representations.
+
+### F22. `TtsPlaybackService` requests no audio focus and has no `MediaSession`
+
+**Severity:** Medium — correctness, not polish. **Tags:** V.
+**Where:** `playback/TtsPlaybackService.kt` (confirmed by searching for
+`AudioFocus`, `AUDIO_BECOMING_NOISY`, and `MediaSession` across the file and
+finding none).
+
+Now that playback survives backgrounding (F10, above), the gaps F10's fix
+didn't touch start to matter in practice, where before a rotation would have
+killed the session before anyone noticed them:
+
+- **No audio focus request.** `TtsPlaybackService` never calls
+  `AudioManager.requestAudioFocus` (or the `AudioFocusRequest` builder).
+  Starting a read-aloud session while music or another app's audio is
+  already playing overlaps both rather than ducking or pausing either one,
+  and nothing here pauses TTS when a phone call or another app *requests*
+  focus away from it either.
+- **No `ACTION_AUDIO_BECOMING_NOISY` handling.** Unplugging wired headphones
+  or disconnecting Bluetooth audio mid-chapter doesn't pause playback — it
+  switches to the speaker and keeps reading aloud, which is the one case
+  Android explicitly ships a broadcast for specifically so apps don't do
+  this.
+- **No `MediaSession`.** Without one, lock-screen media controls, Bluetooth
+  headset buttons (including the `AudioManager` route change above), and
+  Android Auto/Wear integration have nothing to attach to — this is also a
+  prerequisite for the richer transport-action notification
+  `reader-playback.md`'s F10 section above already flags as rung 4 of
+  [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md).
+
+**Direction:** build this on `TtsPlaybackService` directly rather than as a
+separate piece — a `MediaSessionCompat` plus `AudioFocusRequest` with
+`setOnAudioFocusChangeListener` (pause on `AUDIOFOCUS_LOSS`/
+`AUDIOFOCUS_LOSS_TRANSIENT`, lower TTS volume or pause on
+`_TRANSIENT_CAN_DUCK` depending on preference) and a registered
+`BroadcastReceiver` for `ACTION_AUDIO_BECOMING_NOISY` that pauses the same
+way. All three share the service's existing pause/resume entry points from
+the F10 fix, so this is additive to that work, not a rework of it.

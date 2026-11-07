@@ -1,8 +1,8 @@
 # Engineering review: findings and proposed work
 
-> **Kind:** proposal · **Status:** **awaiting review** — F1 (partially), F6, F7, F10 fixed in code; detail docs written for every finding; rest undecided · **Verified:** 2026-11-07 @ 823c914
+> **Kind:** proposal · **Status:** **partially decided** — F1 (partially), F6, F7, F10 fixed in code; D2, D3, D4, D5, D6 decided (see each); D1 (the per-finding accept/defer/reject table below) still open; two new findings (F22, F23) added from a follow-up review pass · **Verified:** 2026-11-07 @ b777145
 > **Origin:** notes from a separate review session (code read plus web research), not an authoritative audit.
-> **Checked since:** each finding was re-read against the code on 2026-11-07. External guidance (library, platform, vendor behavior) was **not** re-checked. The detail docs this file links to did not exist when this table was first written; they were filled in and F3 was corrected (see C3/C4) on the same date.
+> **Checked since:** each finding was re-read against the code on 2026-11-07. External guidance (library, platform, vendor behavior) was **not** re-checked except where a finding below says otherwise. The detail docs this file links to did not exist when this table was first written; they were filled in and F3 was corrected (see C3/C4) on the same date. A follow-up pass the same day added F22/F23 and recorded D2–D6; see each linked detail doc for what was re-verified for those.
 
 Nothing here is decided or built. This file is the review entry point: it lists
 every finding, how well it is established, and what the owner must decide.
@@ -44,6 +44,15 @@ Severity is the reviewer's judgment of impact if left alone.
 | F19 | Typography: justified text, no hyphenation, uncapped line width | Low | V, I | [`animation-and-polish.md`](animation-and-polish.md) |
 | F20 | Some icons have `contentDescription = null` | Low | V | [`robustness.md`](robustness.md) |
 | F21 | Functional gaps: read state on rows, single-scroll chapter list, sleep timer, immersive mode, full-text search | n/a | V | [`ideas.md`](ideas.md) |
+| F22 | `TtsPlaybackService` requests no audio focus, doesn't handle `ACTION_AUDIO_BECOMING_NOISY`, has no `MediaSession` | Med | V | Open — [`reader-playback.md`](reader-playback.md) |
+| F23 | Room throws uncaught on a version **downgrade** (older APK over newer data); only recovery shown to the user is a crash, and clearing app data to recover destroys the same data F1's fix was meant to protect | Med | V | Open — [`data-safety.md`](data-safety.md) |
+
+See [`bugs/critical/`](bugs/critical/README.md) for a related but separate
+finding from the same follow-up pass: a scan can cascade-delete a local
+novel's history on an *ordinary* scan (no folder re-pick, no version change)
+when a novel is skipped or the folder listing comes back empty. It's filed
+as a bug rather than a numbered finding here because it's a correctness bug
+in already-shipped code, not an open design question.
 
 ## Corrections
 
@@ -60,16 +69,18 @@ Hash-verified sync, invariants S1–S9, incremental fingerprinting, the docs che
 
 | # | Question | Affects |
 |---|---|---|
-| D1 | For each finding: accept, defer, or reject? (fill in the table below) | all |
-| D2 | Adopt instrumented tests for Room migrations? [`design-notes.md`](../foundational/design-notes.md) currently ranks instrumented tests "not a priority"; F2 needs them. | F2 |
-| D3 | Give novels an id independent of the SAF root+child URI (see [`data-safety.md`](data-safety.md) F3), or accept the current cascade-delete-on-rescan/duplicate-row behavior as a known limitation? | F3, F5 |
-| D4 | Upgrade Kotlin to 2.x, Compose BOM and Navigation as one enabling step? It unlocks KSP, strong skipping, shared-element transitions, predictive back. | F2, F12, F14, F17 |
-| D5 | Who holds the manifest signing key, and how are rotation and expiry handled? | F4 |
-| D6 | Splash policy: once per install/update, tap to skip, chord default? | F13 |
+| # | Question | Affects | Answer |
+|---|---|---|---|
+| D1 | For each finding: accept, defer, or reject? (fill in the table below) | all | Open — see the Finding/Decision table below, still blank |
+| D2 | Adopt instrumented tests for Room migrations? [`design-notes.md`](../foundational/design-notes.md) currently ranks instrumented tests "not a priority"; F2 needs them. | F2 | **Decided:** yes, scoped to migrations only (one `MigrationTestHelper` test per migration); the rest of `design-notes.md`'s "not a priority" ranking stands. Detail in [`data-safety.md`](data-safety.md) F1. |
+| D3 | Give novels an id independent of the SAF root+child URI (see [`data-safety.md`](data-safety.md) F3), or accept the current cascade-delete-on-rescan/duplicate-row behavior as a known limitation? | F3, F5 | **Decided:** opaque id, independent of the URI. Synced novels derive it from `syncSourceUrl`; local novels get a minted UID, re-linked by title/folder-name/chapter-count with user confirmation on a mismatch, never written into the user's folder unless they opt in. Detail in [`data-safety.md`](data-safety.md) F3. |
+| D4 | Upgrade Kotlin to 2.x, Compose BOM and Navigation as one enabling step? It unlocks KSP, strong skipping, shared-element transitions, predictive back. | F2, F12, F14, F17 | **Decided:** yes, but staged — Kotlin 2.x + compiler plugin, then Compose BOM, then Navigation, each benchmarked separately rather than bumped together. Detail in [`performance.md`](performance.md) F12. |
+| D5 | Who holds the manifest signing key, and how are rotation and expiry handled? | F4 | **Decided:** offline key, signing done at publish time in the author's own pipeline (never inside the relay/Worker), long or no `expires` initially. Rotation procedure and the ECDSA-vs-Ed25519 choice still open. Detail in [`manifest-signing.md`](manifest-signing.md). |
+| D6 | Splash policy: once per install/update, tap to skip, chord default? | F13 | **Decided:** full sequence once per install/update, ~300ms fade otherwise, tap-to-skip always available, chord **off by default**. Detail in [`performance.md`](performance.md) F13. |
 
 | Finding | Decision | Date |
 |---|---|---|
-| F1–F21 | — | — |
+| F1–F23 | — (per-finding accept/defer/reject still open — see D1) | — |
 
 ## Suggested order (reviewer's, adjusted after verification)
 
@@ -78,8 +89,9 @@ Hash-verified sync, invariants S1–S9, incremental fingerprinting, the docs che
 3. Start the measurement track: Compose compiler reports and a Macrobenchmark (F12, F14), so later performance work is data-driven.
 4. F5: SAF directory listing, after measuring on a real custom-folder library.
 5. F4: signing, before building the relay chain.
-6. F10 is fixed (service-based playback, 823c914). F9 + the TTS controls issue in [`uiux.md`](uiux.md) remain one coordinated change, now buildable on top of that service.
-7. F13, F15–F17, F19: polish, in whatever order the D4 and D6 decisions allow.
+6. F10 is fixed (service-based playback, 823c914). F9 + the TTS controls issue in [`uiux.md`](uiux.md) remain one coordinated change, now buildable on top of that service. F22 (audio focus/becoming-noisy/`MediaSession`) builds on the same service and can land independently of F9.
+7. F13, F15–F17, F19: polish, in whatever order the D4 and D6 decisions (now recorded above) allow.
+8. F23 (downgrade crash message) is a small, independent fix — an `IllegalStateException` catch and a friendlier message in `AppDatabase.create()` — and can land any time after F1's fix (5426a3d), which it builds on directly.
 
 ## On acceptance
 
