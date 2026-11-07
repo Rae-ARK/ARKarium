@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -176,6 +177,10 @@ fun SettingsScreen(
     onLibraryClick: () -> Unit,
     onSplashClick: () -> Unit,
     onTtsClick: () -> Unit,
+    // reader-settings.md's "Page shape": a new "Reader" row after Theme,
+    // opening settings/reader - same row shape as every other entry here,
+    // just one more navigation target.
+    onReaderClick: () -> Unit,
     onPrivacyPolicy: () -> Unit,
     onTermsAndConditions: () -> Unit,
     onAboutMe: () -> Unit,
@@ -213,6 +218,13 @@ fun SettingsScreen(
                     title = "Splash Screen",
                     subtitle = "Launch animation and its music",
                     onClick = onSplashClick,
+                    showDivider = true
+                )
+                SettingsCardRow(
+                    icon = Icons.Filled.AutoStories,
+                    title = "Reader",
+                    subtitle = "Font, default size/spacing/mode, screen & fullscreen",
+                    onClick = onReaderClick,
                     showDivider = true
                 )
                 SettingsCardRow(

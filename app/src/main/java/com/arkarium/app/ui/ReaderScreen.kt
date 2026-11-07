@@ -68,13 +68,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import coil.compose.AsyncImage
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.ChapterSegment
 import com.arkarium.app.data.PreferencesManager
+import com.arkarium.app.data.ReadingModeDefault
 import com.arkarium.app.data.Theme
 import com.arkarium.app.data.parseChapterSegments
+import kotlinx.coroutines.flow.first
 
 enum class ReadingMode {
     LIGHT, SEPIA, DARK
@@ -127,6 +132,17 @@ private fun readingModeFor(theme: Theme): ReadingMode = when (theme) {
     // resolveTheme()) before it ever reaches here - this branch only exists to keep
     // the `when` exhaustive over Theme's full set of entries.
     Theme.SYSTEM_DEFAULT -> ReadingMode.LIGHT
+}
+
+// Maps the persisted Settings > Reader override (data.ReadingModeDefault,
+// three concrete choices, no "follow app theme" entry) onto this file's own
+// ReadingMode - a one-for-one rename across the data/ui layer boundary, kept
+// separate from readingModeFor above since that one's input (Theme) and
+// "unset" fallback are both different.
+private fun toReadingMode(mode: ReadingModeDefault): ReadingMode = when (mode) {
+    ReadingModeDefault.LIGHT -> ReadingMode.LIGHT
+    ReadingModeDefault.SEPIA -> ReadingMode.SEPIA
+    ReadingModeDefault.DARK -> ReadingMode.DARK
 }
 
 // Compose's LocalContext.current isn't guaranteed to be the Activity itself - it can be
@@ -183,13 +199,19 @@ fun ReaderScreen(
     // other call site, same rationale as onAuthorClick's own default.
     onOpenTtsSettings: () -> Unit = {}
 ) {
+    // reader-settings.md's "cheap" batch: these four used to be hardcoded/
+    // in-session-only `remember` state with no persistence at all. They're
+    // still exactly that kind of state here - the pill adjusts them live for
+    // this session and never writes back to Settings - but each one's
+    // *starting* value is now seeded once from the Settings > Reader default
+    // below (fontSize/lineHeight/fontFamilyChoice), or from the stored
+    // override if one was set (readingMode), instead of a literal constant.
     val fontSize = remember { mutableFloatStateOf(18f) }
     val lineHeight = remember { mutableFloatStateOf(1.8f) }
-    // Defaults to SERIF, matching what the chapter body always rendered with before
-    // this control existed - same "no behavior change until the user opts in"
-    // rationale as fontSize/lineHeight's own defaults. Lives alongside them as
-    // in-session `remember` state rather than a persisted PreferencesManager entry,
-    // since neither of those two are persisted across chapters/sessions either.
+    // Font family is no longer adjustable from the pill at all (moved to
+    // Settings > Reader, see reader-settings.md's Font family section) - this
+    // is read straight from the persisted default below and never changes
+    // for the life of this composition.
     val fontFamilyChoice = remember { mutableStateOf(ReaderFontFamily.SERIF) }
     val readingMode = remember { mutableStateOf(readingModeFor(appTheme)) }
     // Read-aloud. See Tts.kt - one engine instance persists for the whole reading
@@ -228,18 +250,80 @@ fun ReaderScreen(
     }
     val prefsManager = remember { PreferencesManager(context) }
     val keepScreenOnEnabled by prefsManager.ttsKeepScreenOn.collectAsState(initial = false)
-    DisposableEffect(keepScreenOnEnabled, tts.isSpeaking) {
+    // reader-settings.md's Screen on section: a second, reader-level
+    // keep-screen-on, independent of the TTS one above. The two combine
+    // ("reader option on, or read-aloud speaking with its own option on")
+    // rather than one clearing the other's flag - either condition alone is
+    // enough to keep the flag set, and the flag only clears once *both* are
+    // false. Plain FLAG_KEEP_SCREEN_ON, not the idle-timer variant the doc
+    // flagged as the better-but-bigger option for someone who falls asleep
+    // reading - the owner picked the plain flag for this pass.
+    val readerKeepScreenOnEnabled by prefsManager.readerKeepScreenOn.collectAsState(initial = false)
+    DisposableEffect(keepScreenOnEnabled, readerKeepScreenOnEnabled, tts.isSpeaking) {
         val window = context.findActivity()?.window
-        if (keepScreenOnEnabled && tts.isSpeaking) {
+        if (readerKeepScreenOnEnabled || (keepScreenOnEnabled && tts.isSpeaking)) {
             window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
-        // Runs both when either key above changes again (read-aloud stops, or the
+        // Runs both when any key above changes again (read-aloud stops, either
         // setting is toggled) and on final disposal (leaving ReaderScreen) - so the
-        // flag never outlives read-aloud finishing or the reader screen itself, with no
-        // separate cleanup path needed for "still speaking when the reader is closed."
+        // flag never outlives both conditions going false, or the reader screen
+        // itself, with no separate cleanup path needed for "still speaking when the
+        // reader is closed."
         onDispose {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
+    }
+
+    // reader-settings.md's Full-screen mode section. Its DisposableEffect
+    // needs showControls, which isn't declared until below (Kotlin requires
+    // declaration-before-use in this linear composable body) - see that
+    // val's own doc comment for where the effect actually lives.
+    val fullscreenEnabled by prefsManager.readerFullscreen.collectAsState(initial = false)
+
+    // reader-settings.md's Brightness section, as amended by the owner's
+    // "opt-in, shows as a pill slider" instruction: a window-level
+    // screenBrightness override for the reader's lifetime, restoring "follow
+    // the system" (-1f, BRIGHTNESS_OVERRIDE_NONE) on dispose. No persisted
+    // value - session-only, same as the pill's Speed-adjusts-live-only
+    // behavior, not a Settings default the way fontSize/lineHeight are.
+    val brightnessSliderEnabled by prefsManager.readerBrightnessSliderEnabled.collectAsState(initial = false)
+    val brightness = remember { mutableFloatStateOf(-1f) }
+    DisposableEffect(Unit) {
+        onDispose {
+            context.findActivity()?.window?.let { window ->
+                val params = window.attributes
+                params.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                window.attributes = params
+            }
+        }
+    }
+    LaunchedEffect(brightness.floatValue) {
+        val window = context.findActivity()?.window ?: return@LaunchedEffect
+        val params = window.attributes
+        params.screenBrightness = brightness.floatValue
+        window.attributes = params
+    }
+
+    // Seeds fontSize/lineHeight/fontFamilyChoice/readingMode from the
+    // Settings > Reader defaults exactly once per composition (per chapter,
+    // since Previous/Next swap the whole route the same way chapter.id
+    // already keys other once-per-chapter effects above) - after that the
+    // pill is free to adjust them live for the rest of the session without
+    // this effect fighting it on every recomposition. A never-visited
+    // Settings page reads back PreferencesManager's own defaults (18f, 1.8f,
+    // SERIF, null), which match the literal constants fontSize/lineHeight/
+    // fontFamilyChoice/readingMode already initialized with above, so a
+    // fresh install sees no behavior change versus before this existed.
+    LaunchedEffect(chapter.id) {
+        fontSize.floatValue = prefsManager.readerFontSize.first()
+        lineHeight.floatValue = prefsManager.readerLineHeight.first()
+        fontFamilyChoice.value = runCatching {
+            ReaderFontFamily.valueOf(prefsManager.readerFontFamily.first())
+        }.getOrDefault(ReaderFontFamily.SERIF)
+        val storedMode = prefsManager.readerReadingMode.first()
+        readingMode.value = storedMode?.let {
+            runCatching { ReadingModeDefault.valueOf(it) }.getOrNull()
+        }?.let(::toReadingMode) ?: readingModeFor(appTheme)
     }
     // The tap-anywhere immersive toggle: true = chrome showing (top bar, Reader
     // Preferences pill, progress readout), false = immersive. rememberSaveable rather
@@ -247,6 +331,34 @@ fun ReaderScreen(
     // pill) takes this screen out of composition, and plain `remember` state does not
     // survive that - the reader used to come back out of immersive mode every time.
     val showControls = rememberSaveable { mutableStateOf(true) }
+
+    // reader-settings.md's Full-screen mode section: hides the system status
+    // and navigation bars (not just ARKarium's own chrome) while the reader
+    // is in immersive mode (showControls false) and this opt-in is on;
+    // restores them on every exit path - Back, Previous/Next, navigating to
+    // settings/tts mid-read-aloud, and leaving the reader entirely - since
+    // all of those tear down this composition the same way, which is what
+    // onDispose below runs for. transient-bars-by-swipe (BEHAVIOR_SHOW_
+    // TRANSIENT_BARS_BY_SWIPE) lets a reader still pull the bars back
+    // temporarily with an edge swipe instead of being fully locked out.
+    DisposableEffect(fullscreenEnabled, showControls.value) {
+        val window = context.findActivity()?.window
+        val view = window?.decorView
+        val controller = if (window != null && view != null) {
+            WindowCompat.getInsetsController(window, view)
+        } else null
+        if (fullscreenEnabled && !showControls.value) {
+            controller?.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+        onDispose {
+            controller?.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
     // Separate from showControls: showControls is the tap-anywhere immersive toggle
     // for the top bar + progress readout, but font/spacing/mode were only reachable
     // by first being in non-immersive mode. Royal Road instead exposes an explicit,
@@ -683,56 +795,37 @@ fun ReaderScreen(
                     }
                 }
 
-                // Font family toggle. Same segmented-Surface pattern as the Mode row
-                // below it, so it reads as "another control in this family" rather than
-                // a bolted-on addition. Each segment's label is rendered in the font it
-                // selects, so the choice previews itself instead of just naming itself.
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("Font:", style = MaterialTheme.typography.labelSmall, color = textColor)
-                    ReaderFontFamily.values().forEach { choice ->
-                        Surface(
+                // Font family moved to Settings > Reader (see
+                // reader-settings.md's Font family section + this file's
+                // fontFamilyChoice doc comment above) - "set and forget",
+                // unlike Size/Spacing/Speed/Mode, which stay here because
+                // they're the ones a reader does adjust in-session.
+
+                // Brightness slider - opt-in via Settings > Reader
+                // ("Brightness slider in Reader Preferences"), per the
+                // owner's instruction rather than reader-settings.md's own
+                // "no setting needed" suggestion. Sets the window's
+                // screenBrightness for the reader's lifetime and restores
+                // "follow the system" on dispose (see the DisposableEffect
+                // above); off (-1f/BRIGHTNESS_OVERRIDE_NONE) until the
+                // reader actually drags it, so turning the toggle on alone
+                // doesn't change anything until touched.
+                if (brightnessSliderEnabled) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Brightness:", style = MaterialTheme.typography.labelSmall, color = textColor)
+                        Slider(
+                            value = if (brightness.floatValue < 0f) 0.5f else brightness.floatValue,
+                            onValueChange = { brightness.floatValue = it },
+                            valueRange = 0.01f..1f,
                             modifier = Modifier
                                 .weight(1f)
-                                .padding(2.dp)
-                                .clickable { fontFamilyChoice.value = choice },
-                            color = if (fontFamilyChoice.value == choice)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Text(
-                                when (choice) {
-                                    ReaderFontFamily.SERIF -> "Serif"
-                                    ReaderFontFamily.SANS -> "Sans"
-                                    ReaderFontFamily.DYSLEXIC -> "Dyslexia-friendly"
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 8.dp, horizontal = 4.dp),
-                                textAlign = TextAlign.Center,
-                                fontFamily = resolveFontFamily(choice),
-                                letterSpacing = extraLetterSpacing(choice),
-                                style = MaterialTheme.typography.labelSmall,
-                                // Unselected used to be hardcoded Color.Black, which is
-                                // (near-)invisible against the Dark app theme's own
-                                // surfaceVariant (0xFF1E2729) - Dark theme pairs a light
-                                // primary with a dark surfaceVariant, the opposite of
-                                // Light/Sepia, so a hardcoded color that happened to work
-                                // for those two silently broke for Dark. onSurfaceVariant
-                                // is the themed color meant to sit on surfaceVariant in all
-                                // three schemes.
-                                color = if (fontFamilyChoice.value == choice)
-                                    MaterialTheme.colorScheme.onPrimary
-                                else
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                                .padding(horizontal = 8.dp)
+                        )
                     }
                 }
 

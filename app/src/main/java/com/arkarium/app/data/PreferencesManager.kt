@@ -44,6 +44,67 @@ internal val TTS_VOICE_NAME_KEY = stringPreferencesKey("tts_voice_name")
 // JVM-testable, Context-free reason as those.
 internal val TTS_FAVORITE_VOICES_KEY = stringSetPreferencesKey("tts_favorite_voices")
 
+// docs/arkarium/proposal/reader-settings.md, suggested-order items 1-5 ("the
+// cheap ones"): persisted reader defaults + two reader-level switches + one
+// pill-visibility opt-in. File-scoped alongside the tts_* keys above for the
+// same Context-free, JVM-testable reason. Multi-document, the day/night
+// button, the volume slider and column count are intentionally NOT here -
+// the doc's suggested order puts them after this batch, so they stay
+// documented-only for a later pass (see reader-settings.md's "Open
+// questions" and its own order list).
+//
+// READER_READING_MODE_KEY is a nullable String rather than a ReadingMode
+// with a hardcoded fallback: "unset" has to keep meaning "follow the app
+// theme" (the owner's answer to the doc's first open question), which only
+// a genuinely-absent key can represent cleanly - a non-null default would
+// collapse "never chose" and "chose to pin Light" into the same state.
+internal val READER_FONT_SIZE_KEY = floatPreferencesKey("reader_font_size")
+internal val READER_LINE_HEIGHT_KEY = floatPreferencesKey("reader_line_height")
+internal val READER_READING_MODE_KEY = stringPreferencesKey("reader_reading_mode")
+// "Set and forget" per the doc's Font family section - moved out of the
+// Reader Preferences pill entirely, so unlike the three keys above this
+// isn't a *default* the pill seeds from and can drift away from live; it's
+// the only place the choice is made at all now.
+internal val READER_FONT_FAMILY_KEY = stringPreferencesKey("reader_font_family")
+// Reader-level keep-screen-on, separate from TTS_KEEP_SCREEN_ON_KEY above -
+// the two combine (either one true keeps the flag set) rather than one
+// overriding the other, see ReaderScreen's DisposableEffect. Plain
+// FLAG_KEEP_SCREEN_ON, not the idle-timer variant the doc flagged as the
+// better-but-bigger option - the owner picked the plain flag for this pass.
+internal val READER_KEEP_SCREEN_ON_KEY = booleanPreferencesKey("reader_keep_screen_on")
+internal val READER_FULLSCREEN_KEY = booleanPreferencesKey("reader_fullscreen")
+// Not in the doc's own "Brightness" section (which argued no setting is
+// needed) - added per the owner's explicit instruction that brightness (and
+// later, volume) are opt-in and only show as a pill slider once turned on
+// here. Off by default, same "no behavior change until opted into" posture
+// as every other switch in this file.
+internal val READER_BRIGHTNESS_SLIDER_ENABLED_KEY = booleanPreferencesKey("reader_brightness_slider_enabled")
+
+internal fun readerFontSizeOf(prefs: Preferences): Float =
+    prefs[READER_FONT_SIZE_KEY] ?: 18f
+
+internal fun readerLineHeightOf(prefs: Preferences): Float =
+    prefs[READER_LINE_HEIGHT_KEY] ?: 1.8f
+
+// Null means "follow the app theme", resolved by the caller (ReaderScreen,
+// via readingModeFor(appTheme)) exactly as it is today for a never-visited
+// Settings page - this function only reports what's stored, not the
+// resolved mode, so it stays Context/Theme-free like the rest of this file.
+internal fun readerReadingModeOf(prefs: Preferences): String? =
+    prefs[READER_READING_MODE_KEY]
+
+internal fun readerFontFamilyOf(prefs: Preferences): String =
+    prefs[READER_FONT_FAMILY_KEY] ?: "SERIF"
+
+internal fun readerKeepScreenOnOf(prefs: Preferences): Boolean =
+    prefs[READER_KEEP_SCREEN_ON_KEY] ?: false
+
+internal fun readerFullscreenOf(prefs: Preferences): Boolean =
+    prefs[READER_FULLSCREEN_KEY] ?: false
+
+internal fun readerBrightnessSliderEnabledOf(prefs: Preferences): Boolean =
+    prefs[READER_BRIGHTNESS_SLIDER_ENABLED_KEY] ?: false
+
 // Rung 4 of docs/arkarium/foundational/design-notes.md: the default-fallback logic for
 // the four tts_* keys, pulled out of PreferencesManager's property getters into plain
 // top-level functions over a raw Preferences snapshot - same "kept free of Context so it
@@ -245,6 +306,20 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         prefs[HAS_SEEN_COVER_ENLARGE_HINT_KEY] ?: false
     }
 
+    // reader-settings.md's "cheap" batch - see the READER_* keys' doc
+    // comments above for each one's reasoning. ReaderScreen seeds its
+    // in-session `remember` state from these once (fontSize, lineHeight,
+    // readingMode) rather than binding live - the pill still adjusts for
+    // the current session only and never writes back here, same split the
+    // TTS rate/pitch defaults above already use.
+    val readerFontSize: Flow<Float> = safePrefs.map(::readerFontSizeOf)
+    val readerLineHeight: Flow<Float> = safePrefs.map(::readerLineHeightOf)
+    val readerReadingMode: Flow<String?> = safePrefs.map(::readerReadingModeOf)
+    val readerFontFamily: Flow<String> = safePrefs.map(::readerFontFamilyOf)
+    val readerKeepScreenOn: Flow<Boolean> = safePrefs.map(::readerKeepScreenOnOf)
+    val readerFullscreen: Flow<Boolean> = safePrefs.map(::readerFullscreenOf)
+    val readerBrightnessSliderEnabled: Flow<Boolean> = safePrefs.map(::readerBrightnessSliderEnabledOf)
+
     override suspend fun setLibraryUri(uri: String) {
         context.dataStore.edit { prefs ->
             prefs[LIBRARY_URI_KEY] = uri
@@ -353,4 +428,61 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
             prefs[HAS_SEEN_COVER_ENLARGE_HINT_KEY] = true
         }
     }
+
+    suspend fun setReaderFontSize(size: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[READER_FONT_SIZE_KEY] = size
+        }
+    }
+
+    suspend fun setReaderLineHeight(height: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[READER_LINE_HEIGHT_KEY] = height
+        }
+    }
+
+    // `mode` null clears back to "follow the app theme" by removing the key,
+    // same "absence is the meaningful default" shape as setTtsVoiceName.
+    suspend fun setReaderReadingMode(mode: ReadingModeDefault?) {
+        context.dataStore.edit { prefs ->
+            if (mode == null) {
+                prefs.remove(READER_READING_MODE_KEY)
+            } else {
+                prefs[READER_READING_MODE_KEY] = mode.name
+            }
+        }
+    }
+
+    suspend fun setReaderFontFamily(family: String) {
+        context.dataStore.edit { prefs ->
+            prefs[READER_FONT_FAMILY_KEY] = family
+        }
+    }
+
+    suspend fun setReaderKeepScreenOn(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[READER_KEEP_SCREEN_ON_KEY] = enabled
+        }
+    }
+
+    suspend fun setReaderFullscreen(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[READER_FULLSCREEN_KEY] = enabled
+        }
+    }
+
+    suspend fun setReaderBrightnessSliderEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[READER_BRIGHTNESS_SLIDER_ENABLED_KEY] = enabled
+        }
+    }
+}
+
+// Mirrors ui/ReaderScreen.kt's ReadingMode (LIGHT/SEPIA/DARK) rather than
+// importing it directly - PreferencesManager (data layer) staying free of a
+// ui.* import, same layering the rest of this file already keeps (Theme is
+// defined here, not imported from ui). ReaderSettingsScreen/MainActivity
+// map between the two one-for-one; see ReaderScreen.kt's readingModeFor.
+enum class ReadingModeDefault {
+    LIGHT, SEPIA, DARK
 }
