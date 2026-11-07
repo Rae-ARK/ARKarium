@@ -41,6 +41,14 @@ class ChapterTtsState internal constructor() {
     var isAvailable by mutableStateOf(false)
         internal set
 
+    // Mirrors TtsPlaybackService.isPaused. "Stopped" (isSpeaking false, isPaused
+    // false) and "paused" (isSpeaking false, isPaused true) both have the engine
+    // silent, so UI that only checked isSpeaking couldn't tell them apart - the
+    // play/pause control in TtsControlsBar (ui/ReaderScreen.kt) needs to, since it
+    // shows a different icon and calls a different service method for each.
+    var isPaused by mutableStateOf(false)
+        internal set
+
     var speechRate by mutableFloatStateOf(1.0f)
         internal set
 
@@ -73,6 +81,10 @@ class ChapterTtsState internal constructor() {
             this@ChapterTtsState.isAvailable = isAvailable
         }
 
+        override fun onPausedChanged(isPaused: Boolean) {
+            this@ChapterTtsState.isPaused = isPaused
+        }
+
         override fun onChapterFinished() {
             // Qualified explicitly: the method being overridden here and the
             // ChapterTtsState property it forwards to share a name, and an
@@ -91,6 +103,7 @@ class ChapterTtsState internal constructor() {
         svc.listener = listener
         isSpeaking = svc.isSpeaking
         isAvailable = svc.isAvailable
+        isPaused = svc.isPaused
         speechRate = svc.speechRate
         svc.autoContinueEnabled = autoContinueEnabled
     }
@@ -123,6 +136,25 @@ class ChapterTtsState internal constructor() {
 
     fun stop() {
         service?.stop()
+    }
+
+    // Pass-throughs for TtsPlaybackService's own pause/resume/skip - see that class
+    // for how each is modeled at chunk granularity. No-ops (same as speak()/stop()
+    // above) if no service is attached yet.
+    fun pause() {
+        service?.pause()
+    }
+
+    fun resume() {
+        service?.resume()
+    }
+
+    fun skipNext() {
+        service?.skipNext()
+    }
+
+    fun skipPrevious() {
+        service?.skipPrevious()
     }
 }
 

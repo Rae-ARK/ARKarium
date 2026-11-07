@@ -8,6 +8,7 @@ Each doc is one ladder: a table of rungs, each `done`, `current`, `next`,
 | Ladder | Status | Current rung |
 |---|---|---|
 | [`settings-tts.md`](settings-tts.md) | 1 rung left | 4: tests for `tts_*` preferences |
+| [`tts-playback-controls.md`](tts-playback-controls.md) | 2 rungs done | 3: chunk-level progress indicator |
 | [`test-coverage.md`](test-coverage.md) | not started | 4.1 (next): `MetadataViewModelTest` |
 
 **Rules for this folder**

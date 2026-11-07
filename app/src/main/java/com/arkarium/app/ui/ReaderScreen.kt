@@ -26,9 +26,14 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brightness4
 import androidx.compose.material.icons.filled.Brightness7
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -171,7 +176,11 @@ fun ReaderScreen(
     // shape as onBack so navigating via Previous/Next still saves reading progress.
     onPrevious: ((Float) -> Unit)? = null,
     onNext: ((Float) -> Unit)? = null,
-    onAuthorClick: () -> Unit = {}
+    onAuthorClick: () -> Unit = {},
+    // Opens the "settings/tts" page (TtsSettingsScreen) from the gear icon in
+    // TtsControlsBar below. No-op by default so this stays source-compatible with any
+    // other call site, same rationale as onAuthorClick's own default.
+    onOpenTtsSettings: () -> Unit = {}
 ) {
     val fontSize = remember { mutableFloatStateOf(18f) }
     val lineHeight = remember { mutableFloatStateOf(1.8f) }
@@ -227,6 +236,12 @@ fun ReaderScreen(
     // always-visible "Reader Preferences" pill so the settings are discoverable
     // without depending on the tap gesture at all.
     val showPreferences = remember { mutableStateOf(false) }
+    // Shows/hides TtsControlsBar (defined below, outside this function). Deliberately
+    // its own flag rather than reusing showControls or showPreferences: unlike those
+    // two, which are both about immersive mode, this is meant to keep working through
+    // an immersive toggle once a reader has opened it - see TtsControlsBar's own call
+    // site comment.
+    val showTtsControls = remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
     // ReaderScreen's call site in MainActivity doesn't change when Previous/Next swaps
@@ -245,6 +260,10 @@ fun ReaderScreen(
         // queue) persists across chapter navigation - see rememberChapterTts's doc
         // comment on why it isn't torn down and recreated here.
         tts.stop()
+        // A fresh chapter means a fresh session (tts.stop() above) - there's nothing
+        // left for the controls bar to control, so it goes away with the session
+        // rather than lingering open and inert until the reader notices and taps X.
+        showTtsControls.value = false
     }
 
     fun currentProgress(): Float {
@@ -284,6 +303,14 @@ fun ReaderScreen(
     // currently occupies" - body text can never end up underneath the footer, in the
     // middle of a chapter or anywhere else, and the readout genuinely sits flush against
     // the bottom edge with the pill stacked directly above it.
+    // Wrapped in a Box (previously just the Column below) so TtsControlsBar can float
+    // over the content as a true overlay once opened - unlike the footer above, which
+    // deliberately moved *off* being an overlay (see the comment above that Column),
+    // the controls bar is meant to sit on top of whatever's currently on screen,
+    // immersive or not, matching the reference design in uiux.md's playback-controls
+    // entry. The Column itself is left exactly as it was rather than reindented, to
+    // keep this diff to the wrap plus the one addition after it closes.
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -299,18 +326,19 @@ fun ReaderScreen(
                     }
                 },
                 // Only shown once the engine's finished initializing successfully - see
-                // ChapterTtsState.isAvailable's doc comment. Toggles between reading the
-                // current chapter body from the top and stopping mid-read; there's no
-                // pause/resume since Android's TextToSpeech doesn't expose a true pause,
-                // only stop.
+                // ChapterTtsState.isAvailable's doc comment. Always the same speaker
+                // glyph now, regardless of play/pause/stop state - it no longer starts
+                // or stops playback itself (that moved to the play/pause control inside
+                // TtsControlsBar below, which also has pause/resume and skip - not just
+                // stop - now that TtsPlaybackService supports them). Tapping this only
+                // shows or hides that bar, which is why there's no icon state to switch
+                // between here any more.
                 actions = {
                     if (tts.isAvailable) {
-                        IconButton(onClick = {
-                            if (tts.isSpeaking) tts.stop() else tts.speak(context, chapter.title, content)
-                        }) {
+                        IconButton(onClick = { showTtsControls.value = !showTtsControls.value }) {
                             Icon(
-                                if (tts.isSpeaking) Icons.Filled.Stop else Icons.Filled.PlayArrow,
-                                contentDescription = if (tts.isSpeaking) "Stop reading aloud" else "Read chapter aloud"
+                                Icons.Filled.VolumeUp,
+                                contentDescription = if (showTtsControls.value) "Hide read-aloud controls" else "Show read-aloud controls"
                             )
                         }
                     }
@@ -501,7 +529,14 @@ fun ReaderScreen(
                 .animateContentSize()
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
-            if (showPreferences.value) {
+            // Also requires showControls now (previously just showPreferences): if a
+            // reader had this panel open and then entered immersive mode, it used to
+            // stay open and floating over the text with no pill left to close it with
+            // (the pill itself is gated on showControls just below, for the same
+            // "not needed in immersive mode" reasoning). Leaving showPreferences
+            // itself untouched means the panel reopens exactly as left once the
+            // reader leaves immersive mode again, rather than forgetting it was open.
+            if (showPreferences.value && showControls.value) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -700,30 +735,37 @@ fun ReaderScreen(
 
             // The pill itself - Royal Road-style rounded button, centered. Toggles the
             // panel above rather than navigating anywhere, so it stays a single
-            // persistent affordance instead of disappearing once tapped. Always
-            // rendered (people change font/spacing/mode mid-read, immersive or not),
-            // directly above the progress readout below it.
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Surface(
-                    modifier = Modifier.clickable { showPreferences.value = !showPreferences.value },
-                    color = MaterialTheme.colorScheme.primary,
-                    shape = RoundedCornerShape(50),
-                    shadowElevation = 4.dp
+            // persistent affordance instead of disappearing once tapped.
+            //
+            // Used to render unconditionally ("immersive or not") - changed to
+            // non-immersive only (showControls.value): font/spacing/mode aren't needed
+            // while immersed, unlike read-aloud's controls, which uiux.md's
+            // playback-controls entry specifically wants reachable there (see
+            // TtsControlsBar below) - so the two now diverge instead of both always
+            // being on.
+            if (showControls.value) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    Surface(
+                        modifier = Modifier.clickable { showPreferences.value = !showPreferences.value },
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(50),
+                        shadowElevation = 4.dp
                     ) {
-                        Text("Aa", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
-                        Text(
-                            "Reader Preferences",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimary
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Aa", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onPrimary)
+                            Text(
+                                "Reader Preferences",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        }
                     }
                 }
             }
@@ -750,7 +792,146 @@ fun ReaderScreen(
             }
         }
     }
+
+    // Rung 1-2 of the TTS playback-controls ladder (docs/arkarium/implementation/
+    // tts-playback-controls.md), promoted from uiux.md's playback-controls entry.
+    // Deliberately not gated on showControls - that flag is the immersive on/off
+    // toggle for the top bar and footer above, but this bar is meant to stay
+    // reachable through an immersive toggle once opened, rather than vanish with
+    // everything else, since starting/stopping read-aloud shouldn't require leaving
+    // immersive mode first. Also gated on tts.isAvailable, same as the speaker icon
+    // that opens it - no engine, nothing to control.
+    if (showTtsControls.value && tts.isAvailable) {
+        TtsControlsBar(
+            isSpeaking = tts.isSpeaking,
+            isPaused = tts.isPaused,
+            onPlayPause = {
+                when {
+                    tts.isPaused -> tts.resume()
+                    tts.isSpeaking -> tts.pause()
+                    else -> tts.speak(context, chapter.title, content)
+                }
+            },
+            onSkipPrevious = { tts.skipPrevious() },
+            onSkipNext = { tts.skipNext() },
+            onSettingsClick = onOpenTtsSettings,
+            onClose = {
+                tts.stop()
+                showTtsControls.value = false
+            },
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
+    }
+    }
 }
+
+// The read-aloud controls bar: stop the session, open TTS settings, skip to the
+// previous/next chunk, and play/pause - shown and hidden by the speaker icon in
+// ReaderScreen's top bar (see that function's call site comment above) rather than by
+// showControls, so it keeps working through an immersive toggle. Laid out to match
+// the reference screenshot in uiux.md's playback-controls entry (close/settings on
+// one side, skip/play/skip on the other) minus its "n of total" scrub readout -
+// TtsProgressStub below is where that's meant to slot in later, not omitted outright.
+@Composable
+private fun TtsControlsBar(
+    isSpeaking: Boolean,
+    isPaused: Boolean,
+    onPlayPause: () -> Unit,
+    onSkipPrevious: () -> Unit,
+    onSkipNext: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        color = MaterialTheme.colorScheme.primary,
+        shape = RoundedCornerShape(50),
+        shadowElevation = 6.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                // Stops/ends the session outright (ChapterTtsState.stop(), which tears
+                // down the service's queue) and hides this bar - distinct from
+                // play/pause, which leaves the session intact.
+                IconButton(onClick = onClose) {
+                    Icon(
+                        Icons.Filled.Close,
+                        contentDescription = "Stop reading aloud",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+                // Opens settings/tts (TtsSettingsScreen) via onOpenTtsSettings -
+                // ReaderScreen's own onOpenTtsSettings parameter, wired by MainActivity.
+                IconButton(onClick = onSettingsClick) {
+                    Icon(
+                        Icons.Filled.Settings,
+                        contentDescription = "Read-aloud settings",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            }
+
+            TtsProgressStub()
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(onClick = onSkipPrevious) {
+                    Icon(
+                        Icons.Filled.SkipPrevious,
+                        contentDescription = "Previous chunk",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+                // The one control in this bar that isn't an IconButton - sized and
+                // filled to stand out as the primary action, same "biggest circle in
+                // the row" treatment the reference screenshot gives it.
+                Surface(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clickable(onClick = onPlayPause),
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    shape = CircleShape
+                ) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Icon(
+                            if (isSpeaking && !isPaused) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isSpeaking && !isPaused) "Pause reading aloud" else "Play reading aloud",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+                IconButton(onClick = onSkipNext) {
+                    Icon(
+                        Icons.Filled.SkipNext,
+                        contentDescription = "Next chunk",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Stand-in for the "n of total" scrub/progress readout in the uiux.md reference
+// design - a deliberate no-op for now, not an oversight. A chunk isn't a stable unit
+// to show a position in (chunk count depends on TTS_MAX_CHUNK_CHARS in
+// TtsPlaybackService, not on anything a reader would recognize as a "page"); rung 3
+// of docs/arkarium/implementation/tts-playback-controls.md is where this gets a real
+// value. Left as an explicit call site rather than omitted outright so wiring it in
+// later is a one-line change here, not a rediscovery of where it goes.
+@Composable
+private fun TtsProgressStub() {}
 
 // Previous/Next row shown both above and below the chapter body (see Stage 3 in
 // AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md). A missing neighbor renders its button disabled
