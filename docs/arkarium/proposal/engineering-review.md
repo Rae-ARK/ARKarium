@@ -44,7 +44,7 @@ Severity is the reviewer's judgment of impact if left alone.
 | F19 | Typography: justified text, no hyphenation, uncapped line width | Low | V, I | [`animation-and-polish.md`](animation-and-polish.md) |
 | F20 | Some icons have `contentDescription = null` | Low | V | **Audited**, 4 fixes, no on-device screen-reader pass — [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) rung 8 |
 | F21 | Functional gaps: read state on rows, single-scroll chapter list, sleep timer, immersive mode, full-text search | n/a | V | [`ideas.md`](ideas.md) |
-| F22 | `TtsPlaybackService` requests no audio focus, doesn't handle `ACTION_AUDIO_BECOMING_NOISY`, has no `MediaSession` | Med | V | **Fixed** (backlog rung 10; notification transport buttons still left) — [`reader-playback.md`](reader-playback.md) |
+| F22 | `TtsPlaybackService` requests no audio focus, doesn't handle `ACTION_AUDIO_BECOMING_NOISY`, has no `MediaSession` | Med | V | **Fixed** (backlog rung 10; notification transport buttons since added, tts-playback-controls rung 4) — [`reader-playback.md`](reader-playback.md) |
 | F23 | Room throws uncaught on a version **downgrade** (older APK over newer data); only recovery shown to the user is a crash, and clearing app data to recover destroys the same data F1's fix was meant to protect | Med | V | **Fixed** (backlog rung 2) — [`data-safety.md`](data-safety.md) |
 
 A related but separate finding from the same follow-up pass — a scan could

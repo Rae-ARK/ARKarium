@@ -21,7 +21,9 @@ import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
 import androidx.core.app.NotificationCompat
+import android.support.v4.media.session.MediaSessionCompat
 import androidx.core.content.ContextCompat
+import androidx.media.app.NotificationCompat.MediaStyle
 import com.arkarium.app.MainActivity
 import com.arkarium.app.R
 
@@ -358,9 +360,9 @@ class TtsPlaybackService : Service() {
     // Lock-screen controls, Bluetooth/headset buttons and Wear/Auto all drive playback
     // through the session's callback, which just forwards to the same public methods the
     // in-app controls use. Framework android.media.session.MediaSession (API 21+) rather
-    // than androidx.media, so this needs no new dependency; the notification is still the
-    // plain foreground one - transport buttons in it would need MediaStyle from
-    // androidx.media, left for when that dependency is added.
+    // than rewriting it on MediaSessionCompat; the notification's MediaStyle (see
+    // buildNotification) is attached to it via MediaSessionCompat.Token.fromToken, which
+    // wraps this same session's token, so there is still exactly one session.
     private fun createMediaSession() {
         val session = MediaSession(this, "ARKariumTts")
         @Suppress("DEPRECATION")
@@ -403,6 +405,17 @@ class TtsPlaybackService : Service() {
                 .build()
         )
         session.isActive = state != PlaybackState.STATE_STOPPED
+        refreshNotification()
+    }
+
+    // Re-posts the foreground notification so its play/pause button follows
+    // isSpeaking/isPaused. Only while a session is live: once stop()/onChunkError()/the
+    // last chunk have called stopForeground(REMOVE), re-posting here would resurrect a
+    // notification nobody owns.
+    private fun refreshNotification() {
+        if (!isSpeaking && !isPaused) return
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(NOTIFICATION_ID, buildNotification())
     }
 
     // Everything a session holds that must not outlive it: focus, the noisy receiver,
@@ -464,7 +477,29 @@ class TtsPlaybackService : Service() {
     // otherwise restart this service with a null Intent - restarting it would just spin
     // up a silent, do-nothing instance. ui/Tts.kt's rememberChapterTts re-starts it from
     // scratch the next time a reader presses play, same as before this change.
+    //
+    // Rung 4: this is also where the notification's transport buttons land - each is a
+    // PendingIntent.getService carrying one of TtsTransportAction's intent actions. A tap
+    // calls the same public methods the in-app controls and the MediaSession callback
+    // use. It never calls startForeground: the session's own start() already did, and a
+    // tap that arrives with no live session (a stale notification, the gap between
+    // auto-continued chapters) just lets the service go.
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val transport = ttsTransportActionFor(intent?.action)
+        if (transport != null) {
+            if (!isSpeaking && !isPaused) {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            when (transport) {
+                TtsTransportAction.PREVIOUS -> skipPrevious()
+                TtsTransportAction.NEXT -> skipNext()
+                TtsTransportAction.PAUSE -> pause()
+                TtsTransportAction.PLAY -> resume()
+                TtsTransportAction.STOP -> stop()
+            }
+            return START_NOT_STICKY
+        }
         startForeground(NOTIFICATION_ID, buildNotification())
         return START_NOT_STICKY
     }
@@ -791,23 +826,56 @@ class TtsPlaybackService : Service() {
         manager.createNotificationChannel(channel)
     }
 
-    private fun buildNotification() = NotificationCompat.Builder(this, CHANNEL_ID)
-        .setSmallIcon(R.mipmap.ic_launcher)
-        .setContentTitle("Reading aloud")
-        .setContentText(currentChapterTitle.ifBlank { "ARKarium" })
-        .setOngoing(true)
-        .setOnlyAlertOnce(true)
-        .setContentIntent(
-            PendingIntent.getActivity(
-                this,
-                0,
-                Intent(this, MainActivity::class.java).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+    private fun transportPendingIntent(action: TtsTransportAction): PendingIntent =
+        PendingIntent.getService(
+            this,
+            action.ordinal,
+            Intent(this, TtsPlaybackService::class.java).setAction(action.intentAction),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        .build()
+
+    // Framework drawables, so there is no icon asset to ship or keep in sync.
+    private fun transportIcon(action: TtsTransportAction): Int = when (action) {
+        TtsTransportAction.PREVIOUS -> android.R.drawable.ic_media_previous
+        TtsTransportAction.PAUSE -> android.R.drawable.ic_media_pause
+        TtsTransportAction.PLAY -> android.R.drawable.ic_media_play
+        TtsTransportAction.NEXT -> android.R.drawable.ic_media_next
+        TtsTransportAction.STOP -> android.R.drawable.ic_menu_close_clear_cancel
+    }
+
+    private fun transportLabel(action: TtsTransportAction): String = when (action) {
+        TtsTransportAction.PREVIOUS -> "Previous"
+        TtsTransportAction.PAUSE -> "Pause"
+        TtsTransportAction.PLAY -> "Play"
+        TtsTransportAction.NEXT -> "Next"
+        TtsTransportAction.STOP -> "Stop"
+    }
+
+    private fun buildNotification(): android.app.Notification {
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle("Reading aloud")
+            .setContentText(currentChapterTitle.ifBlank { "ARKarium" })
+            .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setContentIntent(
+                PendingIntent.getActivity(
+                    this,
+                    0,
+                    Intent(this, MainActivity::class.java).apply {
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    },
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+            )
+        ttsTransportActions(isSpeaking).forEach { action ->
+            builder.addAction(transportIcon(action), transportLabel(action), transportPendingIntent(action))
+        }
+        val style = MediaStyle().setShowActionsInCompactView(*TTS_COMPACT_ACTION_INDICES)
+        mediaSession?.let { style.setMediaSession(MediaSessionCompat.Token.fromToken(it.sessionToken)) }
+        return builder.setStyle(style).build()
+    }
 
     companion object {
         private const val CHANNEL_ID = "tts_playback"

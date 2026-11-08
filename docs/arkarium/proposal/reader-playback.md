@@ -98,8 +98,8 @@ a rotation's unbind-then-rebind causes.
 scoped to keeping an existing read-aloud session alive. `TtsPlaybackService`
 now has pause/resume/skip and a controls bar in the reader itself (see
 [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md),
-rungs 1-2), but the foreground notification is still a plain "Reading aloud:
-<chapter>" with no transport actions - that's that ladder's rung 4. The
+rungs 1-2), and the foreground notification now has transport actions too
+(that ladder's rung 4, in code, not yet verified on a device). The
 multi-voice segment list in [`tts-multivoice.md`](tts-multivoice.md) can also
 now build on `TtsPlaybackService` rather than needing its own service, but
 isn't built yet. Also not yet verified on a device (see this doc's commit message):
@@ -147,8 +147,8 @@ killed the session before anyone noticed them:
   [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md).
 
 **Fixed in code** (backlog rung 10): audio focus, becoming-noisy pause and a framework
-`MediaSession` are in `TtsPlaybackService`; notification transport buttons are the part
-left. Original direction, kept for the record:
+`MediaSession` are in `TtsPlaybackService`, and the notification transport buttons
+(`MediaStyle`) landed with rung 4 of the playback-controls ladder. Original direction, kept for the record:
 
 **Direction:** build this on `TtsPlaybackService` directly rather than as a
 separate piece — a `MediaSessionCompat` plus `AudioFocusRequest` with
