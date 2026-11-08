@@ -314,33 +314,14 @@ fun HomeScreen(
                 }
             }
 
-            // Browse button
-            item {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp)
-                        .clickable { onBrowseClick() }
-                        .height(80.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            "Browse All Novels",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
-                    }
-                }
-            }
+            // Standalone "Browse All Novels" card removed - Browse is one of the
+            // four persistent bottom-bar tabs now (see navigation/AppBottomBar.kt),
+            // so this full-width button was a second way to reach the exact same
+            // destination, sitting right above a tab that does the same thing.
+            // The "View all" link on the Trending header above still uses
+            // onBrowseClick - that one's a normal in-context "see more of this
+            // section" link, not a redundant duplicate of the tab itself, so it
+            // stays.
         }
         }
     }
