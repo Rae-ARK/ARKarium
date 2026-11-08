@@ -1,6 +1,6 @@
 # Engineering backlog: merged roadmap
 
-> **Kind:** implementation · **Status:** rungs 1–8, 10 and 11 done, 9 done in code but needs one build to commit its schema (see below), 12+ queued · **Verified:** 2026-11-08 @ (this patch)
+> **Kind:** implementation · **Status:** rungs 1–8, 10 and 11 done, 9 done in code but needs one build to commit its schema (see below), 14 done in code at paragraph granularity (see below - needs the same build as rung 9, plus on-device verification, before it's really done), 12, 13, 15–18 queued · **Verified:** 2026-11-08 @ (this patch)
 > **Origin:** a follow-up review pass over the open findings in
 > [`../proposal/engineering-review.md`](../proposal/engineering-review.md) and its
 > detail docs, the two open entries in [`../proposal/bugs/`](../proposal/bugs/README.md),
@@ -33,7 +33,7 @@ and point this row at that instead.
 | 11 | "Notify me" toggle bug, remaining steps - confirmed on-device, which surfaced a real sync-detection bug in place of the original remaining steps (see below) | Medium | **done** | [`../proposal/bugs/other/notify-toggle-confirmation.md`](../proposal/bugs/other/notify-toggle-confirmation.md) |
 | 12 | F3 — novel identity tied to SAF URI (D3 decided: opaque id, re-link-with-confirmation) | Large | queued — own ladder when started | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 13 | F4 — manifest signing (D5 decided: key custody; ECDSA vs Ed25519 still open) | Large | queued — own ladder when started | [`../proposal/manifest-signing.md`](../proposal/manifest-signing.md) |
-| 14 | F9 — reading position drifts (scroll fraction → offset-based anchor; bundled with TTS controls/highlight) | Large | queued | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
+| 14 | F9 — reading position drifts (scroll fraction → offset-based anchor; bundled with TTS controls/highlight) | Large | **done in code, at paragraph granularity - see below** | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
 | 15 | F5 — SAF scan does ~3 provider queries per file (per-directory cache) | Large | blocked — needs rung 12 (F3) first for a stable id | [`../proposal/performance.md`](../proposal/performance.md) |
 | 16 | F12/F14/F17 — Kotlin 2.x / Compose BOM / Navigation upgrade (D4 decided: staged) | Large | queued — own ladder when started | [`../proposal/performance.md`](../proposal/performance.md) |
 | 17 | F13 — splash cold-start cost (D6 decided: policy) | Large | queued | [`../proposal/performance.md`](../proposal/performance.md) |
@@ -172,6 +172,45 @@ through the same methods the in-app controls use. The decision table is in
 Left for later: transport buttons in the notification itself need `MediaStyle`, which lives
 in `androidx.media`, a dependency this project doesn't have. Rung 4 of
 `tts-playback-controls.md` is where that belongs.
+
+## Rung 14 — what changed
+
+`ReadingProgressEntity` gains a `position_snippet` column (`MIGRATION_13_14`,
+`APP_DATABASE_VERSION` 13 → 14) and a new `positionType` value, `CHAR_OFFSET`
+(`ReaderPosition.kt`), alongside the existing `PERCENTAGE`. `ReaderScreen` now saves
+and restores by that offset instead of a scroll-pixel fraction: `ChapterMarkup.kt`'s
+new `paragraphOffsets()` pairs every `Paragraph` segment with where its text starts
+in the chapter's raw body (`ChapterMarkupOffsetsTest` checks this stays in lockstep
+with `parseChapterSegments()` itself, including the unterminated-tag and all-markup
+edge cases), and each paragraph's own `Text` composable reports where it actually
+lands on screen via `onGloballyPositioned`. Leaving a chapter saves the paragraph at
+the top of the viewport by its raw-text offset (`currentAnchor()`); opening one with
+a saved `CHAR_OFFSET` row for that exact chapter scrolls back to that paragraph
+(`paragraphForCharOffset`) once its position is known, rather than always starting at
+the top the way every chapter open did before this rung (restoring into a chapter at
+all was never wired up - "Continue Reading" only used the saved row to pick *which*
+chapter to open).
+
+**Narrower than the proposal doc's direction, honestly:** F9 describes a character
+offset restored via `TextLayoutResult.getLineForOffset`/`getLineTop` - line-level,
+within whichever paragraph the reader was in. Each paragraph is its own `Text`
+composable here, not one `TextLayoutResult` spanning the chapter body, so that needs
+per-paragraph line math this rung doesn't add; what's here anchors to the *start of
+a paragraph* instead. That's still the actual fix for what F9 flags (a position tied
+to content instead of to a pixel fraction that only means the same thing at one
+font size/width), just coarser than a mid-paragraph restore would be - see
+`ReaderPosition.kt`'s doc comment for the detail. The snippet fallback the proposal
+doc calls for is stored (`positionSnippet`) but not yet checked against the live
+chapter body before restoring - captured for the row to carry, not yet read back.
+
+**Not done, and can't be from this sandbox** (same limitation as rung 9): the
+`14.json` schema export and `MigrationTest`'s on-device replay. Nothing here has run
+on a device or even built with a real Gradle/Android toolchain - this sandbox has no
+network path to `google()`/`mavenCentral()`, only to a handful of other package
+registries, so `./gradlew` itself cannot run. The paragraph-to-pixel math
+(`onGloballyPositioned` + `scrollContainerTop`) is exactly the kind of thing that
+looks right on paper and needs a real screen to confirm - nothing here substitutes
+for that.
 
 ## Reader settings — one place, not two
 

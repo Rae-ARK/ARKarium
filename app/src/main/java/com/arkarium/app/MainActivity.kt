@@ -73,6 +73,7 @@ import com.arkarium.app.data.ChapterOverrideEntity
 import com.arkarium.app.data.ChapterReadEventEntity
 import com.arkarium.app.data.GoogleBooksMetadataProvider
 import com.arkarium.app.data.resolveLibraryRoot
+import com.arkarium.app.data.ReaderPosition
 import com.arkarium.app.data.ReadingProgressEntity
 import com.arkarium.app.data.ReadingStats
 import com.arkarium.app.data.ScannerImpl
@@ -318,13 +319,20 @@ class MainActivity : ComponentActivity() {
         libraryViewModel.loadNovelDetails(novel)
     }
 
-    private suspend fun saveReadingProgress(novelId: String, chapterId: String, progress: Float) {
+    // Rung 14 (F9, docs/arkarium/proposal/reader-playback.md): took a plain Float
+    // scroll fraction before this rung; now takes the character-offset anchor
+    // ReaderScreen's currentAnchor() computes (see ReaderPosition.kt) and writes it as
+    // a CHAR_OFFSET row instead of PERCENTAGE. Every call site below already had a
+    // ReaderPosition in hand (ReaderScreen's onBack/onBackToFiction/onPrevious/onNext
+    // all take one now), so this is purely a parameter-type change, not a new lookup.
+    private suspend fun saveReadingProgress(novelId: String, chapterId: String, position: ReaderPosition) {
         db.readingProgressDao().upsert(
             ReadingProgressEntity(
                 novelId = novelId,
                 chapterId = chapterId,
-                position = progress,
-                positionType = "PERCENTAGE",
+                position = position.charOffset.toFloat(),
+                positionType = ReaderPosition.POSITION_TYPE,
+                positionSnippet = position.snippet,
                 updatedAt = System.currentTimeMillis()
             )
         )
@@ -1109,6 +1117,27 @@ class MainActivity : ComponentActivity() {
                         }
                         val loadResult = chapterContentState.value
                         val content = (loadResult as? ChapterLoadResult.Ok)?.content?.body
+                        // Rung 14 (F9) - resolved once per chapter, same "remember +
+                        // LaunchedEffect" pattern as readerAuthor above. Only restorable
+                        // when the saved row is actually for *this* chapter (a stale row
+                        // from a different chapter one novel-wide row can't be, since
+                        // ReadingProgressEntity is one row per novel - but defensive here
+                        // costs nothing) and was itself written as CHAR_OFFSET; a plain
+                        // PERCENTAGE row (written before this rung, or never written at
+                        // all) restores to null, same as "start at the top" already was.
+                        val initialReaderPosition = remember(chapterId) { mutableStateOf<ReaderPosition?>(null) }
+                        LaunchedEffect(novelId, chapterId) {
+                            val saved = db.readingProgressDao().forNovel(novelId)
+                            initialReaderPosition.value = if (
+                                saved != null &&
+                                saved.chapterId == chapterId &&
+                                saved.positionType == ReaderPosition.POSITION_TYPE
+                            ) {
+                                ReaderPosition(saved.position.toInt(), saved.positionSnippet ?: "")
+                            } else {
+                                null
+                            }
+                        }
                         if (loadResult is ChapterLoadResult.Failed) {
                             // Lost SAF permission, provider hiccup, file moved/deleted
                             // underneath us, etc. - a real error screen with a retry rather
@@ -1148,9 +1177,10 @@ class MainActivity : ComponentActivity() {
                                     arcTitle = arcTitle,
                                     coverUri = readerCoverUri,
                                     author = readerAuthor.value,
-                                    onBack = { progress ->
+                                    initialPosition = initialReaderPosition.value,
+                                    onBack = { position ->
                                         lifecycleScope.launch {
-                                            saveReadingProgress(novelId, chapterId, progress)
+                                            saveReadingProgress(novelId, chapterId, position)
                                             // Same popUpTo("home") reasoning as NovelDetail's
                                             // onBack - Reader's Back always went straight to
                                             // Home regardless of entry path.
@@ -1160,10 +1190,10 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     },
-                                    onBackToFiction = { progress ->
+                                    onBackToFiction = { position ->
                                         if (novel != null) {
                                             lifecycleScope.launch {
-                                                saveReadingProgress(novelId, chapterId, progress)
+                                                saveReadingProgress(novelId, chapterId, position)
                                                 navController.navigate("novelDetail/${novel.id}") {
                                                     launchSingleTop = true
                                                 }
@@ -1171,9 +1201,9 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onPrevious = previousChapter?.let { prev ->
-                                        { progress: Float ->
+                                        { position: ReaderPosition ->
                                             lifecycleScope.launch {
-                                                saveReadingProgress(novelId, chapterId, progress)
+                                                saveReadingProgress(novelId, chapterId, position)
                                                 // Replace, not push - Back from chapter 5
                                                 // returns to NovelDetail, not chapter 4,
                                                 // matching pre-NavHost behavior where
@@ -1186,9 +1216,9 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onNext = nextChapter?.let { next ->
-                                        { progress: Float ->
+                                        { position: ReaderPosition ->
                                             lifecycleScope.launch {
-                                                saveReadingProgress(novelId, chapterId, progress)
+                                                saveReadingProgress(novelId, chapterId, position)
                                                 navController.navigate("reader/$novelId/${next.id}") {
                                                     popUpTo("reader/{novelId}/{chapterId}") { inclusive = true }
                                                 }
