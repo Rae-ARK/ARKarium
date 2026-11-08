@@ -1,7 +1,14 @@
 plugins {
     id("com.android.application")
     kotlin("android")
-    kotlin("kapt")
+    id("com.google.devtools.ksp")
+}
+
+// Room's exported schema JSON (one file per database version) goes to app/schemas and is
+// committed. MigrationTest replays real upgrades from those files, and a schema change
+// without a matching new file shows up in review as a diff. See data-safety.md F1/F2.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 android {
@@ -12,6 +19,7 @@ android {
         applicationId = "com.arkarium.app"
         minSdk = 24
         targetSdk = 34
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Single source of truth for the app's version, anywhere it needs to be shown.
         // Everything in-app (Settings' About section, both crash screens, the
         // persisted last-crash trace) reads this back via the generated
@@ -70,6 +78,12 @@ android {
         }
     }
 
+    // MigrationTestHelper reads the exported schema JSON from the androidTest APK's
+    // assets, so ship app/schemas there.
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.3"
     }
@@ -121,7 +135,7 @@ dependencies {
 
     // Room
     implementation("androidx.room:room-runtime:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
+    ksp("androidx.room:room-compiler:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
 
     // Lifecycle
@@ -163,5 +177,11 @@ dependencies {
     // plain-Kotlin/ViewModel classes that don't need Robolectric or instrumentation.
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
+
+    // Instrumented (device/emulator) tests - src/androidTest. Only the Room migration
+    // test lives there today; it needs a real SQLite, which the JVM tests above don't have.
+    androidTestImplementation("androidx.room:room-testing:2.6.1")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
+    androidTestImplementation("androidx.test:runner:1.5.2")
 }
 

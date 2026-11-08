@@ -16,6 +16,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 // specifically (MainActivity.onCreate) catch this subtype first.
 class DatabaseDowngradeException(message: String) : IllegalStateException(message)
 
+// The schema version, as a constant so MigrationChainTest can check that the migration
+// list actually reaches it. @Database below reads it from here - bump this (and add the
+// matching MIGRATION_n_m + a committed app/schemas/.../n.json) together, never the
+// annotation alone.
+const val APP_DATABASE_VERSION = 13
+
 // @Database must sit directly above the RoomDatabase subclass it annotates - an
 // annotation binds to the very next declaration, and with DatabaseDowngradeException's
 // class declaration (not just its doc comment) between this annotation and
@@ -39,7 +45,7 @@ class DatabaseDowngradeException(message: String) : IllegalStateException(messag
         SyncedFileEntity::class,
         ChapterReadEventEntity::class
     ],
-    version = 13
+    version = APP_DATABASE_VERSION
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun novelDao(): NovelDao
@@ -282,6 +288,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Every migration, in order - the one list create() hands to Room, and the one
+        // MigrationChainTest (JVM) and MigrationTest (instrumented) check. A new
+        // MIGRATION_n_m only counts once it is added here.
+        val ALL_MIGRATIONS: Array<Migration> = arrayOf(
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
+            MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
+            MIGRATION_11_12, MIGRATION_12_13
+        )
+
         // NOTE: deliberately no fallbackToDestructiveMigration() here. That fallback
         // would silently drop and recreate the whole database - including
         // chapter_overrides (manual edits a rescan can't rebuild), reading_progress
@@ -349,7 +364,7 @@ abstract class AppDatabase : RoomDatabase() {
                         context.applicationContext,
                         AppDatabase::class.java,
                         "arkarium.db"
-                    ).addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    ).addMigrations(*ALL_MIGRATIONS)
                         .build()
                 } catch (e: IllegalStateException) {
                     throw asDowngradeExceptionIfApplicable(e)

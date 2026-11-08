@@ -2,17 +2,22 @@ package com.arkarium.app.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.BrightnessMedium
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -21,15 +26,21 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.arkarium.app.data.ReadingModeDefault
 
 // docs/arkarium/proposal/reader-settings.md, "Page shape" + suggested-order
@@ -40,10 +51,10 @@ import com.arkarium.app.data.ReadingModeDefault
 // that screen's own doc comment and design-notes.md's "Settings is an
 // index; each option is its own page".
 //
-// Font family lives on this page as its own card rather than in the Reader
-// Preferences pill, per the doc's Font family section: it's "set and
-// forget", unlike Size/Spacing/Mode, which the pill still adjusts live and
-// never writes back here.
+// This page is the one and only place reader settings are changed. The
+// in-reader "Reader Preferences" pill used to open a second copy of size,
+// spacing and mode; it now just opens this page, so there is one way to do each
+// thing. Font family is a tappable row that opens a card of font options.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderSettingsScreen(
@@ -59,6 +70,8 @@ fun ReaderSettingsScreen(
     keepScreenOn: Boolean = false,
     fullscreen: Boolean = false,
     brightnessSliderEnabled: Boolean = false,
+    // -1f = follow the system; only applied while brightnessSliderEnabled is on.
+    brightness: Float = -1f,
     onFontSizeChange: (Float) -> Unit = {},
     onLineHeightChange: (Float) -> Unit = {},
     onReadingModeChange: (ReadingModeDefault?) -> Unit = {},
@@ -66,6 +79,7 @@ fun ReaderSettingsScreen(
     onKeepScreenOnToggle: (Boolean) -> Unit = {},
     onFullscreenToggle: (Boolean) -> Unit = {},
     onBrightnessSliderToggle: (Boolean) -> Unit = {},
+    onBrightnessChange: (Float) -> Unit = {},
     onBack: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -78,7 +92,13 @@ fun ReaderSettingsScreen(
             }
         )
 
-        Column(modifier = Modifier.padding(16.dp)) {
+        var fontPickerOpen by remember { mutableStateOf(false) }
+
+        Column(
+            modifier = Modifier
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp)
+        ) {
             SettingsHeaderBadge(
                 icon = Icons.Filled.AutoStories,
                 caption = "Defaults for the chapter reader - text size, " +
@@ -86,8 +106,7 @@ fun ReaderSettingsScreen(
                     "you're reading."
             )
 
-            // Font family. Still a reader setting, just not a per-session
-            // one - see this file's doc comment.
+            // Font family - opens a card of options, see FontPickerDialog.
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -104,51 +123,57 @@ fun ReaderSettingsScreen(
                         Text("Font family", style = MaterialTheme.typography.bodyLarge)
                     }
                     Text(
-                        "Used everywhere you read - not adjustable per " +
-                            "session from the Reader Preferences pill.",
+                        "Used everywhere you read. Tap to see every option.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
                         modifier = Modifier.padding(top = 2.dp, bottom = 8.dp)
                     )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    // One tappable row showing the current choice in its own face;
+                    // tapping it opens the card of every font (FontPickerDialog below).
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { fontPickerOpen = true },
+                        color = MaterialTheme.colorScheme.surface,
+                        shape = RoundedCornerShape(4.dp)
                     ) {
-                        ReaderFontFamily.values().forEach { choice ->
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { onFontFamilyChange(choice) },
-                                color = if (fontFamily == choice)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.surface,
-                                shape = RoundedCornerShape(4.dp)
-                            ) {
-                                Text(
-                                    when (choice) {
-                                        ReaderFontFamily.SERIF -> "Serif"
-                                        ReaderFontFamily.SANS -> "Sans"
-                                        ReaderFontFamily.DYSLEXIC -> "Dyslexia-friendly"
-                                    },
-                                    modifier = Modifier.padding(vertical = 10.dp),
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = if (fontFamily == choice)
-                                        MaterialTheme.colorScheme.onPrimary
-                                    else
-                                        MaterialTheme.colorScheme.onSurfaceVariant
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                fontFamily.displayName,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodyLarge.copy(
+                                    fontFamily = resolveFontFamily(fontFamily),
+                                    letterSpacing = extraLetterSpacing(fontFamily)
                                 )
-                            }
+                            )
+                            Icon(
+                                Icons.Filled.ChevronRight,
+                                contentDescription = "Choose font",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
             }
 
+            if (fontPickerOpen) {
+                FontPickerDialog(
+                    selected = fontFamily,
+                    onSelect = {
+                        onFontFamilyChange(it)
+                        fontPickerOpen = false
+                    },
+                    onDismiss = { fontPickerOpen = false }
+                )
+            }
+
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Defaults the pill seeds from once per reader session and
-            // never writes back to - see this file's doc comment.
+            // Defaults the reader seeds its text size, spacing and mode from when a
+            // chapter opens.
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -332,12 +357,11 @@ fun ReaderSettingsScreen(
                                 modifier = Modifier.padding(end = 8.dp)
                             )
                             Column {
-                                Text("Brightness slider in Reader Preferences", style = MaterialTheme.typography.bodyLarge)
+                                Text("Set brightness while reading", style = MaterialTheme.typography.bodyLarge)
                                 Text(
-                                    "Adds a brightness slider to the pill, " +
-                                        "for this reading session only - it " +
-                                        "doesn't change anything outside the " +
-                                        "reader.",
+                                    "Overrides screen brightness only while a " +
+                                        "chapter is open - nothing outside the " +
+                                        "reader changes.",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                                 )
@@ -345,6 +369,94 @@ fun ReaderSettingsScreen(
                         }
                         Switch(checked = brightnessSliderEnabled, onCheckedChange = onBrightnessSliderToggle)
                     }
+
+                    if (brightnessSliderEnabled) {
+                        // -1f (never set) shows mid-way; the first drag stores a real level.
+                        Slider(
+                            value = if (brightness < 0f) 0.5f else brightness,
+                            onValueChange = onBrightnessChange,
+                            valueRange = 0.02f..1f,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The card of font options the Font family row opens: every ReaderFontFamily, each
+// named in its own face with a line of sample text, the current one ticked. Picking one
+// applies and closes it. Scrolls, so adding more families later needs no layout change.
+@Composable
+private fun FontPickerDialog(
+    selected: ReaderFontFamily,
+    onSelect: (ReaderFontFamily) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(16.dp)
+        ) {
+            Column(modifier = Modifier.padding(vertical = 16.dp)) {
+                Text(
+                    "Font",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 8.dp)
+                )
+                Column(
+                    modifier = Modifier
+                        .weight(1f, fill = false)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    ReaderFontFamily.values().forEach { choice ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onSelect(choice) }
+                                .padding(horizontal = 20.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    choice.displayName,
+                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                        fontFamily = resolveFontFamily(choice),
+                                        letterSpacing = extraLetterSpacing(choice)
+                                    ),
+                                    color = if (choice == selected)
+                                        MaterialTheme.colorScheme.primary
+                                    else
+                                        MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    "The quick brown fox jumps over the lazy dog",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontFamily = resolveFontFamily(choice),
+                                        letterSpacing = extraLetterSpacing(choice)
+                                    ),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
+                                    maxLines = 1
+                                )
+                            }
+                            if (choice == selected) {
+                                Icon(
+                                    Icons.Filled.Check,
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp, end = 12.dp),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
                 }
             }
         }

@@ -4,8 +4,16 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.media.MediaMetadata
+import android.media.session.MediaSession
+import android.media.session.PlaybackState
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
@@ -224,11 +232,174 @@ class TtsPlaybackService : Service() {
     // still paused.
     private var ignorePendingFinish = false
 
+    // --- F22 (docs/arkarium/proposal/reader-playback.md): audio focus, becoming-noisy,
+    // MediaSession ---
+
+    private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }
+
+    // Speech, not music: tells the platform (and the engine, see onCreate) what this
+    // audio is, so it routes/ducks others correctly and Bluetooth shows the right icon.
+    private val audioAttributes: AudioAttributes = AudioAttributes.Builder()
+        .setUsage(AudioAttributes.USAGE_MEDIA)
+        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+        .build()
+
+    // API 26+ keeps the request object so it can be abandoned later; below that the
+    // deprecated listener-based overloads are used and this stays null.
+    private var focusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus = false
+
+    // True only while paused because another app took focus *temporarily*, i.e. when a
+    // later AUDIOFOCUS_GAIN should resume us. Cleared by any pause/stop the reader
+    // initiated themselves, so a deliberate pause is never undone by a stray GAIN.
+    private var pausedForTransientFocusLoss = false
+
+    private val focusListener = AudioManager.OnAudioFocusChangeListener { change ->
+        when (focusActionFor(change, pausedForTransientFocusLoss)) {
+            FocusAction.PAUSE_UNTIL_GAIN -> if (isSpeaking) {
+                pausedForTransientFocusLoss = true
+                pauseInternal(abandonFocus = false)
+            }
+            FocusAction.PAUSE_AND_RELEASE -> {
+                pausedForTransientFocusLoss = false
+                if (isSpeaking) pauseInternal(abandonFocus = true) else abandonAudioFocus()
+            }
+            FocusAction.RESUME -> {
+                pausedForTransientFocusLoss = false
+                resume()
+            }
+            FocusAction.NONE -> Unit
+        }
+    }
+
+    // Unplugging wired headphones / dropping Bluetooth audio flips output to the
+    // speaker; the platform broadcasts this precisely so a spoken-word app pauses
+    // instead of suddenly reading aloud to the room. Registered only while speaking.
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) pause()
+        }
+    }
+    private var noisyReceiverRegistered = false
+
+    private var mediaSession: MediaSession? = null
+
+    private fun requestAudioFocus(): Boolean {
+        if (hasAudioFocus) return true
+        val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val request = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(audioAttributes)
+                .setOnAudioFocusChangeListener(focusListener)
+                .build()
+            focusRequest = request
+            audioManager.requestAudioFocus(request)
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.requestAudioFocus(
+                focusListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+        }
+        hasAudioFocus = result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+        return hasAudioFocus
+    }
+
+    private fun abandonAudioFocus() {
+        if (!hasAudioFocus) return
+        hasAudioFocus = false
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
+            focusRequest = null
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager.abandonAudioFocus(focusListener)
+        }
+    }
+
+    private fun registerNoisyReceiver() {
+        if (noisyReceiverRegistered) return
+        ContextCompat.registerReceiver(
+            this,
+            noisyReceiver,
+            IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        noisyReceiverRegistered = true
+    }
+
+    private fun unregisterNoisyReceiver() {
+        if (!noisyReceiverRegistered) return
+        noisyReceiverRegistered = false
+        runCatching { unregisterReceiver(noisyReceiver) }
+    }
+
+    // Lock-screen controls, Bluetooth/headset buttons and Wear/Auto all drive playback
+    // through the session's callback, which just forwards to the same public methods the
+    // in-app controls use. Framework android.media.session.MediaSession (API 21+) rather
+    // than androidx.media, so this needs no new dependency; the notification is still the
+    // plain foreground one - transport buttons in it would need MediaStyle from
+    // androidx.media, left for when that dependency is added.
+    private fun createMediaSession() {
+        val session = MediaSession(this, "ARKariumTts")
+        @Suppress("DEPRECATION")
+        session.setFlags(
+            MediaSession.FLAG_HANDLES_MEDIA_BUTTONS or MediaSession.FLAG_HANDLES_TRANSPORT_CONTROLS
+        )
+        session.setCallback(object : MediaSession.Callback() {
+            override fun onPlay() { resume() }
+            override fun onPause() { pause() }
+            override fun onSkipToNext() { skipNext() }
+            override fun onSkipToPrevious() { skipPrevious() }
+            override fun onStop() { stop() }
+        })
+        mediaSession = session
+    }
+
+    // Pushes isSpeaking/isPaused/chapter title to the session. Called wherever those
+    // change; cheap, and a no-op before the session exists or after it's released.
+    private fun updateMediaSession() {
+        val session = mediaSession ?: return
+        val state = when {
+            isSpeaking -> PlaybackState.STATE_PLAYING
+            isPaused -> PlaybackState.STATE_PAUSED
+            else -> PlaybackState.STATE_STOPPED
+        }
+        session.setPlaybackState(
+            PlaybackState.Builder()
+                .setActions(
+                    PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE or
+                        PlaybackState.ACTION_PLAY_PAUSE or PlaybackState.ACTION_STOP or
+                        PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS
+                )
+                .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, if (isSpeaking) 1f else 0f)
+                .build()
+        )
+        session.setMetadata(
+            MediaMetadata.Builder()
+                .putString(MediaMetadata.METADATA_KEY_TITLE, currentChapterTitle.ifBlank { "ARKarium" })
+                .putString(MediaMetadata.METADATA_KEY_ARTIST, "Reading aloud")
+                .build()
+        )
+        session.isActive = state != PlaybackState.STATE_STOPPED
+    }
+
+    // Everything a session holds that must not outlive it: focus, the noisy receiver,
+    // the pending auto-resume, and the session's active flag.
+    private fun releaseSessionResources() {
+        pausedForTransientFocusLoss = false
+        unregisterNoisyReceiver()
+        abandonAudioFocus()
+        updateMediaSession()
+    }
+
     override fun onCreate() {
         super.onCreate()
         ensureChannel()
+        createMediaSession()
         engine = TextToSpeech(applicationContext) { status ->
             isAvailable = status == TextToSpeech.SUCCESS
+            if (isAvailable) engine?.setAudioAttributes(audioAttributes)
             // engine?.voices can itself be null on some engines/OEM builds even after a
             // SUCCESS init - orEmpty() keeps availableVoices a plain empty list rather
             // than forcing every caller (TtsSettingsScreen's grouping, Step 4) to
@@ -278,6 +449,10 @@ class TtsPlaybackService : Service() {
     }
 
     override fun onDestroy() {
+        unregisterNoisyReceiver()
+        abandonAudioFocus()
+        mediaSession?.release()
+        mediaSession = null
         engine?.stop()
         engine?.shutdown()
         engine = null
@@ -363,6 +538,15 @@ class TtsPlaybackService : Service() {
         val tts = engine ?: return
         val chunks = splitForTts(text)
         if (chunks.isEmpty()) return
+        // F22: ask for audio focus before anything else. Granted means other audio
+        // (music, a podcast) has been paused or ducked by the system for us. Refused
+        // (a call is active, say) means starting would just talk over it, so report
+        // that and don't start - no foreground service, no session.
+        if (!requestAudioFocus()) {
+            listener?.onError(ERROR_AUDIO_FOCUS_DENIED)
+            return
+        }
+        pausedForTransientFocusLoss = false
         this.sessionKey = sessionKey
         // Set before starting the service so that whenever onStartCommand actually
         // runs - always, on every startForegroundService call, whether this service
@@ -376,6 +560,8 @@ class TtsPlaybackService : Service() {
         isPaused = false
         ignorePendingFinish = false
         isSpeaking = true
+        registerNoisyReceiver()
+        updateMediaSession()
         listener?.onSpeakingChanged(true)
         speakNextChunk(TextToSpeech.QUEUE_FLUSH)
     }
@@ -397,6 +583,7 @@ class TtsPlaybackService : Service() {
         pendingIndex = 0
         lastQueuedUtteranceId = null
         sessionKey = null
+        releaseSessionResources()
         listener?.onSpeakingChanged(false)
         listener?.onPausedChanged(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -408,12 +595,26 @@ class TtsPlaybackService : Service() {
     // the engine was partway through restarts from its own beginning rather than
     // mid-word, which is the chunk-level granularity that entry describes as the easy
     // first step (word-level position would need onRangeStart, API 26+).
+    //
+    // F22: this is the reader-initiated pause (the in-app button, a headset button via
+    // the MediaSession, becoming-noisy). It abandons audio focus so whatever was playing
+    // before can pick back up, and cancels any pending auto-resume - a deliberate pause
+    // must not be undone by a later AUDIOFOCUS_GAIN. The focus-loss path calls
+    // pauseInternal directly instead.
     fun pause() {
+        pausedForTransientFocusLoss = false
+        pauseInternal(abandonFocus = true)
+    }
+
+    private fun pauseInternal(abandonFocus: Boolean) {
         if (!isSpeaking) return
         ignorePendingFinish = true
         engine?.stop()
         isSpeaking = false
         isPaused = true
+        unregisterNoisyReceiver()
+        if (abandonFocus) abandonAudioFocus()
+        updateMediaSession()
         listener?.onSpeakingChanged(false)
         listener?.onPausedChanged(true)
     }
@@ -425,12 +626,18 @@ class TtsPlaybackService : Service() {
     // onUtteranceFinished, which only runs while actively speaking).
     fun resume() {
         if (!isPaused) return
+        // F22: pausing may have given focus up (or lost it for good), so take it again;
+        // if another app still holds it (a call), stay paused rather than talk over it.
+        if (!requestAudioFocus()) return
+        pausedForTransientFocusLoss = false
         isPaused = false
         if (pendingIndex !in pendingChunks.indices) {
             listener?.onPausedChanged(false)
             return
         }
         isSpeaking = true
+        registerNoisyReceiver()
+        updateMediaSession()
         listener?.onPausedChanged(false)
         listener?.onSpeakingChanged(true)
         speakNextChunk(TextToSpeech.QUEUE_FLUSH)
@@ -510,6 +717,7 @@ class TtsPlaybackService : Service() {
                 // running, foreground notification and all, rather than torn down here
                 // only to be immediately started again.
             } else {
+                releaseSessionResources()
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
@@ -537,6 +745,7 @@ class TtsPlaybackService : Service() {
         pendingIndex = 0
         lastQueuedUtteranceId = null
         sessionKey = null
+        releaseSessionResources()
         listener?.onSpeakingChanged(false)
         listener?.onError(errorCode)
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -604,6 +813,8 @@ internal fun Voice.toTtsVoiceInfo(): TtsVoiceInfo = TtsVoiceInfo(
 // hitting ERROR_NETWORK/ERROR_NETWORK_TIMEOUT can do about it; every other code gets a
 // flat message instead of guessing at a cause this function has no evidence for.
 internal fun ttsErrorMessage(errorCode: Int): String = when (errorCode) {
+    ERROR_AUDIO_FOCUS_DENIED ->
+        "Read-aloud didn't start: another app (a call, probably) is using the audio."
     TextToSpeech.ERROR_NETWORK, TextToSpeech.ERROR_NETWORK_TIMEOUT ->
         "Read-aloud stopped: no connection for this voice. Try a local voice in TTS settings."
     TextToSpeech.ERROR_NOT_INSTALLED_YET ->

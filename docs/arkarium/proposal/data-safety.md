@@ -87,7 +87,9 @@ of a stack trace.
 
 ### F2. No exported schema, no migration tests, KAPT instead of KSP
 
-Folded into F1 above — same root cause, same fix.
+Folded into F1 above — same root cause, same fix. **Fixed in code** (backlog rung 9): KSP,
+`room.schemaLocation`, `MigrationChainTest`, `MigrationTest`. Still to do by hand: run one
+build and commit the generated `app/schemas/.../13.json` - see the backlog's rung 9 section.
 
 ### F3. `novelId` depends on SAF URIs, so re-picking the folder or restoring a backup loses data
 
