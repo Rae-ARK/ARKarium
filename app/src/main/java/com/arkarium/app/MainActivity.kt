@@ -675,6 +675,7 @@ class MainActivity : ComponentActivity() {
                 val readerKeepScreenOn = prefsManager.readerKeepScreenOn.collectAsState(initial = false)
                 val readerFullscreen = prefsManager.readerFullscreen.collectAsState(initial = false)
                 val readerBrightnessSliderEnabled = prefsManager.readerBrightnessSliderEnabled.collectAsState(initial = false)
+                val readerBrightness = prefsManager.readerBrightness.collectAsState(initial = -1f)
                 // Rung 5 of docs/arkarium/implementation/tts-settings-rework.md -
                 // collected here too, same reasoning as ttsVoiceName above, so
                 // settings/tts/voice's stars don't flash empty before the real
@@ -1206,7 +1207,10 @@ class MainActivity : ComponentActivity() {
                                     // so Back from settings/tts returns to this same
                                     // Reader backStackEntry (and its in-progress read-aloud
                                     // session) rather than replacing it.
-                                    onOpenTtsSettings = { navController.navigate("settings/tts") }
+                                    onOpenTtsSettings = { navController.navigate("settings/tts") },
+                                    // The "Reader Preferences" pill: one place for reader
+                                    // settings. Forward nav so Back returns to this reader.
+                                    onOpenReaderSettings = { navController.navigate("settings/reader") }
                                 )
                             }
                         }
@@ -1393,6 +1397,7 @@ class MainActivity : ComponentActivity() {
                             keepScreenOn = readerKeepScreenOn.value,
                             fullscreen = readerFullscreen.value,
                             brightnessSliderEnabled = readerBrightnessSliderEnabled.value,
+                            brightness = readerBrightness.value,
                             onFontSizeChange = { size ->
                                 lifecycleScope.launch { prefsManager.setReaderFontSize(size) }
                             },
@@ -1413,6 +1418,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onBrightnessSliderToggle = { enabled ->
                                 lifecycleScope.launch { prefsManager.setReaderBrightnessSliderEnabled(enabled) }
+                            },
+                            onBrightnessChange = { level ->
+                                lifecycleScope.launch { prefsManager.setReaderBrightness(level) }
                             },
                             onBack = { navController.popBackStack() }
                         )

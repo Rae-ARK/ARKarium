@@ -299,4 +299,16 @@ class PreferencesManagerTest {
 
         assertEquals(14f, readerFontSizeOf(prefs), 0.0001f)
     }
+
+    @Test
+    fun readerBrightness_withNoStoredValue_fallsBackToFollowSystem() {
+        assertEquals(-1f, readerBrightnessOf(emptyPreferences()), 0f)
+    }
+
+    @Test
+    fun readerBrightness_roundTripsAStoredValue() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_BRIGHTNESS_KEY] = 0.4f
+        assertEquals(0.4f, readerBrightnessOf(prefs), 0f)
+    }
 }

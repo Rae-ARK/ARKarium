@@ -79,6 +79,11 @@ internal val READER_FULLSCREEN_KEY = booleanPreferencesKey("reader_fullscreen")
 // here. Off by default, same "no behavior change until opted into" posture
 // as every other switch in this file.
 internal val READER_BRIGHTNESS_SLIDER_ENABLED_KEY = booleanPreferencesKey("reader_brightness_slider_enabled")
+// The level that override applies while the reader is open. The in-reader pill panel
+// that used to hold a session-only brightness slider was removed (every reader setting
+// now lives on the Reader settings page), so the level has to be stored somewhere: here.
+// Meaningful only while the switch above is on; -1f = "follow the system".
+internal val READER_BRIGHTNESS_KEY = floatPreferencesKey("reader_brightness")
 
 internal fun readerFontSizeOf(prefs: Preferences): Float =
     prefs[READER_FONT_SIZE_KEY] ?: 18f
@@ -104,6 +109,9 @@ internal fun readerFullscreenOf(prefs: Preferences): Boolean =
 
 internal fun readerBrightnessSliderEnabledOf(prefs: Preferences): Boolean =
     prefs[READER_BRIGHTNESS_SLIDER_ENABLED_KEY] ?: false
+
+internal fun readerBrightnessOf(prefs: Preferences): Float =
+    prefs[READER_BRIGHTNESS_KEY] ?: -1f
 
 // Rung 4 of docs/arkarium/foundational/design-notes.md: the default-fallback logic for
 // the four tts_* keys, pulled out of PreferencesManager's property getters into plain
@@ -319,6 +327,7 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     val readerKeepScreenOn: Flow<Boolean> = safePrefs.map(::readerKeepScreenOnOf)
     val readerFullscreen: Flow<Boolean> = safePrefs.map(::readerFullscreenOf)
     val readerBrightnessSliderEnabled: Flow<Boolean> = safePrefs.map(::readerBrightnessSliderEnabledOf)
+    val readerBrightness: Flow<Float> = safePrefs.map(::readerBrightnessOf)
 
     override suspend fun setLibraryUri(uri: String) {
         context.dataStore.edit { prefs ->
@@ -474,6 +483,12 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     suspend fun setReaderBrightnessSliderEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[READER_BRIGHTNESS_SLIDER_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun setReaderBrightness(level: Float) {
+        context.dataStore.edit { prefs ->
+            prefs[READER_BRIGHTNESS_KEY] = level.coerceIn(0.02f, 1f)
         }
     }
 }

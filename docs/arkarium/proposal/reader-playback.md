@@ -116,6 +116,10 @@ killed the session before anyone noticed them:
   `reader-playback.md`'s F10 section above already flags as rung 4 of
   [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md).
 
+**Fixed in code** (backlog rung 10): audio focus, becoming-noisy pause and a framework
+`MediaSession` are in `TtsPlaybackService`; notification transport buttons are the part
+left. Original direction, kept for the record:
+
 **Direction:** build this on `TtsPlaybackService` directly rather than as a
 separate piece — a `MediaSessionCompat` plus `AudioFocusRequest` with
 `setOnAudioFocusChangeListener` (pause on `AUDIOFOCUS_LOSS`/

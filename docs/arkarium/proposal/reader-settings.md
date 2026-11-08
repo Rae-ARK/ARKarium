@@ -20,6 +20,11 @@ on 2026-11-08, into what ARKarium could adopt, what needs something else
 first, and what it shouldn't copy, against what the reader did before this
 pass.
 
+> **Update:** the Reader Preferences pill no longer holds any settings of its own - it opens
+> Settings > Reader, which is now the only place size, spacing, mode, font and brightness are
+> changed. Wherever this doc says "in the pill", read "on the Reader settings page". See the
+> backlog's "Reader settings - one place, not two" section.
+
 ## What the reader does today
 
 All of these were read in `ui/ReaderScreen.kt` and `MainActivity.kt` this pass.

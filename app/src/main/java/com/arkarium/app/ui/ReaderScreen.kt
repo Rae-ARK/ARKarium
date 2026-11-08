@@ -3,6 +3,8 @@ package com.arkarium.app.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.res.Configuration
+import android.os.Build
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.animation.animateContentSize
@@ -13,6 +15,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -41,7 +48,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -60,6 +66,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -85,35 +92,57 @@ enum class ReadingMode {
     LIGHT, SEPIA, DARK
 }
 
-// Font family choice for the chapter body, alongside the existing size/spacing
-// controls in the Reader Preferences pill. DYSLEXIC doesn't bundle a dedicated
-// dyslexia-friendly typeface (e.g. OpenDyslexic) - that would mean shipping and
-// licensing a font file for a comparatively small typography change. Instead it
-// uses the system sans-serif family with wider letter/word spacing, which is
-// itself a recognized readability aid for dyslexic readers independent of glyph
-// shapes (see resolveFontFamily/extraLetterSpacing below). SERIF matches the
-// reader's previous hardcoded default so existing users see no change unless
-// they opt into something else.
-enum class ReaderFontFamily {
-    SERIF, SANS, DYSLEXIC
+// Font family choice for the chapter body, picked on the Reader settings page (the
+// font card there lists every entry below, each previewed in its own face). None of
+// these bundle a font file: they're all Android's built-in system families, resolved
+// by name through Typeface.create, which quietly falls back to the default family on a
+// device that lacks one - so a missing face can never crash the reader, it just looks
+// like Sans. DYSLEXIC doesn't bundle a dedicated dyslexia-friendly typeface (e.g.
+// OpenDyslexic) - that would mean shipping and licensing a font file for a
+// comparatively small typography change. Instead it uses the system sans-serif family
+// with wider letter spacing, which is itself a recognized readability aid for dyslexic
+// readers independent of glyph shapes (see extraLetterSpacing below). SERIF matches
+// the reader's previous hardcoded default so existing users see no change unless they
+// opt into something else.
+//
+// Stored by name (PreferencesManager.setReaderFontFamily), so never rename or reorder
+// an existing entry; unknown/removed names fall back to SERIF at every read site.
+enum class ReaderFontFamily(val displayName: String) {
+    SERIF("Serif"),
+    SANS("Sans"),
+    DYSLEXIC("Dyslexia-friendly"),
+    SANS_LIGHT("Sans light"),
+    SANS_MEDIUM("Sans medium"),
+    CONDENSED("Condensed"),
+    MONO("Monospace"),
+    CASUAL("Casual")
 }
 
 // Maps a ReaderFontFamily choice to the actual Compose FontFamily to render with.
+// Internal rather than private so the Reader settings font card can preview each
+// choice in its own face using exactly the resolution the reader itself uses.
 // DYSLEXIC intentionally reuses SansSerif rather than a bundled custom font - see
 // the ReaderFontFamily doc comment above.
-private fun resolveFontFamily(choice: ReaderFontFamily): FontFamily = when (choice) {
+internal fun resolveFontFamily(choice: ReaderFontFamily): FontFamily = when (choice) {
     ReaderFontFamily.SERIF -> FontFamily.Serif
     ReaderFontFamily.SANS -> FontFamily.SansSerif
     ReaderFontFamily.DYSLEXIC -> FontFamily.SansSerif
+    ReaderFontFamily.SANS_LIGHT -> systemFamily("sans-serif-light")
+    ReaderFontFamily.SANS_MEDIUM -> systemFamily("sans-serif-medium")
+    ReaderFontFamily.CONDENSED -> systemFamily("sans-serif-condensed")
+    ReaderFontFamily.MONO -> FontFamily.Monospace
+    ReaderFontFamily.CASUAL -> systemFamily("casual")
 }
 
+private fun systemFamily(name: String): FontFamily =
+    FontFamily(android.graphics.Typeface.create(name, android.graphics.Typeface.NORMAL))
+
 // Extra tracking applied on top of the font choice. Only DYSLEXIC gets any: wider
-// spacing between letters (and, via word spacing below, between words) reduces
-// crowding effects that make adjacent letters harder to tell apart - one of the
-// few typography changes with reasonably consistent evidence behind it, unlike
-// glyph-shape claims made by some "dyslexia fonts". 0.5.sp is a light touch, tuned
-// to stay comfortable at the reader's default 18sp body size.
-private fun extraLetterSpacing(choice: ReaderFontFamily) = when (choice) {
+// spacing between letters reduces crowding effects that make adjacent letters harder
+// to tell apart - one of the few typography changes with reasonably consistent
+// evidence behind it, unlike glyph-shape claims made by some "dyslexia fonts". 0.5.sp
+// is a light touch, tuned to stay comfortable at the reader's default 18sp body size.
+internal fun extraLetterSpacing(choice: ReaderFontFamily) = when (choice) {
     ReaderFontFamily.DYSLEXIC -> 0.5.sp
     else -> 0.sp
 }
@@ -157,6 +186,22 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
+// Switches the window between "fit inside the system insets, cutout letterboxed" (the
+// default, drawIntoCutout = false) and "draw edge to edge including under the display
+// cutout" (true) - see the full-screen block in ReaderScreen. layoutInDisplayCutoutMode
+// is API 28+; below that there is no cutout API and the default behavior is all there is.
+private fun applyCutoutLayout(window: android.view.Window, drawIntoCutout: Boolean) {
+    WindowCompat.setDecorFitsSystemWindows(window, !drawIntoCutout)
+    if (Build.VERSION.SDK_INT >= 28) {
+        val params = window.attributes
+        params.layoutInDisplayCutoutMode = if (drawIntoCutout)
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+        else
+            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
+        window.attributes = params
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderScreen(
@@ -197,7 +242,8 @@ fun ReaderScreen(
     // Opens the "settings/tts" page (TtsSettingsScreen) from the gear icon in
     // TtsControlsBar below. No-op by default so this stays source-compatible with any
     // other call site, same rationale as onAuthorClick's own default.
-    onOpenTtsSettings: () -> Unit = {}
+    onOpenTtsSettings: () -> Unit = {},
+    onOpenReaderSettings: () -> Unit = {}
 ) {
     // reader-settings.md's "cheap" batch: these four used to be hardcoded/
     // in-session-only `remember` state with no persistence at all. They're
@@ -280,14 +326,14 @@ fun ReaderScreen(
     // val's own doc comment for where the effect actually lives.
     val fullscreenEnabled by prefsManager.readerFullscreen.collectAsState(initial = false)
 
-    // reader-settings.md's Brightness section, as amended by the owner's
-    // "opt-in, shows as a pill slider" instruction: a window-level
-    // screenBrightness override for the reader's lifetime, restoring "follow
-    // the system" (-1f, BRIGHTNESS_OVERRIDE_NONE) on dispose. No persisted
-    // value - session-only, same as the pill's Speed-adjusts-live-only
-    // behavior, not a Settings default the way fontSize/lineHeight are.
-    val brightnessSliderEnabled by prefsManager.readerBrightnessSliderEnabled.collectAsState(initial = false)
-    val brightness = remember { mutableFloatStateOf(-1f) }
+    // reader-settings.md's Brightness section, as amended by the owner: a
+    // window-level screenBrightness override for the reader's lifetime, restoring
+    // "follow the system" (-1f, BRIGHTNESS_OVERRIDE_NONE) on dispose. Both the
+    // opt-in and the level are set on the Reader settings page now (the in-reader
+    // pill panel that used to hold a session-only slider is gone), so this just
+    // applies whatever's stored while the reader is open and clears it on exit.
+    val brightnessOverrideEnabled by prefsManager.readerBrightnessSliderEnabled.collectAsState(initial = false)
+    val brightnessLevel by prefsManager.readerBrightness.collectAsState(initial = -1f)
     DisposableEffect(Unit) {
         onDispose {
             context.findActivity()?.window?.let { window ->
@@ -297,10 +343,12 @@ fun ReaderScreen(
             }
         }
     }
-    LaunchedEffect(brightness.floatValue) {
+    LaunchedEffect(brightnessOverrideEnabled, brightnessLevel) {
         val window = context.findActivity()?.window ?: return@LaunchedEffect
         val params = window.attributes
-        params.screenBrightness = brightness.floatValue
+        params.screenBrightness =
+            if (brightnessOverrideEnabled && brightnessLevel >= 0f) brightnessLevel
+            else WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
         window.attributes = params
     }
 
@@ -341,30 +389,48 @@ fun ReaderScreen(
     // onDispose below runs for. transient-bars-by-swipe (BEHAVIOR_SHOW_
     // TRANSIENT_BARS_BY_SWIPE) lets a reader still pull the bars back
     // temporarily with an edge swipe instead of being fully locked out.
-    DisposableEffect(fullscreenEnabled, showControls.value) {
+    //
+    // Display cutout (notch / camera hole): in landscape the cutout sits on a side
+    // edge, and by default Android letterboxes it - the strip beside the cutout is
+    // painted as a black bar and the app's content is fitted inside the rest, so
+    // "full screen" wasn't. While full-screen + immersive + landscape, the window now
+    // opts in to drawing into the cutout area (SHORT_EDGES) and stops fitting itself
+    // inside the system insets, so the page background fills every pixel; the root
+    // column below then re-pads *only* by the cutout's own insets, so text still never
+    // sits under the notch itself. In portrait or reverse portrait none of this
+    // applies: the cutout is at the top, the status bar is hidden anyway in this mode,
+    // and nothing gains from drawing up there. Everything is put back (cutout mode
+    // DEFAULT, decor fitting on) on every exit path, same as the bars.
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    DisposableEffect(fullscreenEnabled, showControls.value, isLandscape) {
         val window = context.findActivity()?.window
         val view = window?.decorView
         val controller = if (window != null && view != null) {
             WindowCompat.getInsetsController(window, view)
         } else null
-        if (fullscreenEnabled && !showControls.value) {
+        val immersiveFullscreen = fullscreenEnabled && !showControls.value
+        val drawIntoCutout = immersiveFullscreen && isLandscape
+        if (immersiveFullscreen) {
             controller?.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller?.hide(WindowInsetsCompat.Type.systemBars())
         } else {
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
+        if (window != null) {
+            applyCutoutLayout(window, drawIntoCutout)
+        }
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
+            if (window != null) {
+                applyCutoutLayout(window, false)
+            }
         }
     }
 
-    // Separate from showControls: showControls is the tap-anywhere immersive toggle
-    // for the top bar + progress readout, but font/spacing/mode were only reachable
-    // by first being in non-immersive mode. Royal Road instead exposes an explicit,
-    // always-visible "Reader Preferences" pill so the settings are discoverable
-    // without depending on the tap gesture at all.
-    val showPreferences = remember { mutableStateOf(false) }
+    // The explicit, always-visible "Reader Preferences" pill (Royal Road style) keeps
+    // the settings discoverable without depending on the tap gesture; it now opens the
+    // Reader settings page instead of a duplicate in-reader panel.
     // A read-aloud session exists (playing or paused) - mirrored from the service via
     // `tts`, so it is also true when this composition has only just re-attached to a
     // session that kept running while the reader was away.
@@ -467,6 +533,11 @@ fun ReaderScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundColor)
+            // Pads by the cutout's own horizontal insets only - zero unless the
+            // full-screen block above let the window draw into the cutout, in which
+            // case the background (set just above) already covers it and this keeps
+            // the text and chrome clear of the notch itself.
+            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
     ) {
         // Top bar
         if (showControls.value) {
@@ -678,7 +749,7 @@ fun ReaderScreen(
         // sibling of the scrollable body above (not a floating overlay - see the
         // comment where this screen's root Column was introduced), so it always sits
         // in genuinely empty space at the bottom of the screen: the readout flush
-        // against the bottom edge, with the pill (and its panel, when open) stacked
+        // against the bottom edge, with the pill stacked
         // directly above it.
         Column(
             modifier = Modifier
@@ -693,215 +764,15 @@ fun ReaderScreen(
                 .animateContentSize()
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
-            // Also requires showControls now (previously just showPreferences): if a
-            // reader had this panel open and then entered immersive mode, it used to
-            // stay open and floating over the text with no pill left to close it with
-            // (the pill itself is gated on showControls just below, for the same
-            // "not needed in immersive mode" reasoning). Leaving showPreferences
-            // itself untouched means the panel reopens exactly as left once the
-            // reader leaves immersive mode again, rather than forgetting it was open.
-            if (showPreferences.value && showControls.value) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(backgroundColor)
-                        .padding(16.dp)
-                ) {
-                // Font size control. A slider, matching Spacing/Speed below rather
-                // than the old +/- stepper - a stepper reads oddly once you know the
-                // value is bounded (12..28) rather than open-ended, and a slider
-                // shows the bound instead of hiding it.
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Text:", style = MaterialTheme.typography.labelSmall, color = textColor)
-                    Slider(
-                        value = fontSize.value,
-                        onValueChange = { fontSize.value = it },
-                        valueRange = 12f..28f,
-                        steps = 7, // 12,14,...,28 - 9 stops, 2pt increments
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 8.dp)
-                    )
-                    Text(
-                        "${fontSize.value.toInt()}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = textColor,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
+            // The size/spacing/mode/speed/brightness controls that used to open as a
+            // panel here are gone: every one of them is now set on the Reader settings
+            // page (and read-aloud speed on the TTS settings page), so there is exactly
+            // one place to change them. The pill below just takes the reader there.
 
-                // Line height control
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Spacing:", style = MaterialTheme.typography.labelSmall, color = textColor)
-                    Slider(
-                        value = lineHeight.value,
-                        onValueChange = { lineHeight.value = it },
-                        valueRange = 1.0f..2.5f,
-                        steps = 10,
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(horizontal = 8.dp)
-                    )
-                    Text(
-                        "${String.format("%.1f", lineHeight.value)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = textColor,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-
-                // Read-aloud speed control. Only shown once the engine's available -
-                // same gating as the TopAppBar play/stop button, since a speed slider
-                // for a feature the device can't run would be a dead control. Applies
-                // immediately via ChapterTtsState.setRate even mid-read: Android's
-                // TextToSpeech picks up a new rate on the next queued utterance, so a
-                // change here takes effect at the next chunk boundary rather than
-                // requiring a stop/restart.
-                if (tts.isAvailable) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Speed:", style = MaterialTheme.typography.labelSmall, color = textColor)
-                        Slider(
-                            value = tts.speechRate,
-                            onValueChange = { tts.setRate(it) },
-                            valueRange = 0.5f..2.5f,
-                            steps = 7,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 8.dp)
-                        )
-                        Text(
-                            "${String.format("%.1f", tts.speechRate)}x",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = textColor,
-                            modifier = Modifier.padding(start = 8.dp)
-                        )
-                    }
-                }
-
-                // Font family moved to Settings > Reader (see
-                // reader-settings.md's Font family section + this file's
-                // fontFamilyChoice doc comment above) - "set and forget",
-                // unlike Size/Spacing/Speed/Mode, which stay here because
-                // they're the ones a reader does adjust in-session.
-
-                // Brightness slider - opt-in via Settings > Reader
-                // ("Brightness slider in Reader Preferences"), per the
-                // owner's instruction rather than reader-settings.md's own
-                // "no setting needed" suggestion. Sets the window's
-                // screenBrightness for the reader's lifetime and restores
-                // "follow the system" on dispose (see the DisposableEffect
-                // above); off (-1f/BRIGHTNESS_OVERRIDE_NONE) until the
-                // reader actually drags it, so turning the toggle on alone
-                // doesn't change anything until touched.
-                if (brightnessSliderEnabled) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("Brightness:", style = MaterialTheme.typography.labelSmall, color = textColor)
-                        Slider(
-                            value = if (brightness.floatValue < 0f) 0.5f else brightness.floatValue,
-                            onValueChange = { brightness.floatValue = it },
-                            valueRange = 0.01f..1f,
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(horizontal = 8.dp)
-                        )
-                    }
-                }
-
-                // Reading mode toggle
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("Mode:", style = MaterialTheme.typography.labelSmall, color = textColor)
-                    ReadingMode.values().forEach { mode ->
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .padding(2.dp)
-                                // The mode Surfaces had no onClick/clickable at all before this -
-                                // the Light/Sepia/Dark row rendered and highlighted the active
-                                // mode correctly, but tapping any of them did nothing, since
-                                // nothing ever wrote to `readingMode.value`. This is what made
-                                // the reading-mode toggle look broken.
-                                .clickable { readingMode.value = mode },
-                            color = if (readingMode.value == mode)
-                                MaterialTheme.colorScheme.primary
-                            else
-                                MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                when (mode) {
-                                    // Selected/unselected tint was hardcoded White/Black -
-                                    // see the Font row's comment just above for why that
-                                    // breaks specifically under the Dark app theme (light
-                                    // primary + dark surfaceVariant inverts the Light/Sepia
-                                    // assumption Black/White happened to work under).
-                                    ReadingMode.LIGHT -> Icon(
-                                        Icons.Default.Brightness7,
-                                        contentDescription = "Light mode",
-                                        modifier = Modifier.size(16.dp),
-                                        tint = if (readingMode.value == mode)
-                                            MaterialTheme.colorScheme.onPrimary
-                                        else
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    ReadingMode.SEPIA -> Text(
-                                        "📖",
-                                        fontSize = 12.sp
-                                    )
-                                    ReadingMode.DARK -> Icon(
-                                        Icons.Default.Brightness4,
-                                        contentDescription = "Dark mode",
-                                        modifier = Modifier.size(16.dp),
-                                        tint = if (readingMode.value == mode)
-                                            MaterialTheme.colorScheme.onPrimary
-                                        else
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                }
-            }
-
-            // The pill itself - Royal Road-style rounded button, centered. Toggles the
-            // panel above rather than navigating anywhere, so it stays a single
-            // persistent affordance instead of disappearing once tapped.
+            // The pill itself - Royal Road-style rounded button, centered. Opens the
+            // Reader settings page.
             //
-            // Non-immersive only (bottomPill == PREFERENCES): font/spacing/mode aren't
+            // Non-immersive only (bottomPill == PREFERENCES): the settings aren't
             // needed while immersed. In immersive mode this slot belongs to the
             // read-aloud controls pill instead (TtsControlsBar, below) - the two swap
             // places with a water ripple (see WaterRipple.kt) rather than showing
@@ -915,7 +786,7 @@ fun ReaderScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Surface(
-                        modifier = Modifier.clickable { showPreferences.value = !showPreferences.value },
+                        modifier = Modifier.clickable { onOpenReaderSettings() },
                         color = MaterialTheme.colorScheme.primary,
                         shape = RoundedCornerShape(50),
                         shadowElevation = 4.dp
