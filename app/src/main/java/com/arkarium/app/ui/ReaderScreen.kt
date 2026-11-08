@@ -79,9 +79,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import coil.compose.AsyncImage
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
@@ -210,23 +213,60 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 // the status bar for immersive reading - the one time DEFAULT's portrait
 // carve-out no longer applies - is also the moment portrait was left on
 // DEFAULT, leaving the top strip where the status bar used to be as dead,
-// letterboxed space instead of content. Landscape looked fixed because that
-// orientation already had SHORT_EDGES from the old landscape-only flag;
-// portrait never did. The two switches are now the same single `immersive`
-// condition: SHORT_EDGES and edge-to-edge both apply whenever the reader is in
-// immersive full-screen, in either orientation, and both revert together the
-// moment it isn't. layoutInDisplayCutoutMode is API 28+; below that there is
-// no cutout API and the default behavior is all there is.
-private fun applyWindowLayout(window: android.view.Window, immersive: Boolean) {
-    WindowCompat.setDecorFitsSystemWindows(window, !immersive)
+// letterboxed space instead of content.
+//
+// Two follow-up bugs, both fixed here too:
+//
+// 1. "Exit immersive in portrait and the notch padding + lowered top bar
+//    stay." `edgeToEdge` and `drawIntoCutout` are no longer the same single
+//    switch - Compose's `windowInsetsPadding(WindowInsets.displayCutout)`
+//    reads insets that the platform only recomputes and redispatches when
+//    something explicitly asks it to; changing `window.attributes.
+//    layoutInDisplayCutoutMode` by itself does not trigger that redispatch
+//    (confirmed against AndroidX's own WindowInsets.getDisplayCutout() note
+//    that the dispatched value depends on live redelivery, not a one-time
+//    read, and against reports of the same "Compose doesn't see
+//    layoutInDisplayCutoutMode changes made after setContent" gap). So the
+//    cutout inset Compose was still padding by after leaving immersive mode
+//    was the *last* one delivered - from while SHORT_EDGES was active -
+//    which is exactly the stuck padding/lowered-top-bar symptom. Fixed by
+//    calling `ViewCompat.requestApplyInsets` every time this function
+//    changes the attribute, forcing a fresh dispatch so Compose's padding
+//    (and everything else reading WindowInsets.displayCutout) catches up
+//    immediately instead of carrying the previous mode's value.
+// 2. "Enable full-screen, rotate to landscape without going immersive - the
+//    notch still blacks out a letterboxed strip instead of blending in."
+//    Per the Android guidance quoted above, DEFAULT letterboxes in
+//    *landscape* even when the window isn't otherwise full-screen (status/
+//    nav bars showing) - only `immersiveFullscreen` was ever in that
+//    letterboxed state before, since only that case flips the cutout mode at
+//    all, but a reader who has the full-screen setting on and simply rotates
+//    without tapping into immersive mode hits the same letterboxing. Rather
+//    than key `drawIntoCutout` on `immersiveFullscreen` alone, it is now
+//    `immersiveFullscreen || (fullscreenEnabled && isLandscape)` - the same
+//    root-Column background (see the call site) already fills whatever the
+//    cutout inset carves out, so widening when that inset applies is enough:
+//    it paints the reading background into the gap instead of leaving it
+//    black, with no separate "paint the cutout" code needed. `edgeToEdge`
+//    (and hiding the system bars) is unaffected and stays tied to
+//    `immersiveFullscreen` only - this is strictly about which parts of the
+//    window the content is allowed to draw under, not about hiding chrome.
+//
+// layoutInDisplayCutoutMode is API 28+; below that there is no cutout API and
+// the default behavior is all there is.
+private fun applyWindowLayout(window: android.view.Window, edgeToEdge: Boolean, drawIntoCutout: Boolean) {
+    WindowCompat.setDecorFitsSystemWindows(window, !edgeToEdge)
     if (Build.VERSION.SDK_INT >= 28) {
         val params = window.attributes
-        params.layoutInDisplayCutoutMode = if (immersive)
+        params.layoutInDisplayCutoutMode = if (drawIntoCutout)
             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         else
             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
         window.attributes = params
     }
+    // See bug 1 above: without this, a mode change made here can sit unseen by
+    // Compose's own insets reads until something unrelated forces a relayout.
+    ViewCompat.requestApplyInsets(window.decorView)
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -448,19 +488,29 @@ fun ReaderScreen(
     // just horizontal - the cutout sits on a side edge in landscape but at the top in
     // portrait) so text still never sits under the notch itself; that inset is zero
     // whenever the window isn't drawing into the cutout, so this costs nothing outside
-    // immersive mode. No longer keyed on orientation: the condition applying SHORT_EDGES
-    // is just `immersiveFullscreen` now, the same in both orientations, so rotating
-    // while already immersive needs no re-run of this effect to stay correct - Compose
-    // re-measures the existing insets padding on its own as the cutout's own geometry
-    // (which edge it's on) changes with rotation. Everything is put back (not
-    // edge-to-edge, cutout mode DEFAULT) on every exit path, same as the bars.
-    DisposableEffect(fullscreenEnabled, showControls.value) {
+    // immersive mode.
+    //
+    // drawIntoCutout is now broader than edgeToEdge (see applyWindowLayout's doc
+    // comment, bug 2): it's also true in plain landscape whenever the full-screen
+    // setting is on, even with the system bars showing, so the letterboxed strip
+    // next to the cutout picks up the reading background instead of staying black.
+    // edgeToEdge (hiding the bars, drawing the app under them) stays tied to
+    // immersiveFullscreen only. isLandscape is a key so rotating while this setting
+    // is on but not immersive (bars showing) re-runs the effect and flips
+    // drawIntoCutout as the device turns, instead of only reacting to immersive
+    // mode toggling. requestApplyInsets inside applyWindowLayout (bug 1) is what
+    // makes that rotation - and leaving immersive mode - actually show up instead
+    // of leaving Compose padding by a stale inset.
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    DisposableEffect(fullscreenEnabled, showControls.value, isLandscape) {
         val window = context.findActivity()?.window
         val view = window?.decorView
         val controller = if (window != null && view != null) {
             WindowCompat.getInsetsController(window, view)
         } else null
         val immersiveFullscreen = fullscreenEnabled && !showControls.value
+        val drawIntoCutout = immersiveFullscreen || (fullscreenEnabled && isLandscape)
         if (immersiveFullscreen) {
             controller?.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -469,12 +519,12 @@ fun ReaderScreen(
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
         if (window != null) {
-            applyWindowLayout(window, immersive = immersiveFullscreen)
+            applyWindowLayout(window, edgeToEdge = immersiveFullscreen, drawIntoCutout = drawIntoCutout)
         }
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
             if (window != null) {
-                applyWindowLayout(window, immersive = false)
+                applyWindowLayout(window, edgeToEdge = false, drawIntoCutout = false)
             }
         }
     }
