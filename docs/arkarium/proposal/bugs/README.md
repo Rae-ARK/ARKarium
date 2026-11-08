@@ -26,6 +26,7 @@ Historic ARKster-era bug history is frozen in
 | Bug | Severity |
 |---|---|
 | [`other/continue-reading-position-lost.md`](other/continue-reading-position-lost.md) | other — fix applied, awaiting on-device confirmation |
+| [`other/continue-reading-completion-fraction.md`](other/continue-reading-completion-fraction.md) | other — fix applied, awaiting on-device confirmation |
 | [`other/scrolling-bug.md`](other/scrolling-bug.md) | other — reader scrolling reported not smooth with controls visible; unconfirmed, no device measurements yet |
 
 The three previously tracked here are all fixed and their files deleted per

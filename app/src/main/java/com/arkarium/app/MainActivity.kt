@@ -62,6 +62,7 @@ import com.arkarium.app.data.ChapterLoadResult
 import com.arkarium.app.ui.ChapterLoadErrorScreen
 import com.arkarium.app.ui.ReaderFontFamily
 import com.arkarium.app.ui.ReaderScreen
+import com.arkarium.app.ui.applyWindowLayout
 import com.arkarium.app.ui.ReaderSettingsScreen
 import com.arkarium.app.ui.SettingsScreen
 import com.arkarium.app.ui.SplashScreen
@@ -349,12 +350,6 @@ class MainActivity : ComponentActivity() {
     // ReaderPosition in hand (ReaderScreen's onBack/onBackToFiction/onPrevious/onNext
     // all take one now), so this is purely a parameter-type change, not a new lookup.
     //
-    // chapterLength is new in this fix: COMPLETION_THRESHOLD below is still a fraction
-    // (0f..1f, see ReadingStats.COMPLETION_THRESHOLD), and charOffset alone can't be
-    // compared against it without knowing how long the chapter is. Every call site has
-    // the loaded chapter body (`content`) in scope, so this is just passing its length
-    // through rather than a new lookup.
-    //
     // Single authority for "where was the reader": every writer of reading_progress goes
     // through here. The DB write runs under NonCancellable so that whichever scope the
     // caller happens to be in (lifecycleScope for the in-app exits, AppScope.io for the
@@ -362,11 +357,22 @@ class MainActivity : ComponentActivity() {
     // destroyed during a rotation, say - can no longer abort a write that already
     // started. The UI refresh afterwards is on Main: refreshRecentlyRead mutates
     // Compose snapshot lists, which must not be rebuilt (clear + addAll) from IO.
+    //
+    // Regression fixed here (docs/arkarium/proposal/bugs/other/continue-reading-completion-fraction.md):
+    // this used to take a `chapterLength: Int` and derive its own completion fraction
+    // as `position.charOffset.toFloat() / chapterLength`, comparing that against
+    // ReadingStats.COMPLETION_THRESHOLD. charOffset is the resume anchor (the
+    // paragraph at the top of the viewport), not a measure of how much of the chapter
+    // was scrolled through, so that fraction almost never reached 0.9 for an
+    // ordinarily-finished chapter - silently breaking the "chapter finished" haptic
+    // and the streak/chapters-this-week counters. position.completionFraction (see
+    // ReaderPosition's own doc comment) is the real scroll fraction, computed where
+    // the scroll state actually lives (ReaderScreen), so this function no longer
+    // needs chapterLength at all.
     private suspend fun saveReadingProgress(
         novelId: String,
         chapterId: String,
-        position: ReaderPosition,
-        chapterLength: Int
+        position: ReaderPosition
     ) {
         val finishedNow = withContext(NonCancellable + Dispatchers.IO) {
             db.readingProgressDao().upsert(
@@ -382,8 +388,7 @@ class MainActivity : ComponentActivity() {
             // Reading-stats streak/weekly-count (see ChapterReadEventEntity's doc
             // comment) only cares about chapters actually finished, not every scroll
             // position update - COMPLETION_THRESHOLD gates that.
-            val progress = if (chapterLength > 0) position.charOffset.toFloat() / chapterLength else 0f
-            if (ReadingStats.isCompletionThreshold(progress)) {
+            if (ReadingStats.isCompletionThreshold(position.completionFraction)) {
                 val now = System.currentTimeMillis()
                 val today = ReadingStats.dayKey(now)
                 // The read-event row is keyed by chapter and day, so re-saving the same finished
@@ -941,6 +946,27 @@ class MainActivity : ComponentActivity() {
                 val currentBackStackEntry = navController.currentBackStackEntryAsState()
                 val currentRoute = currentBackStackEntry.value?.destination?.route
 
+                // landscape-tablet.md's cutout fix: every route except Reader stays
+                // non-edge-to-edge today, so in landscape the display cutout is
+                // letterboxed solid black by the platform (see applyWindowLayout's own
+                // doc comment for why DEFAULT does that in landscape specifically).
+                // Reader already opts into edge-to-edge + SHORT_EDGES for itself and
+                // paints its own background under the cutout; this does the same for
+                // every other screen, letting Scaffold's own containerColor (already
+                // the theme background) show through the cutout instead of the
+                // platform's black letterbox - colour-matched, nothing drawn on it
+                // (Scaffold's default contentWindowInsets still keeps content itself
+                // clear of the cutout/status bar). Reader's own onDispose resets to
+                // edgeToEdge=false when a reader route is left (see ReaderScreen.kt);
+                // this effect re-applies the true/true default the moment currentRoute
+                // changes away from a reader route, so the two hand off without a
+                // lingering black frame either way.
+                LaunchedEffect(currentRoute) {
+                    if (currentRoute?.startsWith("reader/") != true) {
+                        applyWindowLayout(window, edgeToEdge = true, drawIntoCutout = true)
+                    }
+                }
+
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
                     containerColor = colorScheme.background,
@@ -1475,7 +1501,7 @@ class MainActivity : ComponentActivity() {
                                     initialPosition = initialReaderPosition.value,
                                     onBack = { position ->
                                         lifecycleScope.launch {
-                                            saveReadingProgress(novelId, chapterId, position, content.length)
+                                            saveReadingProgress(novelId, chapterId, position)
                                             // Same popUpTo("home") reasoning as NovelDetail's
                                             // onBack - Reader's Back always went straight to
                                             // Home regardless of entry path.
@@ -1488,7 +1514,7 @@ class MainActivity : ComponentActivity() {
                                     onBackToFiction = { position ->
                                         if (novel != null) {
                                             lifecycleScope.launch {
-                                                saveReadingProgress(novelId, chapterId, position, content.length)
+                                                saveReadingProgress(novelId, chapterId, position)
                                                 navController.navigate("novelDetail/${novel.id}") {
                                                     launchSingleTop = true
                                                 }
@@ -1498,7 +1524,7 @@ class MainActivity : ComponentActivity() {
                                     onPrevious = previousChapter?.let { prev ->
                                         { position: ReaderPosition ->
                                             lifecycleScope.launch {
-                                                saveReadingProgress(novelId, chapterId, position, content.length)
+                                                saveReadingProgress(novelId, chapterId, position)
                                                 // Replace, not push - Back from chapter 5
                                                 // returns to NovelDetail, not chapter 4,
                                                 // matching pre-NavHost behavior where
@@ -1513,7 +1539,7 @@ class MainActivity : ComponentActivity() {
                                     onNext = nextChapter?.let { next ->
                                         { position: ReaderPosition ->
                                             lifecycleScope.launch {
-                                                saveReadingProgress(novelId, chapterId, position, content.length)
+                                                saveReadingProgress(novelId, chapterId, position)
                                                 navController.navigate("reader/$novelId/${next.id}") {
                                                     popUpTo("reader/{novelId}/{chapterId}") { inclusive = true }
                                                 }
@@ -1557,7 +1583,7 @@ class MainActivity : ComponentActivity() {
                                     // to hop back to Main afterward.
                                     onPositionChanged = { position ->
                                         AppScope.io.launch {
-                                            saveReadingProgress(novelId, chapterId, position, content.length)
+                                            saveReadingProgress(novelId, chapterId, position)
                                         }
                                     },
                                     // Continue-Reading-loses-progress fix, part 2: the
@@ -1578,7 +1604,7 @@ class MainActivity : ComponentActivity() {
                                     // instead of popping the back stack from a background thread.
                                     onSystemBack = { position ->
                                         AppScope.io.launch {
-                                            saveReadingProgress(novelId, chapterId, position, content.length)
+                                            saveReadingProgress(novelId, chapterId, position)
                                             withContext(Dispatchers.Main) {
                                                 navController.popBackStack()
                                             }

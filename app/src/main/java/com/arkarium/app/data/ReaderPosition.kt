@@ -20,7 +20,31 @@ package com.arkarium.app.data
 // pixel fraction, which is the actual problem F9 describes (drift across font size/
 // width); it just doesn't re-place the reader mid-paragraph the way scrolling to a
 // literal pixel offset would have for better or worse.
-data class ReaderPosition(val charOffset: Int, val snippet: String) {
+// completionFraction: how far through the chapter the reader has actually scrolled
+// (0f..1f, scrollState.value / scrollState.maxValue - see ReaderScreen.currentProgress()),
+// NOT derived from charOffset. This is a separate axis from charOffset on purpose.
+//
+// Regression fixed here (reported: "continue reading bug still exists... streak and
+// chapters-this-week counter didn't update", traced to the v14 schema update - the
+// rung-14 CHAR_OFFSET change above): MainActivity.saveReadingProgress used to compute
+// its own completion fraction as `position.charOffset.toFloat() / chapterLength` and
+// compare that against ReadingStats.COMPLETION_THRESHOLD (0.9f). charOffset is
+// deliberately the paragraph at the TOP of the viewport (see currentAnchor()'s doc
+// comment - that's the right anchor to resume into), not how far the reader has
+// scrolled through the chapter. Once the reader is scrolled all the way to the
+// bottom, the paragraph sitting at the top of that final screenful is typically only
+// 60-85% of the way through the chapter's raw text, not >=90%: a 5-screen chapter
+// scrolled to the very bottom has its top-of-viewport paragraph around the 80% mark,
+// and a short chapter can land far lower still. So the charOffset-based fraction
+// almost never crossed 0.9 for an ordinarily-scrolled chapter, even when the reader
+// had genuinely read to the end - silently breaking both the "chapter finished"
+// haptic and the chapter_read_events row the Home screen's streak/weekly-count cards
+// read. Before rung 14, `position` WAS the scroll fraction (PERCENTAGE), so this
+// comparison was correct by construction; the charOffset/chapterLength substitution
+// at the call site was the bug. completionFraction carries the real scroll fraction
+// through independently of charOffset, so the two can each be right for what they
+// measure instead of one standing in for the other.
+data class ReaderPosition(val charOffset: Int, val snippet: String, val completionFraction: Float = 0f) {
     companion object {
         const val POSITION_TYPE = "CHAR_OFFSET"
 
