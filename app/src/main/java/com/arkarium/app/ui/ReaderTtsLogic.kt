@@ -1,5 +1,8 @@
 package com.arkarium.app.ui
 
+import com.arkarium.app.data.ParagraphOffset
+import kotlin.math.abs
+
 // Plain-Kotlin decisions behind ReaderScreen's bottom pill and its read-aloud
 // re-entry handling, kept free of Compose and Android types so they can be unit-tested
 // on the JVM (ReaderTtsLogicTest). ReaderScreen only feeds these its state and acts on
@@ -63,4 +66,52 @@ fun ttsChunkProgressLabel(currentChunkIndex: Int, totalChunks: Int): String? {
     if (totalChunks <= 0) return null
     val current = (currentChunkIndex + 1).coerceIn(1, totalChunks)
     return "chunk $current of $totalChunks"
+}
+
+// Rung 5 (docs/arkarium/implementation/tts-playback-controls.md): the "currently
+// reading" highlight and its auto-scroll. A chunk's range is in the coordinates of the
+// whole chapter body (TtsPlaybackService.chunkSpan), while the reader draws each stretch
+// of text between markup tags as its own Text - usually one for the whole chapter, but
+// not always - so these map between the two.
+
+// A highlight inside one rendered text block, in that block's own character offsets.
+data class TtsHighlight(val start: Int, val endExclusive: Int)
+
+// The part of chunk [chunkStart, chunkEnd) that falls inside the text block starting at
+// `blockStart` in the chapter body and `blockLength` characters long, as offsets local to
+// that block; null when the chunk doesn't touch it (or there's no chunk: start < 0).
+fun ttsHighlightWithin(
+    blockStart: Int,
+    blockLength: Int,
+    chunkStart: Int,
+    chunkEnd: Int
+): TtsHighlight? {
+    if (chunkStart < 0 || chunkEnd <= chunkStart || blockLength <= 0) return null
+    val from = maxOf(chunkStart, blockStart) - blockStart
+    val to = minOf(chunkEnd, blockStart + blockLength) - blockStart
+    return if (to > from) TtsHighlight(from, to) else null
+}
+
+// The text block the chunk's first character is in - where auto-scroll should aim - or
+// null when it isn't inside any (it starts in a tag the reader draws as a callout or
+// divider rather than as running text), in which case the reader just doesn't scroll.
+fun ttsBlockForChunkStart(blocks: List<ParagraphOffset>, chunkStart: Int): ParagraphOffset? =
+    blocks.firstOrNull { chunkStart >= it.rawStart && chunkStart < it.rawStart + it.text.length }
+
+// Where to scroll to when a new chunk starts, or null to leave the scroll alone.
+// `chunkTop` is the chunk's first line, as a scroll offset (the value scrollState would
+// need for that line to sit at the very top). The target leaves a tenth of the viewport
+// above it, and a chunk already starting within that tenth of where it'd land isn't
+// worth a nudge. Chunk-level on purpose: it follows the narration chunk by chunk and
+// never fights the reader mid-chunk.
+fun ttsAutoScrollTarget(
+    chunkTop: Float,
+    currentScroll: Int,
+    viewportHeight: Int,
+    maxScroll: Int
+): Int? {
+    if (viewportHeight <= 0) return null
+    val margin = viewportHeight * 0.1f
+    val desired = (chunkTop - margin).toInt().coerceIn(0, maxScroll.coerceAtLeast(0))
+    return if (abs(desired - currentScroll) <= margin) null else desired
 }

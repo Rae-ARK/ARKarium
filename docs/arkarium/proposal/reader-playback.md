@@ -115,7 +115,9 @@ queue uses is the same mapping F9's anchor needs to restore a position
 precisely — worth rechecking once the controls/highlight work (rungs 5–6 of
 [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md))
 is built, since F9 landed with the paragraph-level anchor above rather than
-that mapping.
+that mapping. Rung 5 is now in code and does provide half of it - `splitForTtsSpans`
+gives each chunk's character range in the chapter body (`TtsPlaybackService.chunkSpan`) -
+so wiring F9's anchor to a chunk index is no longer blocked on that mapping existing.
 
 ### F22. `TtsPlaybackService` requests no audio focus and has no `MediaSession`
 

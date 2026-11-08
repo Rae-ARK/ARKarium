@@ -66,6 +66,16 @@ class ChapterTtsState internal constructor() {
     var totalChunks by mutableIntStateOf(0)
         internal set
 
+    // Rung 5: the [start, end) character range, in the text speak() was given (the
+    // chapter body), of the chunk being read right now; both -1 with no session. Pushed
+    // along with currentChunkIndex/totalChunks above - ReaderScreen turns it into the
+    // "currently reading" highlight and the auto-scroll target.
+    var currentChunkStart by mutableIntStateOf(-1)
+        internal set
+
+    var currentChunkEnd by mutableIntStateOf(-1)
+        internal set
+
     // The voice picker's state: mirrors
     // TtsPlaybackService.availableVoices/currentVoiceName the same way the properties
     // above mirror its speaking/available/paused state - pulled fresh in attach()
@@ -145,6 +155,9 @@ class ChapterTtsState internal constructor() {
         override fun onChunkProgressChanged(index: Int, total: Int) {
             this@ChapterTtsState.currentChunkIndex = index
             this@ChapterTtsState.totalChunks = total
+            val span = service?.chunkSpan(index)
+            this@ChapterTtsState.currentChunkStart = span?.start ?: -1
+            this@ChapterTtsState.currentChunkEnd = span?.end ?: -1
         }
     }
 
@@ -163,6 +176,9 @@ class ChapterTtsState internal constructor() {
         currentVoiceName = svc.currentVoiceName
         currentChunkIndex = svc.currentChunkIndex
         totalChunks = svc.totalChunks
+        val span = svc.chunkSpan(svc.currentChunkIndex)
+        currentChunkStart = span?.start ?: -1
+        currentChunkEnd = span?.end ?: -1
         svc.autoContinueEnabled = autoContinueEnabled
     }
 

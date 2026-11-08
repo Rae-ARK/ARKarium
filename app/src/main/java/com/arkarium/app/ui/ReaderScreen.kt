@@ -58,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -72,7 +73,10 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -510,6 +514,11 @@ fun ReaderScreen(
     // best not to rely on that alone) can't linger.
     val paragraphContentTop = remember(chapter.id) { mutableStateMapOf<Int, Float>() }
     var scrollContainerTop by remember(chapter.id) { mutableFloatStateOf(0f) }
+    var scrollContainerHeight by remember(chapter.id) { mutableIntStateOf(0) }
+    // Rung 5: each text block's last TextLayoutResult (key: the block's rawStart, same as
+    // paragraphContentTop), so auto-scroll can find the line a chunk starts on. Plain map,
+    // not state - it's only read from the effect below, which re-runs on the chunk change.
+    val paragraphLayouts = remember(chapter.id) { HashMap<Int, TextLayoutResult>() }
     var positionRestored by remember(chapter.id) { mutableStateOf(initialPosition == null) }
 
     // Restores initialPosition once enough paragraphs have reported a position to
@@ -552,6 +561,35 @@ fun ReaderScreen(
         } else if (action == TtsSessionAction.STOP_STALE) {
             tts.stop()
         }
+    }
+
+    // Rung 5 (tts-playback-controls.md): follow the narration. Whenever the chunk being
+    // read changes, scroll so its first line is near the top of the viewport (see
+    // ttsAutoScrollTarget for when that's skipped). Chunk-level on purpose - it never
+    // fights a reader who scrolls away mid-chunk; the next chunk brings them back.
+    // Held back until reconcileTtsSession has run, so a stale session for another chapter
+    // (about to be stopped above) can't scroll this one. paragraphContentTop.size is a key
+    // so a session re-entered after a rotation retries once the text blocks have reported
+    // where they landed, instead of giving up on the first, too-early run.
+    val ttsFollowing = ttsSessionActive && ttsSessionReconciled
+    LaunchedEffect(tts.currentChunkStart, ttsFollowing, paragraphContentTop.size) {
+        if (!ttsFollowing || tts.currentChunkStart < 0) return@LaunchedEffect
+        val block = ttsBlockForChunkStart(paragraphOffsetList, tts.currentChunkStart)
+            ?: return@LaunchedEffect
+        val blockTop = paragraphContentTop[block.rawStart] ?: return@LaunchedEffect
+        val layout = paragraphLayouts[block.rawStart]
+        val localStart = tts.currentChunkStart - block.rawStart
+        val lineTop = layout?.let {
+            val offset = localStart.coerceIn(0, it.layoutInput.text.length)
+            it.getLineTop(it.getLineForOffset(offset))
+        } ?: 0f
+        val target = ttsAutoScrollTarget(
+            chunkTop = blockTop + lineTop,
+            currentScroll = scrollState.value,
+            viewportHeight = scrollContainerHeight,
+            maxScroll = scrollState.maxValue
+        )
+        if (target != null) scrollState.animateScrollTo(target)
     }
 
     fun currentProgress(): Float {
@@ -676,7 +714,10 @@ fun ReaderScreen(
                 // children, it doesn't move as scrollState changes, so this only ever
                 // needs (re)capturing when the layout around it changes (e.g. the top
                 // bar showing/hiding), not per scroll tick.
-                .onGloballyPositioned { scrollContainerTop = it.positionInRoot().y }
+                .onGloballyPositioned {
+                    scrollContainerTop = it.positionInRoot().y
+                    scrollContainerHeight = it.size.height
+                }
                 .verticalScroll(scrollState)
                 // `showControls` already existed and correctly gated both the top bar and
                 // the bottom Text/Spacing/Mode panel below - but nothing ever toggled it, so
@@ -788,8 +829,34 @@ fun ReaderScreen(
                                 val rawStart = paragraphOffsetList.getOrNull(paragraphCursor)?.rawStart
                                 paragraphCursor++
                                 if (segment.text.isNotBlank()) {
+                                    // Rung 5: the chunk being read aloud, shaded in place.
+                                    // Plain String (exactly the old rendering) unless this
+                                    // block actually contains part of the current chunk.
+                                    val highlight = if (ttsFollowing && rawStart != null) {
+                                        ttsHighlightWithin(
+                                            blockStart = rawStart,
+                                            blockLength = segment.text.length,
+                                            chunkStart = tts.currentChunkStart,
+                                            chunkEnd = tts.currentChunkEnd
+                                        )
+                                    } else null
+                                    val shownText = remember(segment.text, highlight, textColor) {
+                                        buildAnnotatedString {
+                                            append(segment.text)
+                                            if (highlight != null) {
+                                                addStyle(
+                                                    SpanStyle(background = textColor.copy(alpha = 0.16f)),
+                                                    highlight.start,
+                                                    highlight.endExclusive
+                                                )
+                                            }
+                                        }
+                                    }
                                     Text(
-                                        text = segment.text,
+                                        text = shownText,
+                                        onTextLayout = { layout ->
+                                            if (rawStart != null) paragraphLayouts[rawStart] = layout
+                                        },
                                         style = TextStyle(
                                             fontSize = fontSize.value.sp,
                                             lineHeight = (fontSize.value * lineHeight.value).sp,
