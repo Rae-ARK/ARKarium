@@ -694,6 +694,7 @@ class MainActivity : ComponentActivity() {
                 val readerFontFamily = prefsManager.readerFontFamily.collectAsState(initial = "SERIF")
                 val readerKeepScreenOn = prefsManager.readerKeepScreenOn.collectAsState(initial = false)
                 val readerFullscreen = prefsManager.readerFullscreen.collectAsState(initial = false)
+                val readerBreakLines = prefsManager.readerBreakLines.collectAsState(initial = true)
                 val readerBrightnessSliderEnabled = prefsManager.readerBrightnessSliderEnabled.collectAsState(initial = false)
                 val readerBrightness = prefsManager.readerBrightness.collectAsState(initial = -1f)
                 // Favorite voices (design-notes.md's "TTS settings split") -
@@ -1438,6 +1439,7 @@ class MainActivity : ComponentActivity() {
                                 .getOrDefault(ReaderFontFamily.SERIF),
                             keepScreenOn = readerKeepScreenOn.value,
                             fullscreen = readerFullscreen.value,
+                            breakLines = readerBreakLines.value,
                             brightnessSliderEnabled = readerBrightnessSliderEnabled.value,
                             brightness = readerBrightness.value,
                             onFontSizeChange = { size ->
@@ -1457,6 +1459,9 @@ class MainActivity : ComponentActivity() {
                             },
                             onFullscreenToggle = { enabled ->
                                 lifecycleScope.launch { prefsManager.setReaderFullscreen(enabled) }
+                            },
+                            onBreakLinesToggle = { enabled ->
+                                lifecycleScope.launch { prefsManager.setReaderBreakLines(enabled) }
                             },
                             onBrightnessSliderToggle = { enabled ->
                                 lifecycleScope.launch { prefsManager.setReaderBrightnessSliderEnabled(enabled) }

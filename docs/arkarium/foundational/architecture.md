@@ -43,6 +43,10 @@ authors/<id>.json   (shared, at library root, not per fiction)
 
 Chapter bodies are plain `.txt`. `data/ChapterMarkup.kt` defines three inline
 tags (`<chapter break>`, `<author>`, `<news>`); unmatched tags render literally.
+A line that is one character three times over (`***`, `---`, `###`) is also a
+chapter break, no tag needed (`isBreakLine`); the `reader_break_lines` switch on the
+Reader settings page (on by default) turns that off, and the tags keep working
+either way.
 Chapter order uses a filename sort-tier convention (`~` bonus, `!` closing),
 inherited from ARKster: see `reference/arkster/bugs.md` (Bug 2).
 
@@ -159,6 +163,8 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
   one - either true keeps the screen on, plain `FLAG_KEEP_SCREEN_ON`, no
   idle timer); `reader_fullscreen` (hides system bars via
   `WindowInsetsControllerCompat`, swipe-to-reveal, while in immersive mode);
+  `reader_break_lines` (default **on**, the only reader switch that is: whether a
+  bare `***`-style line draws as a chapter-break divider, see `ChapterMarkup.kt`);
   and `reader_brightness_slider_enabled`, which only toggles whether the
   pill's brightness slider is shown - the brightness value itself isn't
   persisted. Reading mode's unset state means "follow the app theme" (an

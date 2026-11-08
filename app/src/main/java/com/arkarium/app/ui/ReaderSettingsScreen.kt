@@ -74,6 +74,8 @@ fun ReaderSettingsScreen(
     fontFamily: ReaderFontFamily = ReaderFontFamily.SERIF,
     keepScreenOn: Boolean = false,
     fullscreen: Boolean = false,
+    // On by default, like PreferencesManager's own fallback (readerBreakLinesOf).
+    breakLines: Boolean = true,
     brightnessSliderEnabled: Boolean = false,
     // -1f = follow the system; only applied while brightnessSliderEnabled is on.
     brightness: Float = -1f,
@@ -83,6 +85,7 @@ fun ReaderSettingsScreen(
     onFontFamilyChange: (ReaderFontFamily) -> Unit = {},
     onKeepScreenOnToggle: (Boolean) -> Unit = {},
     onFullscreenToggle: (Boolean) -> Unit = {},
+    onBreakLinesToggle: (Boolean) -> Unit = {},
     onBrightnessSliderToggle: (Boolean) -> Unit = {},
     onBrightnessChange: (Float) -> Unit = {},
     onBack: () -> Unit
@@ -276,6 +279,40 @@ fun ReaderSettingsScreen(
                             )
                         }
                     }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // How chapter text is read, not how the screen behaves: whether a bare
+            // "***" / "---" / "###" line becomes a chapter-break divider.
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 12.dp)
+                    ) {
+                        Text("Detect chapter breaks", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "A line of one character three times - ***, ---, ### - " +
+                                "shows as a divider. Explicit <chapter break> tags " +
+                                "always work, whatever this says.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                    Switch(checked = breakLines, onCheckedChange = onBreakLinesToggle)
                 }
             }
 

@@ -353,6 +353,8 @@ fun ReaderScreen(
     // declaration-before-use in this linear composable body) - see that
     // val's own doc comment for where the effect actually lives.
     val fullscreenEnabled by prefsManager.readerFullscreen.collectAsState(initial = false)
+    // Whether bare "***"-style lines are chapter breaks; both parses below key on it.
+    val breakLinesEnabled by prefsManager.readerBreakLines.collectAsState(initial = true)
 
     // reader-settings.md's Brightness section, as amended by the owner: a
     // window-level screenBrightness override for the reader's lifetime, restoring
@@ -504,7 +506,7 @@ fun ReaderScreen(
     // position each paragraph's Text composable actually lands at once laid out
     // (scrollContainerTop + paragraphContentTop below), used both to capture an exit
     // position (currentAnchor()) and to restore initialPosition once layout catches up.
-    val paragraphOffsetList = remember(content) { paragraphOffsets(content) }
+    val paragraphOffsetList = remember(content, breakLinesEnabled) { paragraphOffsets(content, breakLinesEnabled) }
     // Key: a paragraph's ParagraphOffset.rawStart. Value: that paragraph's scroll
     // offset - the value scrollState.value would need to be for this paragraph to sit
     // flush with the top of the scrollable area - computed from its onGloballyPositioned
@@ -803,7 +805,7 @@ fun ReaderScreen(
             // instead of printing the raw tag text. A chapter with none of these tags
             // parses to a single Paragraph segment covering the whole body, so untagged
             // chapters render exactly as before.
-            val segments = remember(content) { parseChapterSegments(content) }
+            val segments = remember(content, breakLinesEnabled) { parseChapterSegments(content, breakLinesEnabled) }
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()

@@ -13,8 +13,15 @@ package com.arkarium.app.data
 //   <news>...</news>                 - a "News" callout (schedule changes,
 //                                      announcements, etc).
 //
-// A chapter with none of these tags parses to a single Paragraph segment covering the
-// whole body - same text, same rendering as before this existed. Unrecognized/unmatched
+// Besides the tags, a line that is nothing but one character three times over - "***",
+// "---", "###", "~~~" - is a chapter break too (see isBreakLine), so an author can just
+// type the marker in the plain .txt with no tag. Both forms produce the same
+// ChapterBreak segment with an empty label. The line form is a reader preference
+// (Reader settings, `reader_break_lines`, on by default): with `detectBreakLines` false
+// every such line is ordinary text again. The tags are unaffected by it.
+//
+// A chapter with none of these tags or break lines parses to a single Paragraph segment
+// covering the whole body - same text, same rendering as before this existed. Unrecognized/unmatched
 // tags (a stray "<author>" with no closing tag) are left as literal text in the output
 // rather than silently eaten or thrown as a parse error - a typo should be visible on
 // the page, not swallow the rest of the chapter.
@@ -48,14 +55,87 @@ private val TAG_SPECS = listOf(
     )
 )
 
-fun parseChapterSegments(raw: String): List<ChapterSegment> {
+// A break line: after trimming surrounding whitespace (which also takes care of the \r
+// of a CRLF line ending and a leading byte-order mark), exactly three characters, all the
+// same one. Counted in code points, not UTF-16 chars, so a marker such as "✨✨✨" or a
+// symbol outside the BMP is three characters, not six. Deliberately nothing smarter: no
+// character whitelist, no spaced "* * *" form, no blank lines required around it.
+fun isBreakLine(line: String): Boolean {
+    val t = line.trim { it.isWhitespace() || it == '\uFEFF' }
+    if (t.isEmpty() || t.codePointCount(0, t.length) != BREAK_LINE_LENGTH) return false
+    val first = t.codePointAt(0)
+    var i = Character.charCount(first)
+    while (i < t.length) {
+        val cp = t.codePointAt(i)
+        if (cp != first) return false
+        i += Character.charCount(cp)
+    }
+    return true
+}
+
+private const val BREAK_LINE_LENGTH = 3
+
+// A stretch of a plain-text run: [start, end) in the run's own coordinates, either a
+// break line or ordinary text.
+internal data class TextRun(val start: Int, val end: Int, val isBreak: Boolean)
+
+// Splits one plain-text run (what is left between tags) at its break lines. Used by
+// BOTH parseChapterSegments and paragraphOffsets so their Paragraph entries stay
+// one-to-one - ReaderScreen walks the two in lockstep (see paragraphOffsets).
+//
+// A run with no break line comes back whole and untouched, so chapters that don't use
+// the marker render exactly as before. Around a break line the text is trimmed on the
+// side that touches it (the newlines before and after it), nothing else; every text run
+// is an unmodified substring, so rawStart + text.length still addresses the same
+// characters of the chapter. Runs left empty by that trimming are dropped.
+internal fun splitOnBreakLines(text: String, detectBreakLines: Boolean = true): List<TextRun> {
+    if (text.isEmpty()) return emptyList()
+    if (!detectBreakLines) return listOf(TextRun(0, text.length, false))
+    // [start, nextLineStart) of every break line, found line by line.
+    val breaks = mutableListOf<IntRange>()
+    var lineStart = 0
+    while (lineStart < text.length) {
+        val newline = text.indexOf('\n', lineStart)
+        val lineEnd = if (newline < 0) text.length else newline
+        val next = if (newline < 0) text.length else newline + 1
+        if (isBreakLine(text.substring(lineStart, lineEnd))) breaks.add(lineStart until next)
+        lineStart = next
+    }
+    if (breaks.isEmpty()) return listOf(TextRun(0, text.length, false))
+
+    val runs = mutableListOf<TextRun>()
+    var pos = 0
+    var afterBreak = false
+    for (b in breaks) {
+        var start = pos
+        if (afterBreak) while (start < b.first && text[start].isWhitespace()) start++
+        var end = b.first
+        while (end > start && text[end - 1].isWhitespace()) end--
+        if (end > start) runs.add(TextRun(start, end, false))
+        runs.add(TextRun(b.first, b.last + 1, true))
+        pos = b.last + 1
+        afterBreak = true
+    }
+    var start = pos
+    while (start < text.length && text[start].isWhitespace()) start++
+    if (start < text.length) runs.add(TextRun(start, text.length, false))
+    return runs
+}
+
+fun parseChapterSegments(raw: String, detectBreakLines: Boolean = true): List<ChapterSegment> {
     val segments = mutableListOf<ChapterSegment>()
     val plain = StringBuilder()
     var cursor = 0
 
     fun flushPlain() {
         if (plain.isNotEmpty()) {
-            segments.add(ChapterSegment.Paragraph(plain.toString()))
+            val text = plain.toString()
+            splitOnBreakLines(text, detectBreakLines).forEach { run ->
+                segments.add(
+                    if (run.isBreak) ChapterSegment.ChapterBreak("")
+                    else ChapterSegment.Paragraph(text.substring(run.start, run.end))
+                )
+            }
             plain.clear()
         }
     }
@@ -116,7 +196,7 @@ fun parseChapterSegments(raw: String): List<ChapterSegment> {
 // ChapterBreak/AuthorNote/News entries it has no use for.
 data class ParagraphOffset(val rawStart: Int, val text: String)
 
-fun paragraphOffsets(raw: String): List<ParagraphOffset> {
+fun paragraphOffsets(raw: String, detectBreakLines: Boolean = true): List<ParagraphOffset> {
     val result = mutableListOf<ParagraphOffset>()
     val plain = StringBuilder()
     var plainStart = -1
@@ -124,7 +204,13 @@ fun paragraphOffsets(raw: String): List<ParagraphOffset> {
 
     fun flushPlain() {
         if (plain.isNotEmpty()) {
-            result.add(ParagraphOffset(plainStart, plain.toString()))
+            // `plain` is always one contiguous stretch of `raw` starting at plainStart
+            // (every append() below continues exactly where the last stopped), so a
+            // run's offset inside it is its offset inside the chapter minus plainStart.
+            val text = plain.toString()
+            splitOnBreakLines(text, detectBreakLines).filterNot { it.isBreak }.forEach { run ->
+                result.add(ParagraphOffset(plainStart + run.start, text.substring(run.start, run.end)))
+            }
             plain.clear()
             plainStart = -1
         }

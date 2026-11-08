@@ -216,6 +216,20 @@ class PreferencesManagerTest {
     }
 
     @Test
+    fun readerBreakLines_withNoStoredValue_fallsBackToTrue() {
+        // The one reader switch that is on by default.
+        assertEquals(true, readerBreakLinesOf(emptyPreferences()))
+    }
+
+    @Test
+    fun readerBreakLines_roundTripsAStoredFalse() {
+        val prefs = mutablePreferencesOf()
+        prefs[READER_BREAK_LINES_KEY] = false
+
+        assertEquals(false, readerBreakLinesOf(prefs))
+    }
+
+    @Test
     fun readerBrightnessSliderEnabled_withNoStoredValue_fallsBackToFalse() {
         assertEquals(false, readerBrightnessSliderEnabledOf(emptyPreferences()))
     }
