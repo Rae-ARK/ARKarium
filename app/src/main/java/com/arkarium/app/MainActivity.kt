@@ -325,7 +325,18 @@ class MainActivity : ComponentActivity() {
     // a CHAR_OFFSET row instead of PERCENTAGE. Every call site below already had a
     // ReaderPosition in hand (ReaderScreen's onBack/onBackToFiction/onPrevious/onNext
     // all take one now), so this is purely a parameter-type change, not a new lookup.
-    private suspend fun saveReadingProgress(novelId: String, chapterId: String, position: ReaderPosition) {
+    //
+    // chapterLength is new in this fix: COMPLETION_THRESHOLD below is still a fraction
+    // (0f..1f, see ReadingStats.COMPLETION_THRESHOLD), and charOffset alone can't be
+    // compared against it without knowing how long the chapter is. Every call site has
+    // the loaded chapter body (`content`) in scope, so this is just passing its length
+    // through rather than a new lookup.
+    private suspend fun saveReadingProgress(
+        novelId: String,
+        chapterId: String,
+        position: ReaderPosition,
+        chapterLength: Int
+    ) {
         db.readingProgressDao().upsert(
             ReadingProgressEntity(
                 novelId = novelId,
@@ -346,7 +357,8 @@ class MainActivity : ComponentActivity() {
         // always calls refreshReadingStats too), so a plain progress update that
         // doesn't cross the threshold still gets its "Continue Reading" ordering
         // refreshed without redundantly re-querying stats that haven't changed.
-        if (progress >= ReadingStats.COMPLETION_THRESHOLD) {
+        val progress = if (chapterLength > 0) position.charOffset.toFloat() / chapterLength else 0f
+        if (ReadingStats.isCompletionThreshold(progress)) {
             val now = System.currentTimeMillis()
             db.chapterReadEventDao().upsert(
                 ChapterReadEventEntity(
@@ -1180,7 +1192,7 @@ class MainActivity : ComponentActivity() {
                                     initialPosition = initialReaderPosition.value,
                                     onBack = { position ->
                                         lifecycleScope.launch {
-                                            saveReadingProgress(novelId, chapterId, position)
+                                            saveReadingProgress(novelId, chapterId, position, content.length)
                                             // Same popUpTo("home") reasoning as NovelDetail's
                                             // onBack - Reader's Back always went straight to
                                             // Home regardless of entry path.
@@ -1193,7 +1205,7 @@ class MainActivity : ComponentActivity() {
                                     onBackToFiction = { position ->
                                         if (novel != null) {
                                             lifecycleScope.launch {
-                                                saveReadingProgress(novelId, chapterId, position)
+                                                saveReadingProgress(novelId, chapterId, position, content.length)
                                                 navController.navigate("novelDetail/${novel.id}") {
                                                     launchSingleTop = true
                                                 }
@@ -1203,7 +1215,7 @@ class MainActivity : ComponentActivity() {
                                     onPrevious = previousChapter?.let { prev ->
                                         { position: ReaderPosition ->
                                             lifecycleScope.launch {
-                                                saveReadingProgress(novelId, chapterId, position)
+                                                saveReadingProgress(novelId, chapterId, position, content.length)
                                                 // Replace, not push - Back from chapter 5
                                                 // returns to NovelDetail, not chapter 4,
                                                 // matching pre-NavHost behavior where
@@ -1218,7 +1230,7 @@ class MainActivity : ComponentActivity() {
                                     onNext = nextChapter?.let { next ->
                                         { position: ReaderPosition ->
                                             lifecycleScope.launch {
-                                                saveReadingProgress(novelId, chapterId, position)
+                                                saveReadingProgress(novelId, chapterId, position, content.length)
                                                 navController.navigate("reader/$novelId/${next.id}") {
                                                     popUpTo("reader/{novelId}/{chapterId}") { inclusive = true }
                                                 }

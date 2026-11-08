@@ -113,6 +113,20 @@ jobs:
         fi
         git status --short -- app/schemas
 
+    # Independent of the commit-back below: this is what makes the schema downloadable
+    # from the run itself. Needed on every event type, not just push/manual - a PR run
+    # can't push at all (see the PR check step below), so without this the only way to
+    # get the JSON off a PR run was "trust the committer ran it locally first." Uploads
+    # the whole app/schemas directory (not just new files) so a run always carries the
+    # full, current set, even one where nothing changed this time.
+    - name: Upload schema artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: room-schema-${{ github.sha }}
+        path: app/schemas
+        retention-days: 14
+        if-no-files-found: error
+
     - name: Commit new schema files
       if: ${{ github.event_name != 'pull_request' }}
       run: |
