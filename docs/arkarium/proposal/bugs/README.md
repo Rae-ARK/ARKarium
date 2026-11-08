@@ -26,6 +26,7 @@ Historic ARKster-era bug history is frozen in
 | Bug | Severity |
 |---|---|
 | [`other/legacy-percentage-position-lost-on-upgrade.md`](other/legacy-percentage-position-lost-on-upgrade.md) | other — upgrading from a pre-rung-14 build silently resets in-progress chapters to the top |
+| [`other/scrolling-bug.md`](other/scrolling-bug.md) | other — reader scrolling reported not smooth with controls visible; unconfirmed, no device measurements yet |
 
 The two previously tracked here are both fixed and their files deleted per
 the rule above:

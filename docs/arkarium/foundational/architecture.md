@@ -162,7 +162,13 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
   own row; `reader_keep_screen_on` (combines with, doesn't override, the TTS
   one - either true keeps the screen on, plain `FLAG_KEEP_SCREEN_ON`, no
   idle timer); `reader_fullscreen` (hides system bars via
-  `WindowInsetsControllerCompat`, swipe-to-reveal, while in immersive mode);
+  `WindowInsetsControllerCompat`, swipe-to-reveal, while in immersive mode;
+  `layoutInDisplayCutoutMode` SHORT_EDGES and edge-to-edge both key off that
+  same immersive condition in *either* orientation, not landscape only - an
+  earlier landscape-only version of this left portrait letterboxed at the
+  cutout the moment the status bar hid, since `DEFAULT`'s portrait carve-out
+  only holds while the status bar is showing - see `ReaderScreen.kt`'s
+  `applyWindowLayout`);
   `reader_break_lines` (default **on**, the only reader switch that is: whether a
   bare `***`-style line draws as a chapter-break divider, see `ChapterMarkup.kt`);
   and `reader_brightness_slider_enabled`, which only toggles whether the
