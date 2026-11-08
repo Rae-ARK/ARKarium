@@ -53,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -1230,6 +1231,19 @@ fun ReaderScreen(
             // non-immersive mode, so it's simply not composed in immersive mode. The
             // last child of this Column, so it's the one that ends up flush against
             // the bottom edge of the screen, with the pill floating directly above it.
+            //
+            // Scrolling-bug fix (other/scrolling-bug.md, cause 1): this used to read
+            // currentProgress() - which reads scrollState.value/maxValue - directly
+            // here, inline in ReaderScreen's own Column/Box. Column and Box don't
+            // introduce a recomposition-scope boundary, so that read was attributed to
+            // ReaderScreen itself: every scroll offset change invalidated the whole
+            // screen, re-running the per-paragraph loop below (828ish) and all its
+            // onGloballyPositioned/onTextLayout lambdas on every scroll frame while
+            // the controls were visible. Pushed the read into ProgressReadout's own
+            // derivedStateOf instead: ProgressReadout is its own composable, so the
+            // scroll read is scoped to just that Text, and derivedStateOf means it
+            // only actually recomposes when the rounded percent or page number
+            // changes (at most ~100 times per chapter), not once per scroll tick.
             if (showControls.value) {
                 Box(
                     modifier = Modifier
@@ -1237,12 +1251,10 @@ fun ReaderScreen(
                         .padding(top = 12.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    val progressPercent = (currentProgress() * 100).toInt()
-                    val currentPage = (currentProgress() * estimatedTotalPages).toInt().coerceIn(1, estimatedTotalPages)
-                    Text(
-                        "$progressPercent% • page $currentPage of $estimatedTotalPages",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = textColor.copy(alpha = 0.7f)
+                    ProgressReadout(
+                        progress = { currentProgress() },
+                        estimatedTotalPages = estimatedTotalPages,
+                        textColor = textColor
                     )
                 }
             }
@@ -1294,6 +1306,29 @@ fun ReaderScreen(
             .height(240.dp)
     )
     }
+}
+
+// Scroll-driven, so split out of ReaderScreen into its own recomposition scope on
+// purpose (see the scrolling-bug fix comment at the one call site in ReaderScreen).
+// `progress` is a lambda rather than a Float so the scrollState read it ultimately
+// performs (via ReaderScreen's currentProgress()) happens inside this composable's
+// own derivedStateOf, not in the caller - that's what keeps the invalidation scoped
+// to just this Text instead of bubbling up to whatever composed this.
+@Composable
+private fun ProgressReadout(
+    progress: () -> Float,
+    estimatedTotalPages: Int,
+    textColor: Color
+) {
+    val progressPercent by remember { derivedStateOf { (progress() * 100).toInt() } }
+    val currentPage by remember {
+        derivedStateOf { (progress() * estimatedTotalPages).toInt().coerceIn(1, estimatedTotalPages) }
+    }
+    Text(
+        "$progressPercent% • page $currentPage of $estimatedTotalPages",
+        style = MaterialTheme.typography.labelSmall,
+        color = textColor.copy(alpha = 0.7f)
+    )
 }
 
 // The read-aloud controls bar: stop the session, open TTS settings, skip to the

@@ -1,6 +1,6 @@
 # Reader scrolling is not smooth: scroll state is read during composition, every paragraph reports its position, and the whole chapter is composed eagerly
 
-> **Kind:** proposal · **Status:** open — unconfirmed (no measurements yet) · **Verified:** 2026-11-08 @ 09adbfe
+> **Kind:** proposal · **Status:** open — cause 1 fixed (unmeasured), causes 2-4 untouched · **Verified:** 2026-11-08 @ 09adbfe
 > **Origin:** owner report ("scrolling isn't smooth"), code read of `ReaderScreen.kt` and `app/build.gradle.kts`, and a search of current Compose performance guidance.
 
 **Seen:** reported by the owner on a device; build type and device model not
@@ -73,12 +73,13 @@ to fire per frame if cause 2 is right).
 
 **Possible fix (cheapest first; re-measure after each):**
 
-1. Replace the direct read with a derived, deferred one:
-   `val progressPercent by remember { derivedStateOf { (currentProgress() * 100).toInt() } }`,
-   and read it inside a small `ProgressReadout(...)` composable (or pass a
-   lambda) so only that `Text` is in the invalidated scope. `currentPage`
-   should derive from the same percent. Recomposition drops from once per
-   scroll tick to at most about 100 times per chapter.
+1. **Done.** Replaced the direct read with a derived, deferred one, in a new
+   `ProgressReadout` composable (`ReaderScreen.kt`) so only that `Text` is in
+   the invalidated scope, with `currentPage` deriving from the same
+   `derivedStateOf` block. Not re-measured yet - the `gfxinfo`/Layout
+   Inspector numbers under "Evidence still needed" below are still
+   outstanding, so this item isn't struck from "Evidence still needed" and
+   the bug stays open until they're recorded.
 2. If the counter confirms cause 2: store each paragraph's `LayoutCoordinates`
    in a plain (non-state) map and call `positionInRoot()` only when saving the
    anchor, restoring, or following TTS. **Caveat:** the restore effect (533)
