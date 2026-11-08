@@ -23,8 +23,12 @@ Historic ARKster-era bug history is frozen in
 
 ## Open bugs
 
-None currently. The two previously tracked here are both fixed and their
-files deleted per the rule above:
+| Bug | Severity |
+|---|---|
+| [`other/legacy-percentage-position-lost-on-upgrade.md`](other/legacy-percentage-position-lost-on-upgrade.md) | other — upgrading from a pre-rung-14 build silently resets in-progress chapters to the top |
+
+The two previously tracked here are both fixed and their files deleted per
+the rule above:
 
 - Scan reconcile cascade-deleting a novel's history on an ordinary scan —
   see [`../../implementation/engineering-backlog.md`](../../implementation/engineering-backlog.md) rung 1.

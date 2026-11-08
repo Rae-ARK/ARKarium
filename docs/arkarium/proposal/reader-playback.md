@@ -45,6 +45,22 @@ the natural anchor for the TTS highlight in F10/`uiux.md` below — one
 position representation serving both features is simpler than inventing a
 second one for playback.
 
+**Two gaps left by rung 14, both still open:**
+
+- **The snippet fallback isn't read back yet.** `positionSnippet` is stored
+  on every save but never checked against the live chapter text before
+  restoring, so an offset that no longer lines up (chapter content edited
+  since the position was saved) isn't caught — it just restores to whatever
+  paragraph the stale offset happens to land in now, possibly the wrong one.
+  A verification step (`raw.regionMatches(offset, snippet, ...)`, falling
+  back to `raw.indexOf(snippet)`, and otherwise staying at the top rather
+  than guessing) would close this.
+- **Upgrading from a pre-rung-14 build loses the in-progress position.** A
+  row still carrying the old `PERCENTAGE` type is no longer restored into at
+  all — see
+  [`bugs/other/legacy-percentage-position-lost-on-upgrade.md`](bugs/other/legacy-percentage-position-lost-on-upgrade.md)
+  for the gap and a possible one-time-conversion fix.
+
 ### F10. TTS playback is tied to a composable's lifecycle — fixed
 
 **Severity:** High. **Tags:** V.
