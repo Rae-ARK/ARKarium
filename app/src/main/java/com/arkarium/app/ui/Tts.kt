@@ -12,6 +12,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -52,6 +53,17 @@ class ChapterTtsState internal constructor() {
         internal set
 
     var speechRate by mutableFloatStateOf(1.0f)
+        internal set
+
+    // Rung 3 (docs/arkarium/implementation/tts-playback-controls.md): mirrors
+    // TtsPlaybackService.currentChunkIndex/totalChunks the same way isSpeaking/
+    // isPaused above mirror their service counterparts. totalChunks is 0 with no
+    // session (stopped, or not yet started) - that's the "nothing to show" case
+    // TtsProgressIndicator (ui/ReaderScreen.kt) checks for.
+    var currentChunkIndex by mutableIntStateOf(0)
+        internal set
+
+    var totalChunks by mutableIntStateOf(0)
         internal set
 
     // The voice picker's state: mirrors
@@ -129,6 +141,11 @@ class ChapterTtsState internal constructor() {
         override fun onError(errorCode: Int) {
             this@ChapterTtsState.lastErrorMessage = ttsErrorMessage(errorCode)
         }
+
+        override fun onChunkProgressChanged(index: Int, total: Int) {
+            this@ChapterTtsState.currentChunkIndex = index
+            this@ChapterTtsState.totalChunks = total
+        }
     }
 
     // Called from rememberChapterTts's ServiceConnection once bound (including after a
@@ -144,6 +161,8 @@ class ChapterTtsState internal constructor() {
         speechRate = svc.speechRate
         availableVoices = svc.availableVoices
         currentVoiceName = svc.currentVoiceName
+        currentChunkIndex = svc.currentChunkIndex
+        totalChunks = svc.totalChunks
         svc.autoContinueEnabled = autoContinueEnabled
     }
 

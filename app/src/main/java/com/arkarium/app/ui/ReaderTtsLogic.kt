@@ -50,3 +50,17 @@ fun reconcileTtsSession(
     sessionKey == chapterId -> TtsSessionAction.ENTER_IMMERSIVE
     else -> TtsSessionAction.STOP_STALE
 }
+
+// Rung 3 (docs/arkarium/implementation/tts-playback-controls.md): the label
+// TtsProgressIndicator (ReaderScreen.kt) shows in TtsControlsBar, at chunk
+// granularity ("chunk N of M") per that rung's "done when" - not a page number; see
+// the doc for why a chunk isn't a stable reader-facing unit yet. currentChunkIndex is
+// 0-based (TtsPlaybackService.currentChunkIndex/ChapterTtsState.currentChunkIndex),
+// shown 1-based. Null with no session (totalChunks <= 0, the same "nothing to show"
+// case readerBottomPill already resolves to NONE for) - the composable renders
+// nothing rather than "chunk 0 of 0".
+fun ttsChunkProgressLabel(currentChunkIndex: Int, totalChunks: Int): String? {
+    if (totalChunks <= 0) return null
+    val current = (currentChunkIndex + 1).coerceIn(1, totalChunks)
+    return "chunk $current of $totalChunks"
+}

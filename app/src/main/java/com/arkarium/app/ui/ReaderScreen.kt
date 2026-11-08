@@ -1122,6 +1122,8 @@ fun ReaderScreen(
         TtsControlsBar(
             isSpeaking = tts.isSpeaking,
             isPaused = tts.isPaused,
+            currentChunkIndex = tts.currentChunkIndex,
+            totalChunks = tts.totalChunks,
             onPlayPause = {
                 when {
                     tts.isPaused -> tts.resume()
@@ -1158,12 +1160,14 @@ fun ReaderScreen(
 // while a session exists (see readerBottomPill); the speaker icon in the top bar is what
 // starts one. Laid out to match
 // the reference screenshot in uiux.md's playback-controls entry (close/settings on
-// one side, skip/play/skip on the other) minus its "n of total" scrub readout -
-// TtsProgressStub below is where that's meant to slot in later, not omitted outright.
+// one side, skip/play/skip on the other), with its "n of total" scrub readout filled
+// in at chunk granularity by TtsProgressIndicator below (rung 3).
 @Composable
 private fun TtsControlsBar(
     isSpeaking: Boolean,
     isPaused: Boolean,
+    currentChunkIndex: Int,
+    totalChunks: Int,
     onPlayPause: () -> Unit,
     onSkipPrevious: () -> Unit,
     onSkipNext: () -> Unit,
@@ -1208,7 +1212,7 @@ private fun TtsControlsBar(
                 }
             }
 
-            TtsProgressStub()
+            TtsProgressIndicator(currentChunkIndex = currentChunkIndex, totalChunks = totalChunks)
 
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1251,15 +1255,23 @@ private fun TtsControlsBar(
     }
 }
 
-// Stand-in for the "n of total" scrub/progress readout in the uiux.md reference
-// design - a deliberate no-op for now, not an oversight. A chunk isn't a stable unit
-// to show a position in (chunk count depends on TTS_MAX_CHUNK_CHARS in
-// TtsPlaybackService, not on anything a reader would recognize as a "page"); rung 3
-// of docs/arkarium/implementation/tts-playback-controls.md is where this gets a real
-// value. Left as an explicit call site rather than omitted outright so wiring it in
-// later is a one-line change here, not a rediscovery of where it goes.
+// Rung 3 of docs/arkarium/implementation/tts-playback-controls.md: the "n of total"
+// scrub/progress readout from the uiux.md reference design, filled in at chunk
+// granularity - "chunk N of M" rather than a page number, per that rung's own
+// "done when" (a chunk isn't a stable reader-facing unit; chunk count depends on
+// TTS_MAX_CHUNK_CHARS in TtsPlaybackService, not on anything a reader would
+// recognize as a "page" - see that doc for the page-estimate alternative this
+// leaves for later). Renders nothing with no session (totalChunks == 0), same
+// "nothing to show" gate TtsControlsBar's own visibility already uses one level up.
 @Composable
-private fun TtsProgressStub() {}
+private fun TtsProgressIndicator(currentChunkIndex: Int, totalChunks: Int) {
+    val label = ttsChunkProgressLabel(currentChunkIndex, totalChunks) ?: return
+    Text(
+        label,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+    )
+}
 
 // Previous/Next row shown both above and below the chapter body (see Stage 3 in
 // AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md). A missing neighbor renders its button disabled

@@ -83,4 +83,46 @@ class ReaderTtsLogicTest {
     fun sessionWithUnknownKey_isStoppedAsStale() {
         assertEquals(TtsSessionAction.STOP_STALE, reconcileTtsSession(true, null, "ch-1"))
     }
+
+    // --- ttsChunkProgressLabel ---------------------------------------------------
+
+    @Test
+    fun noSession_showsNoLabel() {
+        // totalChunks <= 0 is the "stopped, or never started" case - nothing to show,
+        // same gate readerBottomPill resolves to NONE for.
+        assertEquals(null, ttsChunkProgressLabel(currentChunkIndex = 0, totalChunks = 0))
+    }
+
+    @Test
+    fun firstChunk_isShownAsOneBased() {
+        // currentChunkIndex is 0-based (TtsPlaybackService's pendingIndex); the label
+        // is 1-based, same convention estimatedTotalPages/currentPage already use
+        // elsewhere in ReaderScreen.
+        assertEquals("chunk 1 of 11", ttsChunkProgressLabel(currentChunkIndex = 0, totalChunks = 11))
+    }
+
+    @Test
+    fun middleChunk_isShownAtItsOwnPosition() {
+        assertEquals("chunk 4 of 11", ttsChunkProgressLabel(currentChunkIndex = 3, totalChunks = 11))
+    }
+
+    @Test
+    fun lastChunk_isShownAsTotal() {
+        assertEquals("chunk 11 of 11", ttsChunkProgressLabel(currentChunkIndex = 10, totalChunks = 11))
+    }
+
+    @Test
+    fun singleChunkChapter_isShownAsOneOfOne() {
+        assertEquals("chunk 1 of 1", ttsChunkProgressLabel(currentChunkIndex = 0, totalChunks = 1))
+    }
+
+    @Test
+    fun outOfRangeIndex_isClampedRatherThanShownRaw() {
+        // Shouldn't happen (nothing advances pendingIndex past pendingChunks.size - 1
+        // except onUtteranceFinished, which only does so transiently before the
+        // service stops or auto-continues), but a defensive clamp beats "chunk 0 of
+        // 11" or "chunk 13 of 11" if it ever does.
+        assertEquals("chunk 11 of 11", ttsChunkProgressLabel(currentChunkIndex = 99, totalChunks = 11))
+        assertEquals("chunk 1 of 11", ttsChunkProgressLabel(currentChunkIndex = -1, totalChunks = 11))
+    }
 }

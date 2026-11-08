@@ -145,6 +145,14 @@ class TtsPlaybackService : Service() {
         // Rung 2 (D4): reported instead of silently advancing when a chunk fails - see
         // onChunkError below. errorCode is one of TextToSpeech.ERROR_*.
         fun onError(errorCode: Int)
+
+        // Rung 3 (docs/arkarium/implementation/tts-playback-controls.md): pushed
+        // whenever pendingIndex or the chunk count changes - a fresh start(), a
+        // skip, a chunk finishing on its own, or the session ending (index/total
+        // both 0, same "nothing to show" signal as isSpeaking/isPaused both false).
+        // Chunk granularity, not a page number - see that doc's "Rung 3" section for
+        // why a chunk isn't a stable reader-facing unit yet.
+        fun onChunkProgressChanged(index: Int, total: Int)
     }
 
     private val binder = LocalBinder()
@@ -163,6 +171,15 @@ class TtsPlaybackService : Service() {
         private set
     var speechRate = 1.0f
         private set
+
+    // Rung 3: read-only views onto pendingChunks/pendingIndex below, for whatever
+    // attaches after the fact (ChapterTtsState.attach()) rather than only via the
+    // push-based Listener callback - same "getter for the late-attacher, callback for
+    // everyone already attached" split isSpeaking/isPaused/etc. above already use.
+    val currentChunkIndex: Int
+        get() = pendingIndex
+    val totalChunks: Int
+        get() = pendingChunks.size
 
     // The engine's voice list (design-notes.md's "TTS settings split"). Populated once from
     // engine?.voices inside onInit below, alongside isAvailable - empty until the
@@ -217,6 +234,10 @@ class TtsPlaybackService : Service() {
     private var engine: TextToSpeech? = null
     private var pendingChunks: List<String> = emptyList()
     private var pendingIndex: Int = 0
+        set(value) {
+            field = value
+            listener?.onChunkProgressChanged(value, pendingChunks.size)
+        }
     private var lastQueuedUtteranceId: String? = null
     private var currentChapterTitle: String = ""
 
