@@ -717,7 +717,7 @@ private fun ArcTabCard(
             )
             // With TalkBack on, a double-tap is the standard "activate" gesture, so
             // the app's own double-tap-to-enlarge can't be reached that way. Expose it
-            // as a TalkBack custom action instead (robustness.md F20).
+            // as a TalkBack custom action instead (F20, engineering-review.md).
             .semantics {
                 if (coverUrl != null) {
                     customActions = listOf(

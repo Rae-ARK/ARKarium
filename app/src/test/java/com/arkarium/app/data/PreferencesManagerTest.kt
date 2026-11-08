@@ -135,7 +135,7 @@ class PreferencesManagerTest {
         assertEquals("en-gb-x-gbb#male_1-local", ttsVoiceNameOf(prefs))
     }
 
-    // --- rung 5 (tts-settings-rework.md): favorite voices -----------------------------
+    // --- favorite voices -----------------------------
 
     @Test
     fun ttsFavoriteVoiceNames_withNoStoredValue_fallsBackToEmptySet() {

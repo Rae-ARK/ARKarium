@@ -300,7 +300,7 @@ fun ReaderScreen(
     // (listening, not reading) that the rest of the reader isn't, so this ties the flag
     // to tts.isSpeaking rather than to the reader screen merely being open.
     val context = LocalContext.current
-    // Rung 2 (tts-settings-rework.md, D4): a chunk that fails now stops the session
+    // Design-notes.md's "A failed chunk stops the session": a chunk that fails now stops the session
     // and reports why via ChapterTtsState.lastErrorMessage, instead of the chapter
     // silently "completing" with no sound. Shown once as a Toast - ReaderScreen has
     // no Snackbar host today, and adding one is out of this ladder's scope - and

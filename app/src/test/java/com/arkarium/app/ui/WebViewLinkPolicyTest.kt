@@ -4,7 +4,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-// robustness.md F18: which taps stay inside the in-app WebView.
+// F18 (engineering-review.md): which taps stay inside the in-app WebView.
 class WebViewLinkPolicyTest {
     private val start = "https://author.example.com/about"
 

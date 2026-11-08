@@ -42,7 +42,7 @@ private const val TTS_MAX_CHUNK_CHARS = 3800
 // sentence longer than `maxChunk` is hard-cut, and even then at the last whitespace /
 // CJK comma inside the window if there is one, and never between the two halves of a
 // surrogate pair. No text is dropped or duplicated; only whitespace at chunk edges is
-// trimmed. See docs/arkarium/proposal/robustness.md F11.
+// trimmed. See docs/arkarium/proposal/engineering-review.md F11.
 internal fun splitForTts(
     text: String,
     maxChunk: Int = TTS_MAX_CHUNK_CHARS,
@@ -136,7 +136,7 @@ class TtsPlaybackService : Service() {
         fun onPausedChanged(isPaused: Boolean)
         fun onChapterFinished()
 
-        // Rung 1 (tts-settings-rework.md, D1): pushed whenever availableVoices changes
+        // Pushed whenever availableVoices changes
         // (today, only once - from the TextToSpeech init callback), so a picker that's
         // already attached and open while the engine is still initializing fills in on
         // its own instead of staying stuck on "System default" until the page reopens.
@@ -164,7 +164,7 @@ class TtsPlaybackService : Service() {
     var speechRate = 1.0f
         private set
 
-    // Step 2 of docs/arkarium/proposal/tts-voice-picker.md. Populated once from
+    // The engine's voice list (design-notes.md's "TTS settings split"). Populated once from
     // engine?.voices inside onInit below, alongside isAvailable - empty until the
     // engine finishes initializing, same timing as isAvailable itself. Exposed as a
     // plain List (not a Flow) since, like isSpeaking/isAvailable above, it's state

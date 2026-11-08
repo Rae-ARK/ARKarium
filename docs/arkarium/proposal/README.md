@@ -12,11 +12,10 @@ documented but **not being worked on**. This is the **future**.
 | [`backend-social.md`](backend-social.md) | feature | Gating, comments, ratings, position sync without owning a backend. |
 | [`bugs/`](bugs/README.md) | reports | Open bugs, split into `critical/` and `other/`. |
 | [`uiux.md`](uiux.md) | reports | Open UI/UX issues. |
-| [`engineering-review.md`](engineering-review.md) | review | Findings index (F1–F21) from a code-plus-research review; links out to the detail docs below. |
+| [`engineering-review.md`](engineering-review.md) | review | Findings index (F1–F23) from a code-plus-research review; links out to the detail docs below. |
 | [`data-safety.md`](data-safety.md) | review detail | F1, F3, F23: Room's destructive migration fallback, `novelId` identity, downgrade crash-loop. |
 | [`manifest-signing.md`](manifest-signing.md) | review detail | F4: the sync manifest proves integrity, not authenticity. |
 | [`performance.md`](performance.md) | review detail | F5, F12–F15: SAF I/O cost, build/startup, recomposition, images. |
-| [`robustness.md`](robustness.md) | review detail | F6–F8, F11, F18, F20: cancellation, silent failure, duplicate DB instances, text splitting, WebView, a11y. |
 | [`reader-playback.md`](reader-playback.md) | review detail | F9, F10, F22: reading-position storage, TTS's composable-scoped lifecycle, audio focus/`MediaSession`. |
 | [`animation-and-polish.md`](animation-and-polish.md) | review detail | F16–F17, F19: animation, predictive back/edge-to-edge, reading typography. |
 | [`peer-app-survey.md`](peer-app-survey.md) | review | Feature/UX survey of peer reading apps (Mihon family, Readest, KOReader/OPDS, itch.io) against ARKarium's own stated principles. |

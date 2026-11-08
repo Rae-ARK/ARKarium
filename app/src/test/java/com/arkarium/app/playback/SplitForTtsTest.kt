@@ -6,7 +6,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Locale
 
-// Pure-function coverage for splitForTts (robustness.md F11): no chunk over the
+// Pure-function coverage for splitForTts (F11, engineering-review.md): no chunk over the
 // limit, no text lost or duplicated, no cut inside a surrogate pair, and a CJK-only
 // chapter actually gets split.
 class SplitForTtsTest {

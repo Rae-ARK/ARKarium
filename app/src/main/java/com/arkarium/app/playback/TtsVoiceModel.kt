@@ -1,7 +1,7 @@
 package com.arkarium.app.playback
 
-// Pure, android.speech.tts.Voice-free model for ARKarium's voice picker - rung 3 of
-// docs/arkarium/implementation/tts-settings-rework.md. Voice has no public constructor,
+// Pure, android.speech.tts.Voice-free model for ARKarium's voice picker.
+// Voice has no public constructor,
 // so code that takes one directly can't be exercised from a plain-JVM test (ARKarium
 // deliberately doesn't run Robolectric - see design-notes.md's "Code philosophy" #3/#4).
 // Converting a real Voice into TtsVoiceInfo lives in TtsPlaybackService.kt (which
@@ -25,8 +25,8 @@ data class TtsVoiceInfo(
 )
 
 // The languages present in `voices`: `deviceLanguage` first if it's among them, then
-// the rest alphabetically - the reference screenshots' "device's languages first"
-// ordering (see tts-settings-rework.md's "What the screenshots show").
+// the rest alphabetically - matching a reference reader app's "device's
+// languages first" ordering.
 internal fun languagesOf(voices: List<TtsVoiceInfo>, deviceLanguage: String): List<String> {
     val languages = voices.map { it.language }.distinct()
     val (device, rest) = languages.partition { it == deviceLanguage }

@@ -5,9 +5,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-// Rung 3 coverage for TtsVoiceModel.kt (tts-settings-rework.md): the three behaviors
-// the ladder calls for (languages present, rows for one language, installed-vs-not),
-// plus the description string and rung 1's voiceNameToApply helper.
+// Coverage for TtsVoiceModel.kt: languages present, rows for one language,
+// installed-vs-not, the description string, and voiceNameToApply.
 class TtsVoiceModelTest {
 
     private fun voice(

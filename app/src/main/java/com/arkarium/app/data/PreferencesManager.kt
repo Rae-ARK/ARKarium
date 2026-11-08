@@ -27,7 +27,7 @@ internal val TTS_DEFAULT_RATE_KEY = floatPreferencesKey("tts_default_rate")
 internal val TTS_PITCH_KEY = floatPreferencesKey("tts_pitch")
 internal val TTS_AUTO_CONTINUE_KEY = booleanPreferencesKey("tts_auto_continue")
 internal val TTS_KEEP_SCREEN_ON_KEY = booleanPreferencesKey("tts_keep_screen_on")
-// Step 1 of docs/arkarium/proposal/tts-voice-picker.md's suggested path.
+// The chosen voice (design-notes.md's "TTS settings split").
 // Stores Voice.getName() (not a Locale) since the name alone is what
 // TtsPlaybackService.setVoice() needs to re-resolve a Voice out of
 // TextToSpeech.getVoices() - see that proposal's "New preference key"
@@ -37,7 +37,7 @@ internal val TTS_KEEP_SCREEN_ON_KEY = booleanPreferencesKey("tts_keep_screen_on"
 // a Context, same reasoning as those four.
 internal val TTS_VOICE_NAME_KEY = stringPreferencesKey("tts_voice_name")
 
-// Rung 5 of docs/arkarium/implementation/tts-settings-rework.md. A plain
+// Favorite voices (design-notes.md's "TTS settings split"). A plain
 // Set<String> of Voice.getName() values - same name shape TTS_VOICE_NAME_KEY
 // already stores one of, so no new "how do I identify a voice" format is
 // introduced. File-scoped alongside the other tts_* keys for the same
@@ -133,7 +133,7 @@ internal fun ttsAutoContinueOf(prefs: Preferences): Boolean =
 internal fun ttsKeepScreenOnOf(prefs: Preferences): Boolean =
     prefs[TTS_KEEP_SCREEN_ON_KEY] ?: false
 
-// Step 1/5 of docs/arkarium/proposal/tts-voice-picker.md, added alongside the
+// The voice and favorites readers, added alongside the
 // four tts_* functions above rather than left as an inline prefs[KEY] read
 // on the ttsVoiceName flow below - same reason as those four: a
 // Context/DataStore-free function PreferencesManagerTest can exercise
@@ -303,7 +303,7 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     // only TtsSettingsScreen's voice picker calls setTtsVoiceName.
     val ttsVoiceName: Flow<String?> = safePrefs.map(::ttsVoiceNameOf)
 
-    // Rung 5 of docs/arkarium/implementation/tts-settings-rework.md: the
+    // Favorite voices (design-notes.md's "TTS settings split"): the
     // voice page's star toggles membership in this set; favorites sort first
     // within a language there (TtsVoiceModel.kt's withFavoritesFirst). Empty
     // by default - see TTS_FAVORITE_VOICES_KEY's doc comment.

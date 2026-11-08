@@ -1,7 +1,7 @@
 # Data safety: Room migrations and novel identity
 
-> **Kind:** proposal · **Status:** open findings, F1 partially fixed in code · **Verified:** 2026-11-07 @ b777145
-> **Origin:** [`engineering-review.md`](engineering-review.md) F1–F3.
+> **Kind:** proposal · **Status:** F1, F2 and F23 fixed; F3 open (D3 decided, not yet built) · **Verified:** 2026-11-08 @ (this patch)
+> **Origin:** [`engineering-review.md`](engineering-review.md) F1–F3, F23.
 
 ### F1. Room wiped all user data when a migration was missing
 
@@ -25,25 +25,15 @@ version now throws `IllegalStateException` at `Room.databaseBuilder(...).build()
 time instead of destroying data, which surfaces as a crash in testing rather
 than data loss in production.
 
-**Still open (D2 in `engineering-review.md`):**
-- No `room.schemaLocation` is set and no `schemas/` directory is committed, so
-  there is nothing for `androidx.room.testing.MigrationTestHelper` to validate
-  a migration against, and no record of what each version's schema actually
-  was.
-- No migration is covered by an instrumented test. `design-notes.md` currently
-  ranks instrumented/Robolectric tests for Room-backed paths "not a priority" —
-  this finding is the reason that ranking needs revisiting for migrations
-  specifically, even if the rest of the Compose UI stays deprioritized.
-- The project is on KAPT (`kotlin("kapt")`, `kapt("androidx.room:room-compiler:2.6.1")`
-  in `app/build.gradle.kts`). KSP is the maintained annotation processor for
-  Room; moving is independent of the schema/test work but bundled here since
-  it touches the same build config.
-
-**Next steps, in order:** set `room.schemaLocation` via `kapt { arguments { arg("room.schemaLocation", ...) } }`
-(or move to KSP's equivalent `ksp { arg(...) }` in the same change), commit the
-exported `schemas/` directory, add one instrumented test per migration with
-`MigrationTestHelper`, each asserting the pre-migration seed row survives with
-the expected post-migration shape.
+**Closed (backlog rung 9):** `room.schemaLocation` is set, KSP replaced KAPT,
+`app/schemas/com.arkarium.app.data.AppDatabase/14.json` is committed (via the
+`room-schema.yml` workflow, commit 56140c7), and `MigrationChainTest` +
+`MigrationTest` exist. `design-notes.md`'s "not a priority" ranking for
+instrumented/Robolectric tests stands for the rest of the Compose UI layer;
+this is the one place it doesn't apply. `MigrationTest`'s on-device replay
+itself is still unrun (CI doesn't run `androidTest`) — see
+[`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md)
+rung 9.
 
 **Decided (D2):** yes, but scoped to migrations specifically — one
 instrumented `MigrationTestHelper` test per migration (maybe one CI emulator
@@ -54,42 +44,40 @@ ranking doesn't apply, because a missed migration path is a crash (since the
 fix above) or, before it, was silent data loss — not a UI regression a
 screenshot test would catch anyway.
 
-**New failure mode the fix above introduces — downgrade has no recovery
-path.** With the global fallback removed, `Room.databaseBuilder(...).build()`
-now throws `IllegalStateException` for *any* unhandled version, which
-includes a **downgrade**: installing an older APK (whose `AppDatabase` only
-knows migrations up through some lower version) over data a newer APK
-already wrote. `AppDatabase.create()` (`data/AppDatabase.kt`) has no
-`fallbackToDestructiveMigrationOnDowngrade()` or equivalent, so this throws
-unconditionally — confirmed by reading `create()`: the migration list is
-fixed (`MIGRATION_1_2` … `MIGRATION_12_13`) with nothing to handle a version
-the running code doesn't recognize at all, up or down. **Tags:** V.
+### F23. Downgrade had no recovery path — fixed
 
-This is easy to hit by accident, not just through misuse: sideloading an
-older release from GitHub (no Play Store version-gating), restoring an Auto
-Backup from a newer install onto a device that got rolled back via MDM/OEM
-tooling, or a tester reinstalling a prior build to bisect a regression all
-land here. The crash itself is recoverable — clearing app data gets the app
-running again — but that's a worse outcome than the exception's own message
-suggests, since clearing app data removes the very `chapter_overrides`/
-`reading_progress`/`chapter_read_events` this fallback was removed to
-protect in the first place, and the person hitting it has no way to know
-that short of reading the stack trace. **Direction:** catch
-`IllegalStateException` once around the `Room.databaseBuilder(...).build()`
-call in `AppDatabase.create()` and, when the message indicates a downgrade
-specifically (Room's exception text names the stored vs. requested
-versions), show "This library was last opened by a newer version of
-ARKarium — update the app rather than reinstalling an older version" instead
-of a raw crash screen. This is a UI/error-message change, not a data
-migration — it doesn't weaken the no-destructive-fallback fix above, it just
-gives the one case that fix doesn't make safe-by-default a message instead
-of a stack trace.
+**Was:** removing the global fallback (F1) made `Room.databaseBuilder(...).build()`
+throw `IllegalStateException` for *any* unhandled version, which includes a
+**downgrade**: installing an older APK (whose `AppDatabase` only knows
+migrations up through some lower version) over data a newer APK already
+wrote. This is easy to hit by accident, not just through misuse: sideloading
+an older release from GitHub (no Play Store version-gating), restoring an
+Auto Backup from a newer install onto a device that got rolled back via
+MDM/OEM tooling, or a tester reinstalling a prior build to bisect a
+regression all land here. The crash itself was recoverable — clearing app
+data gets the app running again — but that's a worse outcome than the
+exception's own message suggested, since clearing app data removes the very
+`chapter_overrides`/`reading_progress`/`chapter_read_events` F1's fix was
+meant to protect, and the person hitting it had no way to know that short of
+reading the stack trace.
+
+**Fixed (backlog rung 2):** `AppDatabase.create()` catches the
+`IllegalStateException` Room throws for any unhandled version and inspects
+its message for the "migration from X to Y" shape; when X > Y (a downgrade)
+it rethrows as `DatabaseDowngradeException`, a dedicated subtype carrying a
+user-facing message, instead of Room's raw text. `MainActivity.onCreate()`
+catches it ahead of the existing catch-all and shows "This library was last
+opened by a newer version of ARKarium — update the app rather than
+reinstalling an older version" instead of the class-name-plus-stack-trace
+crash screen every other startup failure gets. This is a UI/error-message
+change, not a data migration — it doesn't weaken the no-destructive-fallback
+fix above, it just gives the one case that fix doesn't make safe-by-default
+a message instead of a stack trace.
 
 ### F2. No exported schema, no migration tests, KAPT instead of KSP
 
-Folded into F1 above — same root cause, same fix. **Fixed in code** (backlog rung 9): KSP,
-`room.schemaLocation`, `MigrationChainTest`, `MigrationTest`. Still to do by hand: run one
-build and commit the generated `app/schemas/.../13.json` - see the backlog's rung 9 section.
+Folded into F1 above — same root cause, same fix. **Fixed** (backlog rung 9): KSP,
+`room.schemaLocation`, the committed `14.json`, `MigrationChainTest`, `MigrationTest`.
 
 ### F3. `novelId` depends on SAF URIs, so re-picking the folder or restoring a backup loses data
 

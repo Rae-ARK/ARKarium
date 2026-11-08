@@ -1,6 +1,6 @@
 # Engineering backlog: merged roadmap
 
-> **Kind:** implementation · **Status:** rungs 1–8, 10 and 11 done, 9 done in code but needs one build to commit its schema (see below), 14 done in code at paragraph granularity (see below - needs the same build as rung 9, plus on-device verification, before it's really done), 12, 13, 15–18 queued · **Verified:** 2026-11-08 @ (this patch)
+> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12, 13, 15–18 queued · **Verified:** 2026-11-08 @ (this patch)
 > **Origin:** a follow-up review pass over the open findings in
 > [`../proposal/engineering-review.md`](../proposal/engineering-review.md) and its
 > detail docs, the two open entries in [`../proposal/bugs/`](../proposal/bugs/README.md),
@@ -22,18 +22,18 @@ and point this row at that instead.
 |---|---|---|---|---|
 | 1 | Scan reconcile cascade-deletes a novel's history on an ordinary scan (steps 1–2: mark seen before I/O that can fail; don't reconcile-as-stale on an empty listing while the DB isn't) | Tiny | **done** | [`../proposal/bugs/critical/scan-reconcile-treats-errors-as-absence.md`](../proposal/bugs/critical/scan-reconcile-treats-errors-as-absence.md) |
 | 2 | F23 — Room downgrade throws uncaught, only "recovery" is clearing app data | Tiny | **done** | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
-| 3 | F8 — two separate `AppDatabase` instances (`MainActivity` + the worker) | Tiny | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
+| 3 | F8 — two separate `AppDatabase` instances (`MainActivity` + the worker) | Tiny | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F8 |
 | 4 | Arc cover enlarger is undiscoverable (one-time ripple + tip) | Tiny | **done** | [`../proposal/uiux.md`](../proposal/uiux.md) |
-| 5 | F18 — WebView follows any link (`shouldOverrideUrlLoading`; JS/DOM storage intentionally stay on) | Small | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
-| 6 | F11 — TTS chunking can cut mid-emoji, ignores CJK punctuation (`BreakIterator`) | Small | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
-| 7 | F7 remainder — unreadable chapter has no retry, just an error string (sealed result type + retry button) | Small | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
-| 8 | F20 — accessibility audit of `contentDescription = null` across ~13 files | Small | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
-| 9 | F1/F2 remainder — commit Room schema, add migration tests, move KAPT → KSP | Medium | **done in code - schema JSON still to generate and commit** (see below) | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
+| 5 | F18 — WebView follows any link (`shouldOverrideUrlLoading`; JS/DOM storage intentionally stay on) | Small | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F18 |
+| 6 | F11 — TTS chunking can cut mid-emoji, ignores CJK punctuation (`BreakIterator`) | Small | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F11 |
+| 7 | F7 remainder — unreadable chapter has no retry, just an error string (sealed result type + retry button) | Small | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F7 |
+| 8 | F20 — accessibility audit of `contentDescription = null` across ~13 files | Small | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F20 |
+| 9 | F1/F2 remainder — commit Room schema, add migration tests, move KAPT → KSP | Medium | **done** (see below) | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 10 | F22 — TTS audio focus, `MediaSession`, `ACTION_AUDIO_BECOMING_NOISY` | Medium | **done** | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
 | 11 | "Notify me" toggle bug, remaining steps - confirmed on-device, which surfaced a real sync-detection bug in place of the original remaining steps (see below) | Medium | **done** | [`../proposal/bugs/other/notify-toggle-confirmation.md`](../proposal/bugs/other/notify-toggle-confirmation.md) |
 | 12 | F3 — novel identity tied to SAF URI (D3 decided: opaque id, re-link-with-confirmation) | Large | queued — own ladder when started | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 13 | F4 — manifest signing (D5 decided: key custody; ECDSA vs Ed25519 still open) | Large | queued — own ladder when started | [`../proposal/manifest-signing.md`](../proposal/manifest-signing.md) |
-| 14 | F9 — reading position drifts (scroll fraction → offset-based anchor; bundled with TTS controls/highlight) | Large | **done in code, at paragraph granularity - see below** | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
+| 14 | F9 — reading position drifts (scroll fraction → offset-based anchor; bundled with TTS controls/highlight) | Large | **done in code, at paragraph granularity - on-device verification still open, see below** | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
 | 15 | F5 — SAF scan does ~3 provider queries per file (per-directory cache) | Large | blocked — needs rung 12 (F3) first for a stable id | [`../proposal/performance.md`](../proposal/performance.md) |
 | 16 | F12/F14/F17 — Kotlin 2.x / Compose BOM / Navigation upgrade (D4 decided: staged) | Large | queued — own ladder when started | [`../proposal/performance.md`](../proposal/performance.md) |
 | 17 | F13 — splash cold-start cost (D6 decided: policy) | Large | queued | [`../proposal/performance.md`](../proposal/performance.md) |
@@ -80,7 +80,7 @@ gets.
 
 - **Rung 3 (F8):** `AppDatabase.create()` hands out one per-process instance instead of
   `MainActivity` and `NewChapterCheckWorker` each building their own, as
-  [`robustness.md`](../proposal/robustness.md) F8 describes.
+  [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F8 describes.
 - **Rung 4:** the first time someone opens a fiction that has arcs, the "All Chapters" cover
   ripples and a "Double-tap a cover to see it full-size" tip appears under the strip. Tapping the
   tip or double-tapping a cover sets `has_seen_cover_enlarge_hint` in `PreferencesManager`, and it
@@ -148,12 +148,15 @@ Two tests: `MigrationChainTest` (JVM, runs in CI) checks the list is an unbroken
 (`src/androidTest`, needs a device/emulator: `./gradlew connectedDebugAndroidTest`) replays
 real upgrades from every committed schema file and lets Room validate the result.
 
-**Not done, and can't be from this sandbox:** the schema JSON itself. It is generated by a
-real build, which needs Maven/Google, both blocked here. One `./gradlew assembleDebug`
-creates `app/schemas/com.arkarium.app.data.AppDatabase/13.json`; commit it. Until then
-`MigrationTest.currentVersionSchemaIsCommitted` fails on purpose. Versions 1-12 never had an
-exported schema, so the instrumented test can only replay from 13 onward; migrations 1-12
-are covered by the chain test only. CI does not run `androidTest`.
+**Done:** the `room-schema.yml` workflow (added after this rung needed a real build, which
+this sandbox can't do) ran on a real Gradle/Android toolchain and committed
+`app/schemas/com.arkarium.app.data.AppDatabase/14.json` (commit 56140c7) — version 14,
+not 13, since rung 14's migration landed first and bumped `APP_DATABASE_VERSION` before
+any build had generated a schema file at all. `MigrationTest.currentVersionSchemaIsCommitted`
+now passes. Versions 1-13 never had an exported schema, so the instrumented test can only
+replay forward from 14 (nothing yet, since 14 is current); migrations 1-13 are covered by
+the chain test only. CI does not run `androidTest`, so the replay itself is still unverified
+on a device.
 
 ## Rung 10 — what changed
 
@@ -203,14 +206,14 @@ font size/width), just coarser than a mid-paragraph restore would be - see
 doc calls for is stored (`positionSnippet`) but not yet checked against the live
 chapter body before restoring - captured for the row to carry, not yet read back.
 
-**Not done, and can't be from this sandbox** (same limitation as rung 9): the
-`14.json` schema export and `MigrationTest`'s on-device replay. Nothing here has run
-on a device or even built with a real Gradle/Android toolchain - this sandbox has no
-network path to `google()`/`mavenCentral()`, only to a handful of other package
-registries, so `./gradlew` itself cannot run. The paragraph-to-pixel math
-(`onGloballyPositioned` + `scrollContainerTop`) is exactly the kind of thing that
-looks right on paper and needs a real screen to confirm - nothing here substitutes
-for that.
+**Done since this was written:** the `14.json` schema export (see rung 9 above) -
+`room-schema.yml` committed it in 56140c7. **Still not done, and can't be from this
+sandbox:** `MigrationTest`'s on-device replay and the paragraph-to-pixel math
+(`onGloballyPositioned` + `scrollContainerTop`) itself. Nothing here has run on a
+device - this sandbox has no network path to `google()`/`mavenCentral()`, only to a
+handful of other package registries, so `./gradlew` itself cannot run beyond what CI
+already does. That math is exactly the kind of thing that looks right on paper and
+needs a real screen to confirm - nothing here substitutes for that.
 
 ## Reader settings — one place, not two
 

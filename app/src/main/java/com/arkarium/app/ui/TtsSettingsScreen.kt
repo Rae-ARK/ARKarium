@@ -44,8 +44,8 @@ import androidx.compose.ui.unit.dp
 // uses - no TtsSettingsViewModel, per the design doc's resolved
 // ViewModel-ownership question. Stages 3.3-3.5 wired Tts.kt/TtsPlaybackService
 // to actually read these keys (seeding the engine's rate/pitch, live
-// auto-continue, keep-screen-on), and tts-voice-picker.md's Step 4 (below)
-// adds the voice picker on top of that same wiring - so every control on
+// auto-continue, keep-screen-on), and the Voice card (below) adds the voice
+// picker on top of that same wiring - so every control on
 // this screen now has reader-facing effect, not just stored-and-reflected.
 //
 // Beautification pass: the shared header badge opens this page too; the two
@@ -74,7 +74,7 @@ fun TtsSettingsScreen(
     onPitchChange: (Float) -> Unit = {},
     onAutoContinueToggle: (Boolean) -> Unit = {},
     onKeepScreenOnToggle: (Boolean) -> Unit = {},
-    // Step 4 of docs/arkarium/proposal/tts-voice-picker.md. `availableVoices` is
+    // The Voice card. `availableVoices` is
     // empty until the engine finishes initializing (same timing as everything
     // else TtsPlaybackService exposes) - the voice row below renders fine in
     // that state, it just has nothing to list yet if tapped. `currentVoiceName`
@@ -85,8 +85,8 @@ fun TtsSettingsScreen(
     // TtsPlaybackService.setVoice's doc comment).
     availableVoices: List<Voice> = emptyList(),
     currentVoiceName: String? = null,
-    // Rung 4 of docs/arkarium/implementation/tts-settings-rework.md: the Voice
-    // card below now navigates to the full `settings/tts/voice` page
+    // The Voice
+    // card below navigates to the full `settings/tts/voice` page
     // (TtsVoicePickerScreen) instead of opening an in-place AlertDialog - this
     // screen no longer owns any picker state of its own, just the summary row
     // that opens it.
@@ -269,7 +269,7 @@ fun TtsSettingsScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Step 4 of docs/arkarium/proposal/tts-voice-picker.md. A single
+            // A single
             // tappable row, same surfaceVariant-card treatment as the two
             // groups above, rather than its own Slider/Switch - the control
             // itself is "open a picker", not a value dragged in place. Shows
@@ -367,7 +367,7 @@ fun TtsSettingsScreen(
 //
 // Rung 4 (U1): used to say "- offline" for a local voice and nothing at all
 // for an online one - true but asymmetric, the "requires a network
-// connection" risk tts-voice-picker.md flags was never stated on *this* row,
+// connection" risk this flags was never stated on *this* row,
 // only inferred from its absence. Online and offline are now named the same
 // way, matching TtsVoiceModel.kt's descriptionOf (the full voice page's
 // equivalent text).
