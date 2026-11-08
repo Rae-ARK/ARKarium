@@ -93,19 +93,19 @@ button proves too hidden.
 
 ### Bookmark by touch
 
-This is a feature, not a setting. ARKarium has no bookmark model, and two
-things should land first:
+This is a feature, not a setting. ARKarium has no bookmark model, but the two
+things that needed to land first both have:
 
-- a Room table, which means the schema export and migration tests in the
-  engineering backlog's rung 9 ([`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md));
+- a Room table, via the schema export and migration tests in the engineering
+  backlog's rung 9 ([`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md));
 - a position that doesn't drift. A bookmark stored as a scroll fraction would
   move whenever the font size or the text changes; F9 in
-  [`reader-playback.md`](reader-playback.md) is the offset-based anchor that
-  fixes this.
+  [`reader-playback.md`](reader-playback.md) (backlog rung 14) now anchors by
+  paragraph offset instead, which a bookmark can reuse directly.
 
-When those exist, a bookmark button in the reader's chrome is the safer first
-version, with a corner tap as an option later. It deserves its own proposal
-then.
+Nothing here is built, but the prerequisites no longer block starting it — a
+bookmark button in the reader's chrome is the safer first version, with a
+corner tap as an option later. It deserves its own proposal then.
 
 ### Multi-document mode
 
@@ -251,7 +251,8 @@ this proposal (first question below).
 8. Volume slider in the pill, persisted alongside Speed.
 9. Column count in the pill, landscape only - prototype the column-split
    layout first; cost is unconfirmed (see above).
-10. Bookmarks: separate proposal, after rung 9 and F9.
+10. Bookmarks: separate proposal. Rung 9 and F9 (rung 14), its two
+    prerequisites, are both done, so nothing blocks starting it.
 
 ## Open questions for the owner
 

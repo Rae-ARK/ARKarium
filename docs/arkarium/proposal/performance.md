@@ -67,11 +67,13 @@ two journeys to track; (3) generate a baseline profile from those journeys.
 Measure before and after each step rather than assuming the commonly-cited
 improvement figures transfer to an app this size.
 
-**Bundled in the same toolchain bump (D4):** Kotlin 2.x (unlocks KSP for F1/F2
-and strong-skipping-by-default for F14), a current Compose BOM, and
-Navigation 2.8+ (unlocks predictive back, F17). Treat as one coordinated
-upgrade rather than four separate ones, since they share the same
-compatibility matrix.
+**Bundled in the same toolchain bump (D4):** Kotlin 2.x (unlocks
+strong-skipping-by-default for F14), a current Compose BOM, and Navigation
+2.8+ (unlocks predictive back, F17). KSP itself is no longer part of this
+bump's case — it already replaced KAPT for F1/F2 against the current,
+pre-2.x Kotlin plugin (backlog rung 9). Treat the remaining pieces as one
+coordinated upgrade rather than three separate ones, since they share the
+same compatibility matrix.
 
 **Decided (D4):** yes, but staged rather than as one single bump — Kotlin
 2.x plus the Compose compiler plugin first, then the Compose BOM, then

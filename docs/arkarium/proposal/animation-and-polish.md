@@ -23,7 +23,7 @@ hours-to-a-day each, see `engineering-review.md`'s suggested order item 6/7):
 | Chapter list changes (sync adds a chapter, a filter is applied) | Instant | `animateItem()` — needs the stable `key =` values from `performance.md` F14 first |
 | Cover load | Pops in | Crossfade via the shared `ImageLoader` in `performance.md` F15 |
 | Reading mode switch (Light/Sepia/Dark) | Snaps | `animateColorAsState` on the background, ~200ms |
-| Reader chrome, TTS controls | The bottom pill swaps Reader Preferences ↔ read-aloud controls with a water ripple; the top bar and progress readout still snap | `AnimatedVisibility` fade for the top bar and readout; a draw-phase TTS highlight once `reader-playback.md` F10 exists |
+| Reader chrome, TTS controls | The bottom pill swaps Reader Preferences ↔ read-aloud controls with a water ripple; the top bar and progress readout still snap | `AnimatedVisibility` fade for the top bar and readout; a draw-phase TTS highlight once the chunk-highlight work in [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md) rung 5 lands (its prerequisite, `reader-playback.md` F10, is already done) |
 | Sync progress | Text swaps | `AnimatedContent` on the arc label; `animateFloatAsState` for a determinate progress bar |
 
 **Rules to follow once this is built**, so animation doesn't cost frames or
