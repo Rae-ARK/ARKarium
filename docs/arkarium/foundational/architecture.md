@@ -242,6 +242,26 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
 - Global uncaught-exception handler persists the last crash (tagged with version), shown next launch.
 - Library search matches title and author only, not chapter text.
 
+- **Tap-a-word lookup** (`util/WordLookup.kt`): tapping a word in the chapter
+  body hands it to whatever dictionary/translate app is already installed via
+  `ACTION_PROCESS_TEXT` (`EXTRA_PROCESS_TEXT_READONLY` - a lookup, not an
+  edit), wrapped in `Intent.createChooser` so more than one handler prompts a
+  choice; no handler installed is a silent no-op (`ActivityNotFoundException`
+  caught), not a crash. No bundled dictionary and nothing new to maintain -
+  the device's own installed apps answer the lookup, same as long-pressing
+  text in Chrome or a `TextView`. Wired into each paragraph `Text`'s own
+  `pointerInput`/`detectTapGestures`, inside its bounds only, so a tap on a
+  word is handled there instead of bubbling up to the reading `Column`'s
+  `clickable` (tap-to-toggle-controls) - the same tap-on-text-vs-tap-on-margin
+  split other reading apps use. Word boundaries (`WordLookup.wordAt`) expand
+  from the tapped character through letters/digits and both the straight and
+  curly apostrophe (so a contraction comes back whole either way the source
+  text quotes it), then trims a dangling apostrophe left at either edge; a
+  tap on whitespace or bare punctuation resolves to no word and does
+  nothing, rather than falling through to the controls toggle. No text
+  selection/copy - that's a separate, unbuilt feature; this is strictly tap,
+  not long-press-and-drag.
+
 ## Text-to-speech (as built)
 
 System `android.speech.tts.TextToSpeech` only (`ui/Tts.kt`,

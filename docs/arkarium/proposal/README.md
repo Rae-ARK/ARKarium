@@ -10,6 +10,7 @@ documented but **not being worked on**. This is the **future**.
 | [`reader-settings.md`](reader-settings.md) | feature | A "Reader" settings page: which of a reference app's six reader switches fit ARKarium, and what must exist first. The cheap batch (defaults, font family, keep-screen-on, fullscreen, opt-in brightness slider) is built - see [`architecture.md`](../foundational/architecture.md)'s "Reading and local state"; this doc now covers what's left (multi-document, day/night button, volume slider, column count, bookmarks). |
 | [`relay-chain.md`](relay-chain.md) | feature | Multi-relay fallback. |
 | [`app-shortcuts.md`](app-shortcuts.md) | feature | Two more launcher-icon app shortcuts beyond the built "Continue Reading": pin a specific novel, and dynamic per-novel shortcuts for more than just the most-recent read. |
+| [`notice-board.md`](notice-board.md) | feature | A persistent "which fictions got new chapters" log screen, closing the gap left by today's transient-only notification; phase 2 (sketched, not designed) turns it into a launcher home-screen widget. |
 | [`backend-social.md`](backend-social.md) | feature | Gating, comments, ratings, position sync without owning a backend. |
 | [`bugs/`](bugs/README.md) | reports | Open bugs, split into `critical/` and `other/`. |
 | [`uiux.md`](uiux.md) | reports | Open UI/UX issues. |

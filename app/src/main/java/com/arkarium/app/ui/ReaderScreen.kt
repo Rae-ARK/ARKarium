@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -67,6 +68,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
@@ -97,6 +99,7 @@ import com.arkarium.app.data.Theme
 import com.arkarium.app.data.paragraphForCharOffset
 import com.arkarium.app.data.paragraphOffsets
 import com.arkarium.app.data.parseChapterSegments
+import com.arkarium.app.util.WordLookup
 import kotlinx.coroutines.flow.first
 
 enum class ReadingMode {
@@ -931,10 +934,36 @@ fun ReaderScreen(
                                             textAlign = TextAlign.Justify
                                         ),
                                         modifier = if (rawStart != null) {
-                                            Modifier.onGloballyPositioned { coordinates ->
-                                                paragraphContentTop[rawStart] = coordinates.positionInRoot().y +
-                                                    scrollState.value - scrollContainerTop
-                                            }
+                                            Modifier
+                                                .onGloballyPositioned { coordinates ->
+                                                    paragraphContentTop[rawStart] = coordinates.positionInRoot().y +
+                                                        scrollState.value - scrollContainerTop
+                                                }
+                                                // Tap-a-word lookup: a tap inside this
+                                                // paragraph's own bounds is handled here
+                                                // instead of bubbling up to the reading
+                                                // Column's clickable (tap-to-toggle-controls)
+                                                // - same tap-on-text-vs-tap-on-margin split
+                                                // other reading apps use. paragraphLayouts[
+                                                // rawStart] is written by onTextLayout above,
+                                                // so by the time a tap can land the layout for
+                                                // offset math is already there; a tap that
+                                                // somehow lands before the first layout pass, or
+                                                // on whitespace/punctuation (WordLookup.wordAt
+                                                // returns null), is a silent no-op rather than
+                                                // falling through to the toggle - deliberately:
+                                                // mapping "nothing recognized here" to "open
+                                                // the preferences panel" would be its own kind
+                                                // of surprising.
+                                                .pointerInput(rawStart, segment.text) {
+                                                    detectTapGestures { tapOffset ->
+                                                        val layout = paragraphLayouts[rawStart] ?: return@detectTapGestures
+                                                        val charIndex = layout.getOffsetForPosition(tapOffset)
+                                                        val word = WordLookup.wordAt(segment.text, charIndex)
+                                                            ?: return@detectTapGestures
+                                                        WordLookup.lookup(context, word)
+                                                    }
+                                                }
                                         } else Modifier
                                     )
                                 }
