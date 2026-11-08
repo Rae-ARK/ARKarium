@@ -132,4 +132,42 @@ class LibraryScanTest {
         assertEquals(5_000L, result.lastSyncedAt)
         assertEquals(SyncStatus.MISSING_LOCALLY.name, result.syncStatus)
     }
+
+    // ScannerImpl.buildNovelEntity can now set syncSourceUrl on `scanned` itself (a
+    // FictionLut title match - see that function's comment and
+    // docs/arkarium/proposal/bugs/other/notify-toggle-confirmation.md), for a folder
+    // that reached the library by some route other than this app's own sync and so
+    // never got a chance to earn the column the normal way. This is the fill-in half
+    // of that fix: a novel that was scanned (and stored) as purely local before this
+    // recognition existed - or before the folder was ever renamed to match a published
+    // title - picks up syncSourceUrl on the very next rescan instead of staying stuck
+    // local forever.
+    @Test
+    fun `a previously-local novel this scan newly recognizes as a Rae ARK fiction gets linked`() {
+        val scanned = novel(syncSourceUrl = "https://novels.horizonarkstudio.workers.dev/sbm/")
+        val existing = novel(syncSourceUrl = null, syncSourceVersion = null, lastSyncedAt = null)
+
+        val result = mergeNovelForRescan(scanned, existing)
+
+        assertEquals("https://novels.horizonarkstudio.workers.dev/sbm/", result.syncSourceUrl)
+        // Only the URL is filled in by recognition - version/lastSyncedAt stay null
+        // until an actual sync pass runs; recognizing a fiction is not the same as
+        // having synced it.
+        assertNull(result.syncSourceVersion)
+        assertNull(result.lastSyncedAt)
+    }
+
+    // The fill-in direction only ever applies when the existing row has nothing -
+    // it must never override a syncSourceUrl that's already set, whether that's a
+    // different source entirely or this same fiction already linked the normal way.
+    @Test
+    fun `an already-linked novel's sync source is never replaced by what a rescan recognizes`() {
+        val scanned = novel(syncSourceUrl = "https://novels.horizonarkstudio.workers.dev/sbm/")
+        val existing = novel(syncSourceUrl = "https://relay.example/manifest.json", syncSourceVersion = 3)
+
+        val result = mergeNovelForRescan(scanned, existing)
+
+        assertEquals("https://relay.example/manifest.json", result.syncSourceUrl)
+        assertEquals(3, result.syncSourceVersion)
+    }
 }

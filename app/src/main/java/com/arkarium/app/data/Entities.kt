@@ -39,9 +39,14 @@ data class NovelEntity(
     // externalSourceUrl/metadataFetchedAt above, which are about optional
     // display-metadata lookups (NovelMetadataProvider), not this novel's content
     // relay. `syncSourceUrl` null means "purely local, not synced from anywhere";
-    // non-null is the manifest.json base URL this novel's files were downloaded
-    // from. `syncSourceVersion` is the last-applied manifest's top-level "version",
-    // used to skip a full re-diff when a sync check finds nothing changed.
+    // non-null is the manifest.json base URL this novel's files sync against - either
+    // because they were actually downloaded from there, or because ScannerImpl
+    // recognized this folder's title as one of Rae ARK's own (a FictionLut match - see
+    // ScannerImpl.buildNovelEntity) even though this particular copy reached the
+    // library some other way. Either way, `syncSourceVersion` null means no sync pass
+    // has actually run against it yet; once set, it's the last-applied manifest's
+    // top-level "version", used to skip a full re-diff when a sync check finds nothing
+    // changed.
     @ColumnInfo(name = "sync_source_url") val syncSourceUrl: String? = null,
     @ColumnInfo(name = "sync_source_version") val syncSourceVersion: Int? = null,
     @ColumnInfo(name = "last_synced_at") val lastSyncedAt: Long? = null,

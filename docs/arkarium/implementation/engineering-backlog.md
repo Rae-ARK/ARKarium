@@ -1,6 +1,6 @@
 # Engineering backlog: merged roadmap
 
-> **Kind:** implementation · **Status:** rungs 1–8 done, rest queued · **Verified:** 2026-11-07 @ 9cc65b9
+> **Kind:** implementation · **Status:** rungs 1–8 and 11 done, 9/10/12+ queued · **Verified:** 2026-11-08 @ (this patch)
 > **Origin:** a follow-up review pass over the open findings in
 > [`../proposal/engineering-review.md`](../proposal/engineering-review.md) and its
 > detail docs, the two open entries in [`../proposal/bugs/`](../proposal/bugs/README.md),
@@ -30,7 +30,7 @@ and point this row at that instead.
 | 8 | F20 — accessibility audit of `contentDescription = null` across ~13 files | Small | **done** | [`../proposal/robustness.md`](../proposal/robustness.md) |
 | 9 | F1/F2 remainder — commit Room schema, add migration tests, move KAPT → KSP | Medium | **next** | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 10 | F22 — TTS audio focus, `MediaSession`, `ACTION_AUDIO_BECOMING_NOISY` | Medium | queued | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
-| 11 | "Notify me" toggle bug, remaining steps (needs a real device, API 33+ permission path) | Medium | queued — not a coding task until confirmed on-device | [`../proposal/bugs/other/notify-toggle-confirmation.md`](../proposal/bugs/other/notify-toggle-confirmation.md) |
+| 11 | "Notify me" toggle bug, remaining steps - confirmed on-device, which surfaced a real sync-detection bug in place of the original remaining steps (see below) | Medium | **done** | [`../proposal/bugs/other/notify-toggle-confirmation.md`](../proposal/bugs/other/notify-toggle-confirmation.md) |
 | 12 | F3 — novel identity tied to SAF URI (D3 decided: opaque id, re-link-with-confirmation) | Large | queued — own ladder when started | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 13 | F4 — manifest signing (D5 decided: key custody; ECDSA vs Ed25519 still open) | Large | queued — own ladder when started | [`../proposal/manifest-signing.md`](../proposal/manifest-signing.md) |
 | 14 | F9 — reading position drifts (scroll fraction → offset-based anchor; bundled with TTS controls/highlight) | Large | queued | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
@@ -104,3 +104,34 @@ gets.
   `onClickLabel`, the notify row's switch is merged with its label even when disabled, and arc
   covers get a TalkBack custom action "View cover full-size" because double-tap is TalkBack's
   activate gesture and can't trigger the app's own double-tap.
+
+## Rung 11 — what changed
+
+The on-device confirmation this rung was waiting on came back: the notify-toggle
+undiscoverability fix (already shipped before this rung) is confirmed working, the
+API 33+ permission/notification path is confirmed working end to end, and the owner's
+original report turned out to be about a fiction that reached the library's disk by a
+route other than this app's own sync flow - exactly the "second, different bug in the
+sync-detection path itself" the detail doc's step 1 flagged as a possibility. That bug,
+not the originally-queued "remaining steps," is what this rung actually fixes - see
+[`../proposal/bugs/other/notify-toggle-confirmation.md`](../proposal/bugs/other/notify-toggle-confirmation.md)
+for the full writeup.
+
+`ScannerImpl.buildNovelEntity` now runs the same `FictionLut` lookup "Add fiction" uses
+against each scanned novel's resolved title; an exact normalized match (Sync invariants
+S7) sets the freshly-built `NovelEntity.syncSourceUrl` to `relayBaseUrlForSlug(slug)`,
+recognizing it as one of Rae ARK's own fictions even though this particular on-disk copy
+was never downloaded by this app. `LibraryScan.mergeNovelForRescan`'s merge rule for
+`syncSourceUrl` changed from always-carry-the-existing-row's-value to
+`existing.syncSourceUrl ?: scanned.syncSourceUrl` - still never lets a scan override an
+already-set source (so a different source, or a novel the user deliberately unlinked via
+`SyncResolutionDialog`, is untouched), but now lets a freshly recognized value fill in a
+row that currently has none. A novel already sitting in the library as "local" before
+this fix picks up `syncSourceUrl` - and with it the "Notify me" toggle and "Check for
+updates" - on its very next rescan; nothing needs re-adding. `LibraryScanTest` covers
+both directions (fills in when existing has nothing; never overrides when existing
+already has a source). One narrow known gap from this - a `SOURCE_GONE` unlink that's
+re-recognized if the bundled `fiction_lut.dat` hasn't caught up with the relay losing
+that fiction yet - is flagged in `NovelDao.unlinkSyncSource`'s comment rather than fixed
+with a new column, since it should be rare and self-corrects on the LUT's own next
+regeneration.

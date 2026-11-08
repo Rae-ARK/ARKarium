@@ -93,6 +93,17 @@ interface NovelDao {
     // still responsible for clearing this novel's SyncedFileEntity rows if desired;
     // leaving them behind is harmless (they just become inert once sync_source_url is
     // null, since nothing reads them for a non-synced novel).
+    // Known gap: ScannerImpl.buildNovelEntity now re-recognizes a FictionLut title
+    // match on every rescan (see its comment), and mergeNovelForRescan only ever
+    // keeps an existing non-null syncSourceUrl, never a "this was deliberately
+    // unlinked" fact - there's no column for that. So if the bundled fiction_lut.dat
+    // still lists this exact title (it's a point-in-time snapshot of the relay's
+    // catalog, not refreshed live), the very next rescan can re-link a novel someone
+    // just unlinked here. In practice this only matters for a SOURCE_GONE unlink
+    // whose title is *also* still in an already-installed build's bundled LUT, which
+    // should be rare and self-corrects on the LUT's own next regeneration - flagged
+    // here rather than solved with a new column until it actually bites someone.
+
     @Query("""
         UPDATE novels SET
             sync_source_url = NULL,

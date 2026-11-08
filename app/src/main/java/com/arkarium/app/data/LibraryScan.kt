@@ -69,10 +69,18 @@ fun mergeNovelForRescan(
         publishedDate = if (remoteFetched) existing.publishedDate else (scanned.publishedDate ?: existing.publishedDate),
         externalSourceUrl = existing.externalSourceUrl,
         metadataFetchedAt = existing.metadataFetchedAt,
-        // Sync bookkeeping columns aren't touched by ScannerImpl at all (scanned's
-        // are always the NovelEntity defaults) - always carry the existing row's
-        // values forward so a rescan/resync can never accidentally wipe them.
-        syncSourceUrl = existing.syncSourceUrl,
+        // Sync bookkeeping columns are never *overwritten* by a scan - always carry
+        // the existing row's values forward so a rescan/resync can't accidentally wipe
+        // or change them. syncSourceUrl is the one exception, and only in the
+        // fill-in direction: ScannerImpl.buildNovelEntity can now set it when a
+        // folder's title is a FictionLut match (a Rae ARK fiction that reached this
+        // folder by some route other than this app's own sync, so it never got a
+        // chance to earn this column the normal way - see that function's comment).
+        // `existing.syncSourceUrl` still wins whenever it's already set, so this can
+        // never clobber a different source or silently re-link a novel the user
+        // deliberately unlinked; it only ever turns a *null* into a value a plain
+        // rescan newly recognized.
+        syncSourceUrl = existing.syncSourceUrl ?: scanned.syncSourceUrl,
         syncSourceVersion = existing.syncSourceVersion,
         lastSyncedAt = existing.lastSyncedAt,
         syncStatus = existing.syncStatus
