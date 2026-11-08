@@ -175,9 +175,11 @@ session, so lock-screen controls and headset buttons drive play/pause/next/previ
 through the same methods the in-app controls use. The decision table is in
 `TtsAudioFocusPolicy.kt` with `TtsAudioFocusPolicyTest`. The service is untested on a device.
 
-Left for later: transport buttons in the notification itself need `MediaStyle`, which lives
-in `androidx.media`, a dependency this project doesn't have. Rung 4 of
-`tts-playback-controls.md` is where that belongs.
+**Notification transport buttons - done** (rung 4 of `tts-playback-controls.md`, the item
+this rung used to leave open): the foreground notification now carries previous,
+play/pause, next and stop in `MediaStyle` (new `androidx.media:media` dependency), driving
+the same service methods as the in-app controls and the `MediaSession`. Not yet built or
+run on a device.
 
 ## Rung 14 — what changed
 

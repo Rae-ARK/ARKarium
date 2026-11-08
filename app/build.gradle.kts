@@ -131,6 +131,12 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
     implementation("androidx.core:core-ktx:1.12.0")
+
+    // MediaStyle for the read-aloud notification's transport buttons (previous / play-pause /
+    // next / stop) - androidx.media.app.NotificationCompat.MediaStyle and
+    // MediaSessionCompat.Token live here, not in core. See TtsPlaybackService.buildNotification
+    // and docs/arkarium/implementation/tts-playback-controls.md, rung 4.
+    implementation("androidx.media:media:1.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
     // Room
