@@ -49,38 +49,65 @@ internal fun splitForTts(
     text: String,
     maxChunk: Int = TTS_MAX_CHUNK_CHARS,
     locale: java.util.Locale = java.util.Locale.getDefault()
-): List<String> {
+): List<String> = splitForTtsSpans(text, maxChunk, locale).map { text.substring(it.start, it.end) }
+
+// Rung 5 (docs/arkarium/implementation/tts-playback-controls.md): where a chunk sits in
+// the *original* `text` handed to splitForTts - [start, end), whitespace at both edges
+// already excluded, so text.substring(start, end) is exactly the chunk splitForTts
+// returns. This is the chunk-index -> text-range mapping the "currently reading"
+// highlight and auto-scroll are built on; splitForTts above is now just this with the
+// ranges turned back into strings, so the two can't drift apart.
+internal data class TtsChunkSpan(val start: Int, val end: Int)
+
+internal fun splitForTtsSpans(
+    text: String,
+    maxChunk: Int = TTS_MAX_CHUNK_CHARS,
+    locale: java.util.Locale = java.util.Locale.getDefault()
+): List<TtsChunkSpan> {
     require(maxChunk >= 2) { "maxChunk must be at least 2 (one surrogate pair)" }
+    val lead = text.indexOfFirst { !it.isWhitespace() }
+    if (lead < 0) return emptyList()
     val trimmed = text.trim()
-    if (trimmed.isEmpty()) return emptyList()
-    if (trimmed.length <= maxChunk) return listOf(trimmed)
 
-    val chunks = mutableListOf<String>()
-    var chunkStart = 0
-    val iterator = java.text.BreakIterator.getSentenceInstance(locale)
-    iterator.setText(trimmed)
+    // Raw [start, end) pieces in `trimmed` coordinates, before per-piece whitespace
+    // trimming - the same cuts splitForTts always made.
+    val raw = mutableListOf<TtsChunkSpan>()
+    if (trimmed.length <= maxChunk) {
+        raw.add(TtsChunkSpan(0, trimmed.length))
+    } else {
+        var chunkStart = 0
+        val iterator = java.text.BreakIterator.getSentenceInstance(locale)
+        iterator.setText(trimmed)
 
-    var sentenceStart = iterator.first()
-    var sentenceEnd = iterator.next()
-    while (sentenceEnd != java.text.BreakIterator.DONE) {
-        if (sentenceEnd - chunkStart > maxChunk) {
-            // This sentence doesn't fit on top of what's already in the chunk.
-            if (sentenceStart > chunkStart) {
-                chunks.add(trimmed.substring(chunkStart, sentenceStart))
-                chunkStart = sentenceStart
+        var sentenceStart = iterator.first()
+        var sentenceEnd = iterator.next()
+        while (sentenceEnd != java.text.BreakIterator.DONE) {
+            if (sentenceEnd - chunkStart > maxChunk) {
+                // This sentence doesn't fit on top of what's already in the chunk.
+                if (sentenceStart > chunkStart) {
+                    raw.add(TtsChunkSpan(chunkStart, sentenceStart))
+                    chunkStart = sentenceStart
+                }
+                // Still too long on its own: hard-cut it into pieces.
+                while (sentenceEnd - chunkStart > maxChunk) {
+                    val cut = hardCutIndex(trimmed, chunkStart, maxChunk)
+                    raw.add(TtsChunkSpan(chunkStart, cut))
+                    chunkStart = cut
+                }
             }
-            // Still too long on its own: hard-cut it into pieces.
-            while (sentenceEnd - chunkStart > maxChunk) {
-                val cut = hardCutIndex(trimmed, chunkStart, maxChunk)
-                chunks.add(trimmed.substring(chunkStart, cut))
-                chunkStart = cut
-            }
+            sentenceStart = sentenceEnd
+            sentenceEnd = iterator.next()
         }
-        sentenceStart = sentenceEnd
-        sentenceEnd = iterator.next()
+        if (chunkStart < trimmed.length) raw.add(TtsChunkSpan(chunkStart, trimmed.length))
     }
-    if (chunkStart < trimmed.length) chunks.add(trimmed.substring(chunkStart))
-    return chunks.map { it.trim() }.filter { it.isNotBlank() }
+
+    return raw.mapNotNull { piece ->
+        var a = piece.start
+        var b = piece.end
+        while (a < b && trimmed[a].isWhitespace()) a++
+        while (b > a && trimmed[b - 1].isWhitespace()) b--
+        if (b > a) TtsChunkSpan(lead + a, lead + b) else null
+    }
 }
 
 // Where to cut `text` when a single sentence starting at `start` is longer than
@@ -183,6 +210,11 @@ class TtsPlaybackService : Service() {
     val totalChunks: Int
         get() = pendingChunks.size
 
+    // Rung 5: the [start, end) range of chunk `index` in the text the session was started
+    // with (ReaderScreen passes the chapter body), or null for an index outside the
+    // session - which includes "no session", so a stopped service reports no highlight.
+    internal fun chunkSpan(index: Int): TtsChunkSpan? = pendingSpans.getOrNull(index)
+
     // The engine's voice list (design-notes.md's "TTS settings split"). Populated once from
     // engine?.voices inside onInit below, alongside isAvailable - empty until the
     // engine finishes initializing, same timing as isAvailable itself. Exposed as a
@@ -235,6 +267,11 @@ class TtsPlaybackService : Service() {
 
     private var engine: TextToSpeech? = null
     private var pendingChunks: List<String> = emptyList()
+
+    // Rung 5: where each of pendingChunks sits in the text start() was given, index for
+    // index. Always the same size as pendingChunks (both set together, both cleared
+    // together).
+    private var pendingSpans: List<TtsChunkSpan> = emptyList()
     private var pendingIndex: Int = 0
         set(value) {
             field = value
@@ -592,8 +629,9 @@ class TtsPlaybackService : Service() {
     // outside applicationContext (used internally for the engine and notification).
     fun start(context: Context, chapterTitle: String, text: String, sessionKey: String? = null) {
         val tts = engine ?: return
-        val chunks = splitForTts(text)
-        if (chunks.isEmpty()) return
+        val spans = splitForTtsSpans(text)
+        if (spans.isEmpty()) return
+        val chunks = spans.map { text.substring(it.start, it.end) }
         // F22: ask for audio focus before anything else. Granted means other audio
         // (music, a podcast) has been paused or ducked by the system for us. Refused
         // (a call is active, say) means starting would just talk over it, so report
@@ -612,6 +650,7 @@ class TtsPlaybackService : Service() {
         currentChapterTitle = chapterTitle
         ContextCompat.startForegroundService(context, Intent(context, TtsPlaybackService::class.java))
         pendingChunks = chunks
+        pendingSpans = spans
         pendingIndex = 0
         isPaused = false
         ignorePendingFinish = false
@@ -636,6 +675,7 @@ class TtsPlaybackService : Service() {
         isPaused = false
         ignorePendingFinish = false
         pendingChunks = emptyList()
+        pendingSpans = emptyList()
         pendingIndex = 0
         lastQueuedUtteranceId = null
         sessionKey = null
@@ -798,6 +838,7 @@ class TtsPlaybackService : Service() {
         isSpeaking = false
         isPaused = false
         pendingChunks = emptyList()
+        pendingSpans = emptyList()
         pendingIndex = 0
         lastQueuedUtteranceId = null
         sessionKey = null

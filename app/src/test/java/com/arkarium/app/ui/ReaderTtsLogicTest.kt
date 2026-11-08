@@ -1,6 +1,8 @@
 package com.arkarium.app.ui
 
+import com.arkarium.app.data.ParagraphOffset
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ReaderTtsLogicTest {
@@ -124,5 +126,84 @@ class ReaderTtsLogicTest {
         // 11" or "chunk 13 of 11" if it ever does.
         assertEquals("chunk 11 of 11", ttsChunkProgressLabel(currentChunkIndex = 99, totalChunks = 11))
         assertEquals("chunk 1 of 11", ttsChunkProgressLabel(currentChunkIndex = -1, totalChunks = 11))
+    }
+
+    // --- ttsHighlightWithin (rung 5) --------------------------------------------
+
+    @Test
+    fun highlight_chunkInsideBlock_isLocalToTheBlock() {
+        // Block starts at 100, 50 long; chunk is 110..130 of the chapter -> 10..30 in the block.
+        assertEquals(TtsHighlight(10, 30), ttsHighlightWithin(100, 50, 110, 130))
+    }
+
+    @Test
+    fun highlight_chunkSpillingOutEitherSide_isClippedToTheBlock() {
+        assertEquals(TtsHighlight(0, 20), ttsHighlightWithin(100, 50, 80, 120))
+        assertEquals(TtsHighlight(30, 50), ttsHighlightWithin(100, 50, 130, 400))
+        assertEquals(TtsHighlight(0, 50), ttsHighlightWithin(100, 50, 0, 400))
+    }
+
+    @Test
+    fun highlight_chunkNotTouchingBlock_isNull() {
+        assertNull(ttsHighlightWithin(100, 50, 0, 100))
+        assertNull(ttsHighlightWithin(100, 50, 150, 200))
+    }
+
+    @Test
+    fun highlight_noChunkOrEmptyBlock_isNull() {
+        assertNull(ttsHighlightWithin(0, 50, -1, -1))
+        assertNull(ttsHighlightWithin(0, 50, 10, 10))
+        assertNull(ttsHighlightWithin(0, 0, 0, 10))
+    }
+
+    // --- ttsBlockForChunkStart (rung 5) -----------------------------------------
+
+    @Test
+    fun blockForChunkStart_findsTheBlockContainingIt() {
+        val blocks = listOf(ParagraphOffset(0, "a".repeat(40)), ParagraphOffset(60, "b".repeat(40)))
+        assertEquals(blocks[0], ttsBlockForChunkStart(blocks, 0))
+        assertEquals(blocks[0], ttsBlockForChunkStart(blocks, 39))
+        assertEquals(blocks[1], ttsBlockForChunkStart(blocks, 60))
+        assertEquals(blocks[1], ttsBlockForChunkStart(blocks, 99))
+    }
+
+    @Test
+    fun blockForChunkStart_inAGapOrPastTheEnd_isNull() {
+        // 40..59 is a tag the reader draws as a callout, not running text.
+        val blocks = listOf(ParagraphOffset(0, "a".repeat(40)), ParagraphOffset(60, "b".repeat(40)))
+        assertNull(ttsBlockForChunkStart(blocks, 45))
+        assertNull(ttsBlockForChunkStart(blocks, 100))
+        assertNull(ttsBlockForChunkStart(emptyList(), 0))
+    }
+
+    // --- ttsAutoScrollTarget (rung 5) -------------------------------------------
+
+    @Test
+    fun autoScroll_chunkFarBelow_scrollsToLeaveAMarginAboveIt() {
+        // Viewport 1000 -> margin 100. Chunk at 5000, viewing 0 -> aim for 4900.
+        assertEquals(4900, ttsAutoScrollTarget(5000f, 0, 1000, 20000))
+    }
+
+    @Test
+    fun autoScroll_chunkAlreadyNearTheTop_leavesScrollAlone() {
+        assertNull(ttsAutoScrollTarget(5050f, 4900, 1000, 20000))
+        assertNull(ttsAutoScrollTarget(5000f, 4900, 1000, 20000))
+    }
+
+    @Test
+    fun autoScroll_chunkAboveTheViewport_scrollsBackUp() {
+        assertEquals(1900, ttsAutoScrollTarget(2000f, 6000, 1000, 20000))
+    }
+
+    @Test
+    fun autoScroll_isClampedToTheScrollableRange() {
+        assertEquals(0, ttsAutoScrollTarget(30f, 500, 1000, 20000))
+        assertEquals(800, ttsAutoScrollTarget(9000f, 0, 1000, 800))
+        assertNull(ttsAutoScrollTarget(9000f, 0, 1000, 0))
+    }
+
+    @Test
+    fun autoScroll_beforeTheViewportIsMeasured_doesNothing() {
+        assertNull(ttsAutoScrollTarget(5000f, 0, 0, 20000))
     }
 }
