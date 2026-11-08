@@ -241,15 +241,34 @@ class ScannerImpl(private val context: Context) {
             ?.trim()?.lowercase()
             ?.takeIf { authorsById.containsKey(it) }
             ?: localMetadata?.author?.let { authorIdByNormalizedName[it.trim().lowercase()] }
+        val resolvedTitle = localMetadata?.title?.takeIf { it.isNotBlank() } ?: title
+        // A folder that lands in the library by any route other than this app's own
+        // sync flow - hand-copied in, restored from another device, extracted from a
+        // shared zip - has no syncSourceUrl of its own: that column only ever gets set
+        // by SyncManager's download flow, never by a scan. Without this, a fiction that
+        // really is one of Rae ARK's own is scanned as indistinguishable from a purely
+        // local one, which is exactly what left the "Notify me" toggle disabled and
+        // "Check for updates" missing on NovelDetailScreen for it - see
+        // docs/arkarium/proposal/bugs/other/notify-toggle-confirmation.md, "a second,
+        // different bug in the sync-detection path itself."
+        // Recognize it the same way "Add fiction" does: FictionLut's own exact,
+        // normalized match (Sync invariants S7) against the resolved title. A match
+        // here only ever fills in what mergeNovelForRescan finds missing - it can't
+        // clobber a syncSourceUrl that's already set, or un-link a novel the user
+        // deliberately unlinked, since mergeNovelForRescan only takes this value when
+        // the existing row has none (see its own comment).
+        val recognizedSyncUrl = FictionLut.lookup(context, resolvedTitle)
+            ?.let { slug -> relayBaseUrlForSlug(slug) }
         return NovelEntity(
             id = id,
-            title = localMetadata?.title?.takeIf { it.isNotBlank() } ?: title,
+            title = resolvedTitle,
             author = localMetadata?.author,
             authorId = resolvedAuthorId,
             coverUri = coverUri,
             description = localMetadata?.description,
             genres = localMetadata?.genres,
-            publishedDate = localMetadata?.publishedDate
+            publishedDate = localMetadata?.publishedDate,
+            syncSourceUrl = recognizedSyncUrl
         )
     }
 
