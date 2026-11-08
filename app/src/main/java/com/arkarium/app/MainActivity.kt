@@ -781,6 +781,26 @@ class MainActivity : ComponentActivity() {
                 // was read last, library-wide. Falls through to the Home screen (no
                 // navigation) when there's no reading history yet at all, same as the
                 // "forNovel is null" branch of onContinueReading further down.
+                //
+                // Was (bug: "shortcut opens Home and that's it"): this cleared
+                // pendingContinueReadingShortcut unconditionally at the end, whether
+                // or not `novel` actually resolved. `libraryViewModel.novels.isEmpty()`
+                // above only guards the very first instant (nothing scanned yet) - a
+                // cold start past that point still has `novels` filling in
+                // incrementally as startScan works through the folder, same as
+                // pendingNotificationNovelId's own comment above already describes.
+                // If the last-read novel's scan entry simply hadn't landed in
+                // `novels` yet the one time this ran, `novel` came back null, nothing
+                // navigated, and the unconditional clear meant it would never retry -
+                // even once that novel *did* show up moments later and re-triggered
+                // this effect via the novels.size key, the very first line
+                // (`!pendingContinueReadingShortcut.value`) now short-circuited it.
+                // Landing on Home with no error and no second chance is exactly that.
+                // Fixed the same way pendingNotificationNovelId's effect already
+                // does it: only clear the flag on an outcome that's actually final -
+                // success, or no reading history at all (recentNovelIds empty, which
+                // more scanning can never change) - and leave it set, retrying on the
+                // next `novels.size` change, for "novel not found (yet)".
                 LaunchedEffect(pendingContinueReadingShortcut.value, libraryViewModel.novels.size) {
                     if (!pendingContinueReadingShortcut.value) return@LaunchedEffect
                     // Still waiting on startScan to populate `novels` - leave the flag
@@ -788,16 +808,26 @@ class MainActivity : ComponentActivity() {
                     // instead of giving up on a race it can still win.
                     if (libraryViewModel.novels.isEmpty()) return@LaunchedEffect
                     val lastNovelId = db.readingProgressDao().recentNovelIds(1).firstOrNull()
-                    val novel = lastNovelId?.let { id -> libraryViewModel.novels.firstOrNull { it.id == id } }
-                    val lastProgress = novel?.let { db.readingProgressDao().forNovel(it.id) }
-                    val chapter = lastProgress?.let { db.chapterDao().findById(it.chapterId) }
-                    if (novel != null && chapter != null) {
-                        // Same loadNovelDetails-before-navigating-into-the-reader
-                        // sequencing as onContinueReading below, and for the same
-                        // reason - see its own comment on this.
-                        libraryViewModel.loadNovelDetails(novel)
-                        navController.navigate("reader/${novel.id}/${chapter.id}") { launchSingleTop = true }
+                    if (lastNovelId == null) {
+                        // No reading history at all, ever - not a race, nothing for
+                        // more scanning to surface. Fall through to Home and don't
+                        // keep re-querying this on every subsequent scan update.
+                        pendingContinueReadingShortcut.value = false
+                        return@LaunchedEffect
                     }
+                    // Not yet in `novels` - unlike the empty-history case above, this
+                    // can resolve once the scan catches up, so leave the flag set and
+                    // let the next novels.size change retry instead of giving up here.
+                    val novel = libraryViewModel.novels.firstOrNull { it.id == lastNovelId }
+                        ?: return@LaunchedEffect
+                    val lastProgress = db.readingProgressDao().forNovel(novel.id)
+                    val chapter = lastProgress?.let { db.chapterDao().findById(it.chapterId) }
+                        ?: return@LaunchedEffect
+                    // Same loadNovelDetails-before-navigating-into-the-reader
+                    // sequencing as onContinueReading below, and for the same
+                    // reason - see its own comment on this.
+                    libraryViewModel.loadNovelDetails(novel)
+                    navController.navigate("reader/${novel.id}/${chapter.id}") { launchSingleTop = true }
                     pendingContinueReadingShortcut.value = false
                 }
 
@@ -881,7 +911,10 @@ class MainActivity : ComponentActivity() {
                     Column(modifier = Modifier.fillMaxSize()) {
                         HomeScreen(
                             novels = libraryViewModel.novels,
-                            inProgressNovels = libraryViewModel.inProgressNovels,
+                            // recentlyRead, not inProgressNovels - see HomeScreen's own
+                            // continueReadingNovels doc comment for why (status vs. an
+                            // actual reading_progress row).
+                            continueReadingNovels = libraryViewModel.recentlyRead,
                             streakDays = libraryViewModel.readingStreakDays.value,
                             chaptersReadThisWeek = libraryViewModel.chaptersReadThisWeek.value,
                             onNovelClick = { novel ->

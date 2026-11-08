@@ -57,7 +57,21 @@ import com.arkarium.app.data.NovelEntity
 @Composable
 fun HomeScreen(
     novels: List<NovelEntity>,
-    inProgressNovels: List<NovelEntity>,
+    // Was `inProgressNovels` (LibraryViewModel.inProgressNovels, novels whose
+    // NovelEntity.status is "IN_PROGRESS") - renamed and repointed at
+    // LibraryViewModel.recentlyRead (reading_progress's own recentNovelIds(),
+    // the same source `onContinueReading`'s lookup in MainActivity queries) per
+    // the "Continue Reading opens the novel page, not the chapter" bug: status
+    // is a shelf label the user (or the scanner) can set independently of
+    // whether a chapter was ever actually opened, so a status-"IN_PROGRESS"
+    // novel can have no reading_progress row at all. onContinueReading's own
+    // `db.readingProgressDao().forNovel(novel.id)` lookup then comes back null
+    // for exactly that novel, and falls through to its own "else" branch -
+    // navigate to NovelDetail instead of the reader - which is what landing on
+    // the novel's own page instead of its last chapter actually was. Sourcing
+    // this section from recentlyRead instead means every novel offered here
+    // came from reading_progress in the first place, so that lookup can't miss.
+    continueReadingNovels: List<NovelEntity>,
     // Reading-stats card (see ChapterReadEventEntity's doc comment for why this
     // exists) - both default to 0 rather than being nullable/optional, since
     // LibraryViewModel's backing state itself always starts at 0 rather than
@@ -208,7 +222,7 @@ fun HomeScreen(
             }
 
             // Continue Reading section
-            if (inProgressNovels.isNotEmpty()) {
+            if (continueReadingNovels.isNotEmpty()) {
                 item {
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                         Text(
@@ -223,7 +237,7 @@ fun HomeScreen(
                                 .fillMaxWidth()
                                 .padding(bottom = 16.dp)
                         ) {
-                            items(inProgressNovels.take(4)) { novel ->
+                            items(continueReadingNovels.take(4)) { novel ->
                                 NovelContinueCard(
                                     novel = novel,
                                     onContinue = { onContinueReading(novel) },

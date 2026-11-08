@@ -113,9 +113,28 @@ the novel's folder, because that is the only place the scanner looks.
   straight into that chapter, same route (`reader/{novelId}/{chapterId}`) Home's
   own Continue Reading row uses. A cold start from the shortcut races `startScan`
   the same way a notification cold start does, so resolution is gated on `novels`
-  being non-empty, not fired from the intent handler itself. No reading history
-  yet → falls through to Home, same as Home's own Continue Reading row when
-  `ReadingProgressDao.forNovel` comes back null.
+  being non-empty, not fired from the intent handler itself; unresolved (the
+  target novel just hasn't landed in `novels` yet) leaves
+  `pendingContinueReadingShortcut` set so the effect retries as `novels` keeps
+  filling in, the same retry-safe shape `pendingNotificationNovelId` already
+  used - clearing it unconditionally every run (fixed) meant losing that race
+  once was permanent: the shortcut opened Home and nothing else ever happened,
+  with no second chance once the rest of the scan landed. Only a genuinely
+  empty `recentNovelIds` (no reading history, ever) clears the flag outright.
+  No reading history at all → falls through to Home, same as Home's own
+  Continue Reading row when `ReadingProgressDao.forNovel` comes back null.
+- **Home's "Continue Reading" row**: `HomeScreen`'s `continueReadingNovels`
+  param, wired to `LibraryViewModel.recentlyRead` (itself built from
+  `ReadingProgressDao.recentNovelIds()`) - **not** `inProgressNovels`
+  (`NovelEntity.status == "IN_PROGRESS"`, a shelf label independent of whether
+  any chapter was ever actually opened). Wiring it to `inProgressNovels` was a
+  bug: a status-only novel has no `reading_progress` row, so `onContinueReading`'s
+  own `ReadingProgressDao.forNovel` lookup came back null for it and fell
+  through to its own "else" branch - navigate to `novelDetail/{id}`, not the
+  reader - which looked like "Continue Reading opens the novel's own page
+  instead of where I left off." Sourcing the row from `recentlyRead` instead
+  means every novel offered there came from `reading_progress` in the first
+  place, so that lookup can't miss.
 
 ### Sync invariants
 Each is a decision that cost something to learn; code comments cite them as `S<n>`.

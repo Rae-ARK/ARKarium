@@ -57,7 +57,22 @@ class LibraryViewModel(
     // Overrides already applied - see loadNovelDetails.
     val chapters: SnapshotStateList<ChapterEntity> = mutableStateListOf()
     val arcs: SnapshotStateList<ArcEntity> = mutableStateListOf()
+    // The only correct source for "resume reading this novel at its last chapter":
+    // built from reading_progress.recentNovelIds(), so every entry is guaranteed to
+    // have an actual saved position (see refreshRecentlyRead). Home's "Continue
+    // Reading" row reads this one (HomeScreen's continueReadingNovels param, wired
+    // up in MainActivity) - it used to read inProgressNovels just below, which is
+    // not the same thing (see that val's own doc comment) and was the cause of
+    // "Continue Reading opens the novel page, not the chapter".
     val recentlyRead: SnapshotStateList<NovelEntity> = mutableStateListOf()
+    // NovelEntity.status == "IN_PROGRESS" - a shelf label the scanner/user sets on
+    // the novel itself, independent of whether any chapter has ever actually been
+    // opened (unlike recentlyRead above, which is keyed off reading_progress and
+    // therefore always resumable). Currently unused in the UI - HomeScreen's
+    // "Continue Reading" row was wired to this by mistake (fixed, see recentlyRead's
+    // doc comment) and nothing else in the app reads it. Left in rather than
+    // deleted: it's still correct, populated data that a future "Currently Reading"
+    // shelf (distinct from "has progress to resume") could use.
     val inProgressNovels: SnapshotStateList<NovelEntity> = mutableStateListOf()
 
     // Backs the Home screen's reading-stats card (see ChapterReadEventEntity's doc
