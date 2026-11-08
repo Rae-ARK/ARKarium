@@ -104,6 +104,18 @@ the novel's folder, because that is the only place the scanner looks.
   in the worker) re-syncs novels whose "notify me" toggle is on and posts a
   notification via `NewChapterNotifier` if chapters were added. It never
   silently resolves a missing folder or gone source.
+- **"Continue Reading" app shortcut**: static shortcut (`res/xml/shortcuts.xml`,
+  manifest `<meta-data>` on `MainActivity`), long-press the launcher icon.
+  Carries no novel id - unlike the notification tap above, which already knows
+  which novel it's for - so `MainActivity`'s `pendingContinueReadingShortcut`
+  LaunchedEffect resolves it at tap time via `ReadingProgressDao.recentNovelIds(1)`
+  (whichever novel's `reading_progress` row was updated most recently) and jumps
+  straight into that chapter, same route (`reader/{novelId}/{chapterId}`) Home's
+  own Continue Reading row uses. A cold start from the shortcut races `startScan`
+  the same way a notification cold start does, so resolution is gated on `novels`
+  being non-empty, not fired from the intent handler itself. No reading history
+  yet → falls through to Home, same as Home's own Continue Reading row when
+  `ReadingProgressDao.forNovel` comes back null.
 
 ### Sync invariants
 Each is a decision that cost something to learn; code comments cite them as `S<n>`.

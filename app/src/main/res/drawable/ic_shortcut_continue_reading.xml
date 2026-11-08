@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icon for the "Continue Reading" static app shortcut (see res/xml/shortcuts.xml).
+     Unlike ic_launcher, a <shortcut>'s android:icon is NOT run through the launcher's
+     adaptive foreground/background masking - most launchers draw it close to as-is,
+     just circle-cropped - so this bakes its own flat black backdrop (matching
+     ic_launcher_background, see that file's comment on the app's AR-mark branding)
+     around a simple white bookmark glyph instead of relying on system theming. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Circular backdrop -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M24,24m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0" />
+    <!-- Bookmark ribbon glyph -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M19,13 H29 V35 L24,30 L19,35 Z" />
+</vector>

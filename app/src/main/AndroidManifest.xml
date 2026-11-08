@@ -41,6 +41,13 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Static app shortcuts (long-press the launcher icon on API 25+ - a
+                 no-op, not a crash, on minSdk 24 itself). See res/xml/shortcuts.xml
+                 for "Continue Reading" and MainActivity's
+                 EXTRA_CONTINUE_READING_SHORTCUT/handleShortcutIntent for how its tap
+                 is handled. -->
+            <meta-data android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- Not exported - only this app binds to it (see ui/Tts.kt's rememberChapterTts).
