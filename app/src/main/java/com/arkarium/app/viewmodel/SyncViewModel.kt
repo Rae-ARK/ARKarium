@@ -23,6 +23,7 @@ import com.arkarium.app.navigation.SyncAllState
 import com.arkarium.app.navigation.SyncCheckState
 import com.arkarium.app.navigation.SyncResolutionReason
 import com.arkarium.app.navigation.SyncResolutionState
+import com.arkarium.app.util.Haptics
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -310,6 +311,10 @@ class SyncViewModel(
                     summary.append(" Skipped (source unavailable): ${skipped.joinToString(", ")}.")
                 }
                 syncAllState.value = SyncAllState.Done(summary.toString(), lastCoverUrl)
+                // Micro-haptics (util/Haptics.kt) - batch actually finished, not an
+                // Error outcome (that one's left silent; a buzz on failure would read
+                // as a confirmation, not a warning).
+                Haptics.confirm(getApplication())
             } catch (e: Exception) {
                 syncAllState.value = SyncAllState.Error("Sync stopped: ${e.message}")
             }
