@@ -123,6 +123,9 @@ the novel's folder, because that is the only place the scanner looks.
   empty `recentNovelIds` (no reading history, ever) clears the flag outright.
   No reading history at all → falls through to Home, same as Home's own
   Continue Reading row when `ReadingProgressDao.forNovel` comes back null.
+  The launch intent is consumed once: on a recreated Activity `getIntent()` is
+  still the original shortcut intent, so `onCreate` only handles it when
+  `savedInstanceState == null` (see Lifecycle ownership).
 - **Home's "Continue Reading" row**: `HomeScreen`'s `continueReadingNovels`
   param, wired to `LibraryViewModel.recentlyRead` (itself built from
   `ReadingProgressDao.recentNovelIds()`) - **not** `inProgressNovels`
@@ -261,6 +264,35 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
   nothing, rather than falling through to the controls toggle. No text
   selection/copy - that's a separate, unbuilt feature; this is strictly tap,
   not long-press-and-drag.
+
+## Lifecycle ownership
+One authority per thing; everything else holds a reference, never a second copy.
+`MainActivity` is destroyed and recreated by rotation, multi-window resize, memory
+reclaim and process restore, so nothing that must outlive one instance may live
+(or be installed) there.
+
+| Thing | Owner | Notes |
+|---|---|---|
+| Crash recorder (`Thread` default handler) | `ArkariumApp` | Installed once per process. It used to be installed in `MainActivity.onCreate`, stacking one Activity-capturing wrapper per recreation. |
+| Database | `AppDatabase.create()` singleton | Activity, worker and ViewModels share the one instance. |
+| Preferences | `context.dataStore` (top-level, one per file) | `PreferencesManager` instances are cheap views over it. |
+| Library / sync / settings state | the ViewModels | Survive recreation; rebuilt only on process death. |
+| `LibraryViewModel.chapters` | a *cache* of the last loaded novel | Never the authority on whether a chapter exists - the database is. The reader route asks it before leaving. |
+| Reading position | `reading_progress`, written only by `MainActivity.saveReadingProgress` | Write is `NonCancellable`; callers use `AppScope.io` (checkpoints) or `lifecycleScope` (in-app exits). |
+| Read-aloud engine and session | `TtsPlaybackService` | UI binds/unbinds; the engine is not Compose state. |
+| Window flags (keep-on, brightness, full-screen) | `ReaderScreen` effects | Each restored in its own `onDispose`. |
+| One-shot launch intents (shortcut, notification) | `MainActivity.onCreate` / `onNewIntent` | Handled only on a fresh launch (`savedInstanceState == null`); an unresolved one is carried through `onSaveInstanceState`. `getIntent()` after a recreation is the *original* launch intent and must not be re-read. |
+
+Rules this table encodes:
+- Third-party lifecycle (Room, DataStore, `TextToSpeech`, Navigation's restored back
+  stack, SAF grants) is treated as "may be gone or stale at any time": a restored route
+  re-resolves what it needs from the database instead of trusting an in-memory cache.
+- A position is only ever *reported* once it is real. `ReaderScreen.currentAnchor()`
+  returns the saved position, not the top of the chapter, until that position has been
+  applied or the reader has taken over by dragging.
+- The reader is not composed until the saved position is resolved (found or genuinely
+  absent), and the restore waits for the seeded reader settings and the reflow they
+  cause.
 
 ## Text-to-speech (as built)
 

@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -62,6 +63,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -479,6 +481,15 @@ fun ReaderScreen(
     // SERIF, null), which match the literal constants fontSize/lineHeight/
     // fontFamilyChoice/readingMode already initialized with above, so a
     // fresh install sees no behavior change versus before this existed.
+    //
+    // `settingsSeeded` flips once that read has landed. Until then the text is laid out
+    // with placeholder size/spacing/family (and with the *initial* values of the
+    // break-line and full-screen flags below), then reflows when the real ones arrive -
+    // so a position restored against that first layout is a pixel offset into text that
+    // is about to move. That is the same drift rung 14 set out to remove, reintroduced
+    // by the reader's own startup order for anyone whose reader settings aren't the
+    // defaults. The restore below waits for this flag.
+    var settingsSeeded by remember(chapter.id) { mutableStateOf(false) }
     LaunchedEffect(chapter.id) {
         fontSize.floatValue = prefsManager.readerFontSize.first()
         lineHeight.floatValue = prefsManager.readerLineHeight.first()
@@ -489,6 +500,11 @@ fun ReaderScreen(
         readingMode.value = storedMode?.let {
             runCatching { ReadingModeDefault.valueOf(it) }.getOrNull()
         }?.let(::toReadingMode) ?: readingModeFor(appTheme)
+        // The two layout-affecting flags collected with a placeholder initial value
+        // above: make sure DataStore has answered for them before anything restores.
+        prefsManager.readerBreakLines.first()
+        prefsManager.readerFullscreen.first()
+        settingsSeeded = true
     }
     // The tap-anywhere immersive toggle: true = chrome showing (top bar, Reader
     // Preferences pill, progress readout), false = immersive. rememberSaveable rather
@@ -635,13 +651,30 @@ fun ReaderScreen(
     // laid out yet on a long chapter, so this can take a few recompositions rather than
     // firing once; it gives up and leaves the reader at the top if initialPosition's
     // paragraph never shows up at all (e.g. the chapter was edited shorter since).
-    LaunchedEffect(chapter.id, paragraphContentTop.size) {
+    LaunchedEffect(chapter.id, paragraphContentTop.size, settingsSeeded) {
         if (positionRestored) return@LaunchedEffect
         val target = initialPosition ?: run { positionRestored = true; return@LaunchedEffect }
+        // Wait for the seeded reader settings (see settingsSeeded), then for the reflow
+        // they cause to be laid out and reported, before reading any paragraph offset.
+        if (!settingsSeeded) return@LaunchedEffect
+        withFrameNanos { }
+        withFrameNanos { }
         val paragraph = paragraphForCharOffset(paragraphOffsetList, target.charOffset)
             ?: run { positionRestored = true; return@LaunchedEffect }
         val offset = paragraphContentTop[paragraph.rawStart] ?: return@LaunchedEffect
         scrollState.scrollTo(offset.toInt().coerceIn(0, scrollState.maxValue))
+        positionRestored = true
+    }
+
+    // The restore above is a one-shot "wait for layout, then jump". If the reader takes
+    // over before it lands (they start scrolling, or read-aloud auto-scroll moves the
+    // text), the jump would now be wrong *and* currentAnchor() must stop reporting the
+    // not-yet-applied initialPosition in place of where they actually are - so the
+    // reader's own drag ends the wait. Deliberately a DragInteraction, not
+    // isScrollInProgress: the chapter-start scrollTo(0) and the restore's own scrollTo
+    // are programmatic scrolls and must not count as the reader taking over.
+    LaunchedEffect(chapter.id) {
+        scrollState.interactionSource.interactions.first { it is DragInteraction.Start }
         positionRestored = true
     }
 
@@ -714,7 +747,15 @@ fun ReaderScreen(
     // estimate only if no paragraph has reported a position yet at all (leaving before
     // the first layout pass completes - e.g. backing out instantly), so this never
     // saves nothing.
+    //
+    // Never reports a position the reader hasn't actually reached. While a saved
+    // initialPosition is still waiting to be scrolled to (layout hasn't produced the
+    // target paragraph's offset yet), the scroll position is still 0 - saving *that*
+    // would overwrite the real saved position with the top of the chapter, which is how
+    // a quick background/rotate/back right after opening used to lose "where I left
+    // off". Until the restore lands, the position to report is the one being restored.
     fun currentAnchor(): ReaderPosition {
+        if (!positionRestored && initialPosition != null) return initialPosition
         val charOffset = paragraphContentTop.entries
             .filter { it.value <= scrollState.value + 1f }
             .maxByOrNull { it.value }

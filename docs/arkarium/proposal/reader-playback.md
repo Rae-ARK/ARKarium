@@ -58,7 +58,7 @@ second one for playback.
 - **Upgrading from a pre-rung-14 build loses the in-progress position.** A
   row still carrying the old `PERCENTAGE` type is no longer restored into at
   all — see
-  [`bugs/other/legacy-percentage-position-lost-on-upgrade.md`](bugs/other/legacy-percentage-position-lost-on-upgrade.md)
+  `bugs/other/legacy-percentage-position-lost-on-upgrade.md` (bug file since deleted; see bugs/other/continue-reading-position-lost.md)
   for the gap and a possible one-time-conversion fix.
 
 ### F10. TTS playback is tied to a composable's lifecycle — fixed
