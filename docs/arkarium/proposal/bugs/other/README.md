@@ -6,5 +6,12 @@ for the format and the critical/other split.
 
 | Bug | Status |
 |---|---|
-| [`legacy-percentage-position-lost-on-upgrade.md`](legacy-percentage-position-lost-on-upgrade.md) | open — found reading code, not yet reported by a user |
 | [`scrolling-bug.md`](scrolling-bug.md) | open — unconfirmed, no `gfxinfo` measurements yet; moved here from `critical/` (its own severity line already said Medium, not critical) |
+
+Fixed and deleted per the rule in `../README.md`:
+
+- `legacy-percentage-position-lost-on-upgrade.md` — owner-reported as
+  "Continue Reading doesn't take me to where I left off." Fixed by
+  converting a legacy `PERCENTAGE` row to `CHAR_OFFSET` the first time it's
+  read, instead of restoring it to null — see `MainActivity.kt`'s
+  `initialReaderPosition` effect.

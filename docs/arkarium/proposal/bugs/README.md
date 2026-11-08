@@ -25,10 +25,9 @@ Historic ARKster-era bug history is frozen in
 
 | Bug | Severity |
 |---|---|
-| [`other/legacy-percentage-position-lost-on-upgrade.md`](other/legacy-percentage-position-lost-on-upgrade.md) | other — upgrading from a pre-rung-14 build silently resets in-progress chapters to the top |
 | [`other/scrolling-bug.md`](other/scrolling-bug.md) | other — reader scrolling reported not smooth with controls visible; unconfirmed, no device measurements yet |
 
-The two previously tracked here are both fixed and their files deleted per
+The three previously tracked here are all fixed and their files deleted per
 the rule above:
 
 - Scan reconcile cascade-deleting a novel's history on an ordinary scan —
@@ -36,3 +35,7 @@ the rule above:
 - "Notify me" toggle undiscoverability and the sync-detection bug it
   surfaced — see [`../../implementation/engineering-backlog.md`](../../implementation/engineering-backlog.md) rung 11,
   and sync invariant S10 in [`../../foundational/architecture.md`](../../foundational/architecture.md).
+- Upgrading from a pre-rung-14 build silently resetting in-progress chapters
+  to the top (owner-reported as "Continue Reading doesn't take me to where I
+  left off") — see `other/README.md`'s own note on it, and `MainActivity.kt`'s
+  `initialReaderPosition` effect.

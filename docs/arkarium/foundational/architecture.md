@@ -175,12 +175,23 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
   one - either true keeps the screen on, plain `FLAG_KEEP_SCREEN_ON`, no
   idle timer); `reader_fullscreen` (hides system bars via
   `WindowInsetsControllerCompat`, swipe-to-reveal, while in immersive mode;
-  `layoutInDisplayCutoutMode` SHORT_EDGES and edge-to-edge both key off that
-  same immersive condition in *either* orientation, not landscape only - an
-  earlier landscape-only version of this left portrait letterboxed at the
-  cutout the moment the status bar hid, since `DEFAULT`'s portrait carve-out
-  only holds while the status bar is showing - see `ReaderScreen.kt`'s
-  `applyWindowLayout`);
+  edge-to-edge keys off that immersive condition in *either* orientation, not
+  landscape only - an earlier landscape-only version of this left portrait
+  letterboxed at the cutout the moment the status bar hid, since `DEFAULT`'s
+  portrait carve-out only holds while the status bar is showing. Drawing into
+  the cutout (`layoutInDisplayCutoutMode` SHORT_EDGES) is broader than
+  edge-to-edge: it's also on in plain landscape whenever the setting is
+  enabled, bars showing or not, since `DEFAULT` letterboxes in landscape
+  regardless of immersion - without this a reader who rotates without going
+  immersive still saw a black letterboxed strip where the cutout is, instead
+  of the reading background the root Column's `windowInsetsPadding` already
+  paints there. Every `layoutInDisplayCutoutMode` change also forces
+  `ViewCompat.requestApplyInsets` - Compose's own insets reads don't pick up
+  an attribute change made after `setContent` on their own, which was the
+  cause of a second bug (stuck cutout padding and a lowered top bar after
+  *leaving* immersive mode in portrait: Compose kept padding by the last
+  inset SHORT_EDGES had delivered). See `ReaderScreen.kt`'s
+  `applyWindowLayout` and the `DisposableEffect` that calls it);
   `reader_break_lines` (default **on**, the only reader switch that is: whether a
   bare `***`-style line draws as a chapter-break divider, see `ChapterMarkup.kt`);
   and `reader_brightness_slider_enabled`, which only toggles whether the

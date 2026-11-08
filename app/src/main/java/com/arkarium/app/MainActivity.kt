@@ -74,6 +74,8 @@ import com.arkarium.app.data.ChapterReadEventEntity
 import com.arkarium.app.data.GoogleBooksMetadataProvider
 import com.arkarium.app.data.resolveLibraryRoot
 import com.arkarium.app.data.ReaderPosition
+import com.arkarium.app.data.paragraphForCharOffset
+import com.arkarium.app.data.paragraphOffsets
 import com.arkarium.app.data.ReadingProgressEntity
 import com.arkarium.app.data.ReadingStats
 import com.arkarium.app.data.ScannerImpl
@@ -1202,20 +1204,61 @@ class MainActivity : ComponentActivity() {
                         // when the saved row is actually for *this* chapter (a stale row
                         // from a different chapter one novel-wide row can't be, since
                         // ReadingProgressEntity is one row per novel - but defensive here
-                        // costs nothing) and was itself written as CHAR_OFFSET; a plain
-                        // PERCENTAGE row (written before this rung, or never written at
-                        // all) restores to null, same as "start at the top" already was.
+                        // costs nothing).
+                        //
+                        // Was (see docs/arkarium/proposal/bugs/other/
+                        // legacy-percentage-position-lost-on-upgrade.md, now fixed and
+                        // deleted): a PERCENTAGE row - any row written before rung 14, which
+                        // for an existing install means every chapter the reader was
+                        // mid-way through at upgrade time - restored to null here, same as
+                        // "nothing saved at all", silently dropping the reader back at the
+                        // top of the chapter the first time they reopened it. That's the
+                        // "Continue Reading doesn't take me to where I left off" bug:
+                        // Continue Reading (both the Home card and the launcher shortcut)
+                        // already resolves the right *chapter* - it reads the same
+                        // reading_progress row this does - the position within it was what
+                        // silently reset.
+                        //
+                        // Fixed per that doc's own "possible fix": convert once, in place.
+                        // `fraction × raw chapter length` is only an estimate (font size and
+                        // width changed how far a given scroll fraction actually reached,
+                        // which is the whole reason rung 14 moved away from PERCENTAGE), but
+                        // paragraphForCharOffset snaps it to a real paragraph start the same
+                        // way a genuine CHAR_OFFSET restore does, so it lands close rather
+                        // than exactly at the top. The converted row is written straight
+                        // back as CHAR_OFFSET so this is a one-time migration per chapter,
+                        // not a re-estimate on every open.
                         val initialReaderPosition = remember(chapterId) { mutableStateOf<ReaderPosition?>(null) }
-                        LaunchedEffect(novelId, chapterId) {
+                        LaunchedEffect(novelId, chapterId, content) {
                             val saved = db.readingProgressDao().forNovel(novelId)
-                            initialReaderPosition.value = if (
-                                saved != null &&
-                                saved.chapterId == chapterId &&
-                                saved.positionType == ReaderPosition.POSITION_TYPE
-                            ) {
-                                ReaderPosition(saved.position.toInt(), saved.positionSnippet ?: "")
-                            } else {
+                            initialReaderPosition.value = if (saved == null || saved.chapterId != chapterId) {
                                 null
+                            } else if (saved.positionType == ReaderPosition.POSITION_TYPE) {
+                                ReaderPosition(saved.position.toInt(), saved.positionSnippet ?: "")
+                            } else if (content != null && content.isNotEmpty()) {
+                                val approxOffset = (saved.position.coerceIn(0f, 1f) * content.length).toInt()
+                                val paragraph = paragraphForCharOffset(paragraphOffsets(content), approxOffset)
+                                if (paragraph != null) {
+                                    val converted = ReaderPosition(
+                                        paragraph.rawStart,
+                                        ReaderPosition.snippetFrom(content, paragraph.rawStart)
+                                    )
+                                    db.readingProgressDao().upsert(
+                                        saved.copy(
+                                            position = converted.charOffset.toFloat(),
+                                            positionType = ReaderPosition.POSITION_TYPE,
+                                            positionSnippet = converted.snippet
+                                        )
+                                    )
+                                    converted
+                                } else {
+                                    null
+                                }
+                            } else {
+                                // Content hasn't loaded yet - leave unresolved rather than
+                                // guessing null, so the LaunchedEffect's `content` key
+                                // re-runs this once it has and still converts correctly.
+                                initialReaderPosition.value
                             }
                         }
                         if (loadResult is ChapterLoadResult.Failed) {
