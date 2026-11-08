@@ -261,6 +261,36 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 //    (and hiding the system bars) is unaffected and stays tied to
 //    `immersiveFullscreen` only - this is strictly about which parts of the
 //    window the content is allowed to draw under, not about hiding chrome.
+// 3. "Full-screen setting off, rotate to landscape - same dead strip as bug
+//    2, just with the setting off instead of on." The `fullscreenEnabled &&
+//    isLandscape` half of bug 2's fix meant landscape only got pulled out of
+//    DEFAULT while the setting was *also* on; with it off, `drawIntoCutout`
+//    (by then simplified to plain `fullscreenEnabled`, since the
+//    `immersiveFullscreen ||` half was always redundant once this effect
+//    stopped gating hide/show on anything but `fullscreenEnabled`) went back
+//    to `false` in landscape too, and DEFAULT letterboxes landscape
+//    regardless of the full-screen setting - see the quoted guidance above.
+//    So this is the one remaining combination the previous two fixes didn't
+//    reach. `drawIntoCutout` (now `fullscreenEnabled || isLandscape`, at the
+//    call site below) covers it the same way bug 2 covered "setting on,
+//    rotate" - and this time `edgeToEdge` has to widen alongside it rather
+//    than staying on `fullscreenEnabled` alone: Android's own guidance on
+//    `LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES` is explicit that an app
+//    should "ensure [it] is configured to display content edge to edge"
+//    before rendering into the cutout at all, and SHORT_EDGES paired with a
+//    non-edge-to-edge window is simply undocumented territory. That doesn't
+//    reopen bug 1 or 2's "stuck gap"/letterboxing either, because this only
+//    changes which *layout mode* the window is in - not whether the system
+//    bars are hidden, which stays on `fullscreenEnabled` alone just above.
+//    A still-visible status bar under a now-edge-to-edge window in landscape
+//    is exactly the case the Reader TopAppBar below is already built for: it
+//    is the one TopAppBar in this app that does *not* zero out its own
+//    `windowInsets` (see its call site's own note), specifically so it can
+//    self-pad below a real, visible status bar the same way it already does
+//    during full-screen's swipe-to-reveal transient bars - this just reaches
+//    that same code path from a different trigger (orientation instead of a
+//    swipe), with the root Column's own `displayCutout`-only padding still
+//    covering the cutout exactly as it always has, independent of either.
 //
 // layoutInDisplayCutoutMode is API 28+; below that there is no cutout API and
 // the default behavior is all there is.
@@ -591,8 +621,40 @@ fun ReaderScreen(
         } else {
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
+        // Landscape-with-full-screen-off gap bug: `edgeToEdge`/`drawIntoCutout` used to be
+        // `fullscreenEnabled` alone, so turning the full-screen *setting* off put the
+        // window straight back on `LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT`. Per Android's own
+        // display-cutout guidance (developer.android.com/guide/topics/display-cutout):
+        // DEFAULT "renders into the cutout area when the display cutout is contained in a
+        // system bar. Otherwise... content may be letterboxed when displayed in landscape
+        // mode" - and that letterboxing is keyed on orientation alone, independent of
+        // whether the window is edge-to-edge or a normal `decorFitsSystemWindows(true)`
+        // layout. So the one combination this didn't cover - full-screen off, rotated to
+        // landscape - still hit DEFAULT's landscape letterbox: the OS shrank the window
+        // around the cutout instead of the Column's own `windowInsetsPadding(displayCutout)`
+        // below ever getting a chance to pad around it, leaving the reported dead strip
+        // between the real status bar and this screen's own TopAppBar. MainActivity's
+        // `renderMainContent` effect already sidesteps exactly this for every *other* route
+        // by applying `edgeToEdge = true, drawIntoCutout = true` unconditionally (see its own
+        // "landscape-tablet.md's cutout fix" comment) - Reader was the one screen still
+        // gating both behind its own setting instead of matching that baseline. Matching it
+        // here - true whenever either the setting is on *or* the device is in landscape - is
+        // only a layout-mode change, not a visibility one: system-bar hide/show above stays
+        // keyed on `fullscreenEnabled` alone, so turning this on for "landscape, full-screen
+        // off" does not start hiding the status bar, it only lets the window draw under it.
+        // That is safe because the TopAppBar below is deliberately the one TopAppBar in this
+        // app that does *not* zero out its `windowInsets` (every other screen's does, relying
+        // on the single outer Scaffold padding instead) - its default already resolves to the
+        // *system bars'* own inset (`TopAppBarDefaults.windowInsets`, Material3's
+        // `systemBarsForVisualComponents`), which is a different inset than the Column's
+        // `WindowInsets.displayCutout` pad. So an edge-to-edge window with a still-visible
+        // status bar - new as of this fix - pads itself below that real status bar through
+        // the TopAppBar's own inset exactly as it already does during full-screen's
+        // swipe-to-reveal state, while the Column keeps handling only the cutout; neither
+        // source ever reads the other's inset, so there is still nothing to double-pad.
+        val drawIntoCutout = fullscreenEnabled || isLandscape
         if (window != null) {
-            applyWindowLayout(window, edgeToEdge = fullscreenEnabled, drawIntoCutout = fullscreenEnabled)
+            applyWindowLayout(window, edgeToEdge = drawIntoCutout, drawIntoCutout = drawIntoCutout)
         }
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
@@ -870,6 +932,30 @@ fun ReaderScreen(
             .windowInsetsPadding(WindowInsets.displayCutout)
     ) {
         // Top bar
+        //
+        // Deliberately the one TopAppBar in this app that does NOT pass
+        // `windowInsets = WindowInsets(0, 0, 0, 0)` - every screen under
+        // ui/ does (HomeScreen, SettingsScreen, NovelDetailScreen, etc.),
+        // relying instead on MainActivity's single outer Scaffold to consume
+        // the top inset once via `innerPadding` and zeroing their own
+        // TopAppBar so it isn't padded a second time. Reader can't use that
+        // same recipe: MainActivity's Scaffold deliberately sets
+        // `contentWindowInsets = WindowInsets(0, 0, 0, 0)` for reader routes
+        // specifically (see that call site's own comment) so Reader can
+        // manage its insets itself instead of the cutout being reserved
+        // twice - which means nothing upstream of this Column ever consumes
+        // the status-bar inset for Reader. Left at its Material3 default
+        // (`TopAppBarDefaults.windowInsets`, the *system bars'* own top+
+        // horizontal inset - a different inset than the Column's own
+        // `displayCutout` pad above, so the two never double up), this
+        // TopAppBar pads itself below the status bar whenever one is both
+        // visible and the window is edge-to-edge under it: full-screen's
+        // swipe-to-reveal transient bars, and now also landscape with
+        // full-screen off (applyWindowLayout's own doc comment, fix 3). When
+        // neither applies the window isn't edge-to-edge at all, the system
+        // reserves the status bar's space outside Compose entirely, and this
+        // inset - like the Column's cutout one - resolves to zero on its
+        // own, so there's nothing to zero out here even in that case.
         if (showControls.value) {
             TopAppBar(
                 title = { Text(chapter.title, maxLines = 1) },
