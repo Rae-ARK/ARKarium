@@ -186,6 +186,23 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
   (font size, line spacing, speech rate, Light/Sepia/Dark, and an opt-in
   brightness slider - see Reader settings below). Font family is **not** in
   the pill; it moved to `settings/reader` as a "set and forget" choice.
+- **Progress readout recomposition scope** (`other/scrolling-bug.md` cause 1):
+  the "n% • page n of n" readout used to call `currentProgress()` - a direct
+  `scrollState.value`/`maxValue` read - inline in `ReaderScreen`'s own
+  `Column`/`Box`. Neither introduces a recomposition-scope boundary, so the
+  read was attributed to `ReaderScreen` itself: every scroll offset change
+  invalidated the whole screen, including the per-paragraph loop and its
+  `onGloballyPositioned`/`onTextLayout` lambdas, on every scroll frame while
+  the controls pill was visible. Fixed by moving the readout into its own
+  `ProgressReadout` composable and reading progress there through
+  `derivedStateOf`: the scroll read is now scoped to just that `Text`, and
+  `derivedStateOf` only triggers a recomposition when the rounded percent or
+  page number actually changes, not once per scroll tick. The bug file's
+  other suspected causes (per-paragraph `onGloballyPositioned` cost, eager
+  composition of the whole chapter, build config with R8 off and no baseline
+  profile) are unchanged and still open - see the file for the ranked list;
+  it stays until the `gfxinfo`/Layout Inspector numbers it calls for are
+  recorded.
 - **Reader settings (`settings/reader`, `PreferencesManager` keys
   `reader_*`), per [`../proposal/reader-settings.md`](../proposal/reader-settings.md):**
   persisted defaults for font size, line height and reading mode that the
