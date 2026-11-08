@@ -1020,30 +1020,44 @@ fun ReaderScreen(
                                                     paragraphContentTop[rawStart] = coordinates.positionInRoot().y +
                                                         scrollState.value - scrollContainerTop
                                                 }
-                                                // Tap-a-word lookup: a tap inside this
-                                                // paragraph's own bounds is handled here
-                                                // instead of bubbling up to the reading
-                                                // Column's clickable (tap-to-toggle-controls)
-                                                // - same tap-on-text-vs-tap-on-margin split
-                                                // other reading apps use. paragraphLayouts[
-                                                // rawStart] is written by onTextLayout above,
-                                                // so by the time a tap can land the layout for
-                                                // offset math is already there; a tap that
-                                                // somehow lands before the first layout pass, or
-                                                // on whitespace/punctuation (WordLookup.wordAt
-                                                // returns null), is a silent no-op rather than
-                                                // falling through to the toggle - deliberately:
-                                                // mapping "nothing recognized here" to "open
-                                                // the preferences panel" would be its own kind
-                                                // of surprising.
+                                                // Long-press-a-word lookup: this used to fire
+                                                // on a plain tap, which - since paragraph text
+                                                // covers nearly the whole reading area - meant a
+                                                // tap almost anywhere in a chapter opened a
+                                                // dictionary/translate app instead of doing the
+                                                // one thing every other tap on this screen does
+                                                // (toggle showControls). detectTapGestures'
+                                                // own pointerInput consumes the gesture before
+                                                // it can bubble up to the reading Column's
+                                                // clickable below, so a plain tap on text was
+                                                // silently swallowed into a lookup (or a no-op
+                                                // on whitespace/punctuation) and never toggled
+                                                // the controls the way tapping the margin did -
+                                                // normal reading (tap to show/hide the top bar
+                                                // and Reader Preferences pill while turning
+                                                // pages) was broken on every word. onTap now
+                                                // matches the Column's own toggle so tapping
+                                                // text behaves exactly like tapping the margin;
+                                                // only onLongPress - a deliberate, can't-happen-
+                                                // by-accident gesture - does the lookup.
+                                                // paragraphLayouts[rawStart] is written by
+                                                // onTextLayout above, so by the time either
+                                                // gesture can land the layout for offset math is
+                                                // already there; a long-press that somehow lands
+                                                // before the first layout pass, or on whitespace/
+                                                // punctuation (WordLookup.wordAt returns null),
+                                                // is a silent no-op rather than falling through
+                                                // to anything else.
                                                 .pointerInput(rawStart, segment.text) {
-                                                    detectTapGestures { tapOffset ->
-                                                        val layout = paragraphLayouts[rawStart] ?: return@detectTapGestures
-                                                        val charIndex = layout.getOffsetForPosition(tapOffset)
-                                                        val word = WordLookup.wordAt(segment.text, charIndex)
-                                                            ?: return@detectTapGestures
-                                                        WordLookup.lookup(context, word)
-                                                    }
+                                                    detectTapGestures(
+                                                        onTap = { showControls.value = !showControls.value },
+                                                        onLongPress = { pressOffset ->
+                                                            val layout = paragraphLayouts[rawStart]
+                                                            val charIndex = layout?.getOffsetForPosition(pressOffset)
+                                                            val word = charIndex?.let { WordLookup.wordAt(segment.text, it) }
+                                                            if (word != null) WordLookup.lookup(context, word)
+                                                        }
+                                                    )
                                                 }
                                         } else Modifier
                                     )

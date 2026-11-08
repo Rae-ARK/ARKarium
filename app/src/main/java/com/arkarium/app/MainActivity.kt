@@ -14,10 +14,12 @@ import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
@@ -73,6 +75,7 @@ import com.arkarium.app.ui.SyncProgressDialog
 import com.arkarium.app.ui.SyncResolutionDialog
 import com.arkarium.app.ui.FictionBrowseScreen
 import com.arkarium.app.data.AppDatabase
+import com.arkarium.app.data.AppScope
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.DatabaseDowngradeException
 import com.arkarium.app.data.ChapterOverrideEntity
@@ -918,6 +921,28 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     containerColor = colorScheme.background,
                     contentColor = colorScheme.onBackground,
+                    // The full-screen/cutout bug (see ReaderScreen.kt's applyWindowLayout
+                    // doc comment) was fixed there and *stayed* fixed in isolation, but the
+                    // home-screen rework below wraps every route - Reader included - in this
+                    // one shared Scaffold, and Scaffold's own default contentWindowInsets is
+                    // WindowInsets.safeDrawing: status bars + nav bars + the display cutout.
+                    // That's correct for every other screen (they don't manage insets
+                    // themselves), but for Reader it reserves the exact same cutout-sized gap
+                    // a second time at this outer level - and that gap isn't painted by the
+                    // Surface below, since `.fillMaxSize().padding(innerPadding)` shrinks the
+                    // Surface's own bounds by it rather than letting the Surface's background
+                    // reach into it. What shows through is the *window's* own background
+                    // (themes.xml's Theme.ARKarium, solid black) - the reported "notch area
+                    // rendered as a black block," present in both orientations because
+                    // WindowInsets.displayCutout never goes to zero just because the status
+                    // bar is hidden. Reader already re-pads its own content by
+                    // WindowInsets.displayCutout and paints its own background under it (see
+                    // its root Column) - it needs this outer reservation to be zero, not
+                    // doubled. Every other route keeps the normal default.
+                    contentWindowInsets = if (currentRoute?.startsWith("reader/") == true)
+                        WindowInsets(0, 0, 0, 0)
+                    else
+                        ScaffoldDefaults.contentWindowInsets,
                     bottomBar = {
                         if (isBottomBarRoute(currentRoute)) {
                             AppBottomBar(
@@ -1464,8 +1489,20 @@ class MainActivity : ComponentActivity() {
                                     // opportunistically (on Activity pause, and once more on
                                     // leaving composition) instead of only at an explicit
                                     // in-app exit tap.
+                                    //
+                                    // AppScope.io, not lifecycleScope (the actual remaining
+                                    // cause - see AppScope.kt's own doc comment): this fires on
+                                    // ON_PAUSE, which is "about to go away" by design - exactly
+                                    // when MainActivity is most likely to be recreated next
+                                    // (rotation, memory reclaim, or a real process restart).
+                                    // lifecycleScope is cancelled at this *instance's* ON_DESTROY,
+                                    // which during a recreation runs within the same handful of
+                                    // frames as this ON_PAUSE - almost guaranteeing the Room
+                                    // write gets cancelled mid-flight instead of committing. No
+                                    // navigation follows this one, so there's nothing that needs
+                                    // to hop back to Main afterward.
                                     onPositionChanged = { position ->
-                                        lifecycleScope.launch {
+                                        AppScope.io.launch {
                                             saveReadingProgress(novelId, chapterId, position, content.length)
                                         }
                                     },
@@ -1477,10 +1514,20 @@ class MainActivity : ComponentActivity() {
                                     // OnBackPressedCallback would have done here - rather than
                                     // routing through onBack's own navigate("home"), which
                                     // would change where gesture Back lands versus today.
+                                    //
+                                    // AppScope.io for the same reason as onPositionChanged above
+                                    // - this is also a "the Activity might not stick around"
+                                    // checkpoint, not an ordinary in-app tap. Unlike
+                                    // onPositionChanged, something *does* need the main thread
+                                    // afterward (NavController isn't thread-safe), so this hops
+                                    // back to Dispatchers.Main once the write has actually landed,
+                                    // instead of popping the back stack from a background thread.
                                     onSystemBack = { position ->
-                                        lifecycleScope.launch {
+                                        AppScope.io.launch {
                                             saveReadingProgress(novelId, chapterId, position, content.length)
-                                            navController.popBackStack()
+                                            withContext(Dispatchers.Main) {
+                                                navController.popBackStack()
+                                            }
                                         }
                                     }
                                 )
