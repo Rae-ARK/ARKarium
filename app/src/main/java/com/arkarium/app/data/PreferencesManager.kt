@@ -73,6 +73,11 @@ internal val READER_FONT_FAMILY_KEY = stringPreferencesKey("reader_font_family")
 // better-but-bigger option - the owner picked the plain flag for this pass.
 internal val READER_KEEP_SCREEN_ON_KEY = booleanPreferencesKey("reader_keep_screen_on")
 internal val READER_FULLSCREEN_KEY = booleanPreferencesKey("reader_fullscreen")
+// Whether a line of one character three times over ("***", "---", "###") is drawn as a
+// chapter-break divider (data/ChapterMarkup.kt's isBreakLine). On by default - the one
+// switch here that is: it is the owner's own writing convention, and the <chapter break>
+// tag keeps working either way. Off makes those lines ordinary text again.
+internal val READER_BREAK_LINES_KEY = booleanPreferencesKey("reader_break_lines")
 // Not in the doc's own "Brightness" section (which argued no setting is
 // needed) - added per the owner's explicit instruction that brightness (and
 // later, volume) are opt-in and only show as a pill slider once turned on
@@ -106,6 +111,9 @@ internal fun readerKeepScreenOnOf(prefs: Preferences): Boolean =
 
 internal fun readerFullscreenOf(prefs: Preferences): Boolean =
     prefs[READER_FULLSCREEN_KEY] ?: false
+
+internal fun readerBreakLinesOf(prefs: Preferences): Boolean =
+    prefs[READER_BREAK_LINES_KEY] ?: true
 
 internal fun readerBrightnessSliderEnabledOf(prefs: Preferences): Boolean =
     prefs[READER_BRIGHTNESS_SLIDER_ENABLED_KEY] ?: false
@@ -326,6 +334,7 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     val readerFontFamily: Flow<String> = safePrefs.map(::readerFontFamilyOf)
     val readerKeepScreenOn: Flow<Boolean> = safePrefs.map(::readerKeepScreenOnOf)
     val readerFullscreen: Flow<Boolean> = safePrefs.map(::readerFullscreenOf)
+    val readerBreakLines: Flow<Boolean> = safePrefs.map(::readerBreakLinesOf)
     val readerBrightnessSliderEnabled: Flow<Boolean> = safePrefs.map(::readerBrightnessSliderEnabledOf)
     val readerBrightness: Flow<Float> = safePrefs.map(::readerBrightnessOf)
 
@@ -477,6 +486,12 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     suspend fun setReaderFullscreen(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[READER_FULLSCREEN_KEY] = enabled
+        }
+    }
+
+    suspend fun setReaderBreakLines(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[READER_BREAK_LINES_KEY] = enabled
         }
     }
 
