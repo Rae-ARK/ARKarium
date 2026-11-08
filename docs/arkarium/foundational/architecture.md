@@ -55,6 +55,9 @@ app-private storage; `resolveLibraryRoot`). It is incremental and diff-based:
 - Changed novels are upserted in place, so `chapter_overrides` (manual
   title/position edits) survive rescans.
 - Novels whose folder is gone are removed, **except** synced ones (see S6).
+- A scanned novel without a `syncSourceUrl` is checked against `FictionLut`
+  by title (see S10): a folder that reached the library by some route other
+  than this app's own sync flow is still recognized as one of Rae ARK's own.
 - `novelId` is `UUID.nameUUIDFromBytes(root.uri + ":" + folder.uri)`, so
   nothing needs to persist a `DocumentFile` across restarts.
 - `scanSingleNovel` scans one folder (used by sync).
@@ -129,6 +132,17 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
   fiction (sanitized, de-duplicated) and the exact name is persisted in
   `syncFolderName`; relocation checks it first, then legacy hash/slug lookups.
   `sync()` checks for an existing folder before creating one.
+- **S10. Scan, not just Add/Sync, can earn `syncSourceUrl`.** A folder that
+  never went through this app's own sync flow (hand-copied in, restored from
+  another device, extracted from a shared zip) used to scan as purely local
+  forever, even when it really was one of Rae ARK's own — hiding "Notify me"
+  and "Check for updates". `ScannerImpl.buildNovelEntity` now runs the same
+  `FictionLut` lookup (S7) "Add fiction" uses; a match only ever fills in a
+  row whose `syncSourceUrl` is still null, never overriding an already-set or
+  deliberately-unlinked one. One known gap: a `SOURCE_GONE` unlink can in
+  theory be re-recognized if the bundled `FictionLut` data hasn't caught up
+  with the relay yet — flagged in `NovelDao.unlinkSyncSource`'s comment,
+  accepted as rare and self-correcting rather than fixed with a new column.
 
 ## Reading and local state
 

@@ -113,8 +113,8 @@ class ScannerImpl(private val context: Context) {
         // upserting any of them later succeeded. A caller doing stale-reconcile should
         // treat `false` here as "this listing may have failed" rather than "the
         // library now has zero novels" - see
-        // bugs/critical/scan-reconcile-treats-errors-as-absence.md Mechanism 2: a SAF
-        // provider can return a cursor representing a subset (including an empty one)
+        // docs/arkarium/implementation/engineering-backlog.md Rung 1 (Mechanism 2): a
+        // SAF provider can return a cursor representing a subset (including an empty one)
         // while still fetching results, with nothing in listFiles()'s return value to
         // tell that apart from a folder that genuinely has no children.
         onScanCompleted: suspend (sawAnyNovelFolders: Boolean) -> Unit = {},
@@ -126,8 +126,8 @@ class ScannerImpl(private val context: Context) {
         // novelIdFor() - see that function's doc comment. This exists so a caller can
         // mark the folder "seen" the instant it's found rather than only after its
         // whole per-novel pipeline succeeds - see
-        // bugs/critical/scan-reconcile-treats-errors-as-absence.md Mechanism 1: without
-        // this, a novel that throws anywhere downstream of being found is
+        // docs/arkarium/implementation/engineering-backlog.md Rung 1 (Mechanism 1):
+        // without this, a novel that throws anywhere downstream of being found is
         // indistinguishable, at onScanCompleted, from a novel whose folder was
         // genuinely deleted.
         onNovelFolderSeen: suspend (novelId: String) -> Unit = {},
@@ -249,8 +249,9 @@ class ScannerImpl(private val context: Context) {
         // really is one of Rae ARK's own is scanned as indistinguishable from a purely
         // local one, which is exactly what left the "Notify me" toggle disabled and
         // "Check for updates" missing on NovelDetailScreen for it - see
-        // docs/arkarium/proposal/bugs/other/notify-toggle-confirmation.md, "a second,
-        // different bug in the sync-detection path itself."
+        // docs/arkarium/implementation/engineering-backlog.md Rung 11 ("a second,
+        // different bug in the sync-detection path itself") and sync invariant S10 in
+        // docs/arkarium/foundational/architecture.md.
         // Recognize it the same way "Add fiction" does: FictionLut's own exact,
         // normalized match (Sync invariants S7) against the resolved title. A match
         // here only ever fills in what mergeNovelForRescan finds missing - it can't

@@ -106,7 +106,7 @@ class LibraryViewModel(
                 // that throws anywhere in that downstream pipeline is still marked
                 // seen, so onScanCompleted's stale-reconcile below can no longer treat
                 // "something about reading it failed" as "this novel doesn't exist" -
-                // see bugs/critical/scan-reconcile-treats-errors-as-absence.md Mechanism 1.
+                // see docs/arkarium/implementation/engineering-backlog.md Rung 1 (Mechanism 1).
                 onNovelFolderSeen = { novelId -> seenNovelIds.add(novelId) },
                 onDiscovered = { scanned, novelFolder ->
                     try {
@@ -144,8 +144,8 @@ class LibraryViewModel(
                 },
                 onScanCompleted = { sawAnyNovelFolders ->
                     val allNovels = db.novelDao().all()
-                    // See bugs/critical/scan-reconcile-treats-errors-as-absence.md
-                    // Mechanism 2: a SAF provider is allowed to hand back a partial or
+                    // See docs/arkarium/implementation/engineering-backlog.md Rung 1
+                    // (Mechanism 2): a SAF provider is allowed to hand back a partial or
                     // empty listing (still fetching results, a removable volume
                     // dropping mid-enumeration) with nothing to tell that apart from a
                     // folder that genuinely has zero children. Finding zero novel

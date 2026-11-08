@@ -1,6 +1,6 @@
 # Engineering review: findings and proposed work
 
-> **Kind:** proposal · **Status:** **partially decided** — F1, F6, F7, F8, F10, F11, F18, F20, F23 fixed in code; D2, D3, D4, D5, D6 decided (see each); D1 (the per-finding accept/defer/reject table below) still open; F22 (new from a follow-up review pass) open · **Verified:** 2026-11-08 @ (this patch)
+> **Kind:** proposal · **Status:** **partially decided** — F1, F6, F7, F8, F10, F11, F18, F20, F22, F23 fixed in code; F9 done in code at paragraph granularity (narrower than this doc's own direction, on-device verification still open); D2, D3, D4, D5, D6 decided (see each); D1 (the per-finding accept/defer/reject table below) still open · **Verified:** 2026-11-08 @ (this patch)
 > **Origin:** notes from a separate review session (code read plus web research), not an authoritative audit.
 > **Checked since:** each finding was re-read against the code on 2026-11-07. External guidance (library, platform, vendor behavior) was **not** re-checked except where a finding below says otherwise. The detail docs this file links to did not exist when this table was first written; they were filled in and F3 was corrected (see C3/C4) on the same date. A follow-up pass the same day added F22/F23 and recorded D2–D6; see each linked detail doc for what was re-verified for those.
 
@@ -31,7 +31,7 @@ Severity is the reviewer's judgment of impact if left alone.
 | F6 | Cancellation swallowed in the new-chapter worker | Med | V | **Fixed** (5426a3d) |
 | F7 | Unreadable chapter is shown as an empty chapter | Med | V | **Fixed** (5426a3d, then sealed result type + retry screen) — [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) rung 7 |
 | F8 | Two code paths create separate `AppDatabase` instances | Low | V, E | **Fixed** — [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) rung 3 |
-| F9 | Reading position is a scroll fraction, so it drifts with font, spacing, width | Med | V, I | [`reader-playback.md`](reader-playback.md) |
+| F9 | Reading position is a scroll fraction, so it drifts with font, spacing, width | Med | V, I | **Done in code** (paragraph-granularity anchor, narrower than planned; backlog rung 14) — [`reader-playback.md`](reader-playback.md) |
 | F10 | TTS lives in a composable, so it dies on rotation or leaving the reader | High | V | **Fixed** (service-based playback, 823c914); controls surface still open — [`reader-playback.md`](reader-playback.md) |
 | F11 | `splitForTts` hard-cuts and only breaks on `\n . ! ?` | Low | V, I | **Fixed** (unit-tested; not run on a device) — [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) rung 6 |
 | F12 | R8 off, no baseline profile, no benchmarks, old Kotlin/Compose toolchain | Med | V | [`performance.md`](performance.md) |
@@ -44,15 +44,16 @@ Severity is the reviewer's judgment of impact if left alone.
 | F19 | Typography: justified text, no hyphenation, uncapped line width | Low | V, I | [`animation-and-polish.md`](animation-and-polish.md) |
 | F20 | Some icons have `contentDescription = null` | Low | V | **Audited**, 4 fixes, no on-device screen-reader pass — [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) rung 8 |
 | F21 | Functional gaps: read state on rows, single-scroll chapter list, sleep timer, immersive mode, full-text search | n/a | V | [`ideas.md`](ideas.md) |
-| F22 | `TtsPlaybackService` requests no audio focus, doesn't handle `ACTION_AUDIO_BECOMING_NOISY`, has no `MediaSession` | Med | V | Open — [`reader-playback.md`](reader-playback.md) |
+| F22 | `TtsPlaybackService` requests no audio focus, doesn't handle `ACTION_AUDIO_BECOMING_NOISY`, has no `MediaSession` | Med | V | **Fixed** (backlog rung 10; notification transport buttons still left) — [`reader-playback.md`](reader-playback.md) |
 | F23 | Room throws uncaught on a version **downgrade** (older APK over newer data); only recovery shown to the user is a crash, and clearing app data to recover destroys the same data F1's fix was meant to protect | Med | V | **Fixed** (backlog rung 2) — [`data-safety.md`](data-safety.md) |
 
-See [`bugs/critical/`](bugs/critical/README.md) for a related but separate
-finding from the same follow-up pass: a scan can cascade-delete a local
-novel's history on an *ordinary* scan (no folder re-pick, no version change)
-when a novel is skipped or the folder listing comes back empty. It's filed
-as a bug rather than a numbered finding here because it's a correctness bug
-in already-shipped code, not an open design question.
+A related but separate finding from the same follow-up pass — a scan could
+cascade-delete a local novel's history on an *ordinary* scan (no folder
+re-pick, no version change) when a novel was skipped or the folder listing
+came back empty — was filed as a bug rather than a numbered finding here,
+since it was a correctness bug in already-shipped code, not an open design
+question. It's fixed; see
+[`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) rung 1.
 
 ## Corrections
 

@@ -1,6 +1,6 @@
 # Reader position and TTS playback lifecycle
 
-> **Kind:** proposal · **Status:** F10 fixed in code, F9 and F22 open · **Verified:** 2026-11-07 @ b777145
+> **Kind:** proposal · **Status:** F10 and F22 fixed in code; F9 done in code at paragraph granularity, narrower than this doc's own direction (backlog rung 14) — on-device verification still open for all three · **Verified:** 2026-11-08 @ (this patch)
 > **Origin:** [`engineering-review.md`](engineering-review.md) F9, F10, F22. Related: the playback-controls gap in [`uiux.md`](uiux.md).
 
 ### F9. Reading position is stored as a scroll fraction, not an anchor
@@ -23,6 +23,17 @@ where a given fraction actually lands. The planned backend position-sync
 proposal ([`backend-social.md`](backend-social.md)) means this fraction would
 need to resolve to a sensible place on a *different* device's layout, which
 compounds the drift.
+
+**Fixed in code, narrower than this direction** (backlog rung 14): each
+paragraph is anchored by its raw-text offset and restored by scrolling to the
+paragraph whose offset matches a saved `CHAR_OFFSET` row, not by a
+line-level `TextLayoutResult.getLineForOffset`/`getLineTop` restore within a
+single `Text` composable spanning the chapter — see the backlog rung for why
+(each paragraph is its own composable here) and `ReaderPosition.kt`'s doc
+comment for the detail. The snippet fallback below is stored
+(`positionSnippet`) but not yet checked against the live chapter body before
+restoring. Original direction, kept for the record of what a finer,
+mid-paragraph restore would still need:
 
 **Direction:** store a character offset into the chapter's text plus a short
 surrounding-text snippet (before/after a few words), the same shape Readium's
@@ -80,12 +91,15 @@ whether the service's process genuinely survives a config change on real
 hardware, and whether the `mediaPlayback` notification behaves consistently
 across OEM skins.
 
-**Sequencing:** F9 (anchor-based position) is unaffected by this fix and
-remains open. `engineering-review.md`'s suggested order still treats F9 and
-the controls/highlight work in `uiux.md` as one coordinated change with
-F10 — the chunk index ↔ text-offset mapping the service's queue uses is the
-same mapping F9's anchor needs to restore a position precisely, so building
-F9 separately risks two slightly different position representations.
+**Sequencing:** F9 (anchor-based position, now done — see above) was
+unaffected by this fix. `engineering-review.md`'s suggested order treated F9
+and the controls/highlight work in `uiux.md` as one coordinated change with
+F10, on the theory that the chunk index ↔ text-offset mapping the service's
+queue uses is the same mapping F9's anchor needs to restore a position
+precisely — worth rechecking once the controls/highlight work (rungs 5–6 of
+[`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md))
+is built, since F9 landed with the paragraph-level anchor above rather than
+that mapping.
 
 ### F22. `TtsPlaybackService` requests no audio focus and has no `MediaSession`
 
