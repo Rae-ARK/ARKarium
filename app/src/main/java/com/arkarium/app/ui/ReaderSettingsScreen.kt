@@ -51,10 +51,15 @@ import com.arkarium.app.data.ReadingModeDefault
 // that screen's own doc comment and design-notes.md's "Settings is an
 // index; each option is its own page".
 //
-// This page is the one and only place reader settings are changed. The
-// in-reader "Reader Preferences" pill used to open a second copy of size,
-// spacing and mode; it now just opens this page, so there is one way to do each
-// thing. Font family is a tappable row that opens a card of font options.
+// This page is the one and only place the "set and forget" reader settings are
+// changed - font family, brightness (opt-in + level), keep-screen-on and
+// fullscreen. Size/spacing/mode and read-aloud speed are deliberately NOT here:
+// those are adjusted live, in-session, from the in-reader "Reader Preferences"
+// pill's own panel (see ReaderScreen's showPreferences), which never writes back
+// to this page - this page only sets the *default* each new reading session
+// seeds those from. So pill and page stay two separate surfaces with no option
+// ever shown on both. Font family is a tappable row that opens a card of font
+// options.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReaderSettingsScreen(

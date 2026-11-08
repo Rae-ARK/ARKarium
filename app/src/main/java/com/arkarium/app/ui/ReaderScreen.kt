@@ -48,6 +48,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -395,6 +396,16 @@ fun ReaderScreen(
     // pill) takes this screen out of composition, and plain `remember` state does not
     // survive that - the reader used to come back out of immersive mode every time.
     val showControls = rememberSaveable { mutableStateOf(true) }
+
+    // Reader Preferences pill and Reader settings page are two separate surfaces, not
+    // one: this is the pill's own open/closed state for its in-reader panel (Text
+    // size/Spacing/Mode/read-aloud speed - the ones a reader adjusts live, in-session,
+    // per reader-settings.md). It never writes to Settings > Reader and Settings >
+    // Reader never writes to it; the two meet only at the *default* fontSize/lineHeight/
+    // readingMode seed above, same "default vs this session's live override" split as
+    // before. Font family, brightness and the always-on toggles stay Settings-only (see
+    // ReaderSettingsScreen) so no option is ever shown in both places.
+    val showPreferences = remember { mutableStateOf(false) }
 
     // reader-settings.md's Full-screen mode section: hides the system status
     // and navigation bars (not just ARKarium's own chrome) while the reader
@@ -857,15 +868,178 @@ fun ReaderScreen(
                 .animateContentSize()
                 .padding(horizontal = 16.dp, vertical = 16.dp)
         ) {
-            // The size/spacing/mode/speed/brightness controls that used to open as a
-            // panel here are gone: every one of them is now set on the Reader settings
-            // page (and read-aloud speed on the TTS settings page), so there is exactly
-            // one place to change them. The pill below just takes the reader there.
+            // The pill's own panel: Text size/Spacing/read-aloud Speed/Mode, adjusted
+            // live for this session only (see showPreferences's doc comment above) and
+            // never written back to Settings > Reader. Also requires showControls (if a
+            // reader had this open and then went immersive, it used to stay floating
+            // over the text with no pill left to close it with - the pill itself is
+            // gated on showControls too, just below). Leaving showPreferences itself
+            // untouched means the panel reopens exactly as left once the reader leaves
+            // immersive mode again, rather than forgetting it was open.
+            if (showPreferences.value && showControls.value) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(backgroundColor)
+                        .padding(16.dp)
+                ) {
+                    // Font size control. A slider, matching Spacing/Speed below rather
+                    // than a +/- stepper - a stepper reads oddly once you know the value
+                    // is bounded (12..28) rather than open-ended, and a slider shows the
+                    // bound instead of hiding it.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Text:", style = MaterialTheme.typography.labelSmall, color = textColor)
+                        Slider(
+                            value = fontSize.floatValue,
+                            onValueChange = { fontSize.floatValue = it },
+                            valueRange = 12f..28f,
+                            steps = 7, // 12,14,...,28 - 9 stops, 2pt increments
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp)
+                        )
+                        Text(
+                            "${fontSize.floatValue.toInt()}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textColor,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
 
-            // The pill itself - Royal Road-style rounded button, centered. Opens the
-            // Reader settings page.
+                    // Line height control
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Spacing:", style = MaterialTheme.typography.labelSmall, color = textColor)
+                        Slider(
+                            value = lineHeight.floatValue,
+                            onValueChange = { lineHeight.floatValue = it },
+                            valueRange = 1.0f..2.5f,
+                            steps = 10,
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(horizontal = 8.dp)
+                        )
+                        Text(
+                            "${String.format("%.1f", lineHeight.floatValue)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = textColor,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+
+                    // Read-aloud speed control. Only shown once the engine's available -
+                    // same gating as the TopAppBar play/stop button, since a speed
+                    // slider for a feature the device can't run would be a dead control.
+                    // Applies immediately via ChapterTtsState.setRate even mid-read.
+                    if (tts.isAvailable) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Speed:", style = MaterialTheme.typography.labelSmall, color = textColor)
+                            Slider(
+                                value = tts.speechRate,
+                                onValueChange = { tts.setRate(it) },
+                                valueRange = 0.5f..2.5f,
+                                steps = 7,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 8.dp)
+                            )
+                            Text(
+                                "${String.format("%.1f", tts.speechRate)}x",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = textColor,
+                                modifier = Modifier.padding(start = 8.dp)
+                            )
+                        }
+                    }
+
+                    // Font family and brightness are deliberately NOT here - they're
+                    // "set and forget" preferences that live only on the Reader settings
+                    // page (see ReaderSettingsScreen), so the same option is never shown
+                    // in both places. This panel only holds the ones a reader actually
+                    // adjusts mid-session.
+
+                    // Reading mode toggle
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Mode:", style = MaterialTheme.typography.labelSmall, color = textColor)
+                        ReadingMode.values().forEach { mode ->
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(2.dp)
+                                    .clickable { readingMode.value = mode },
+                                color = if (readingMode.value == mode)
+                                    MaterialTheme.colorScheme.primary
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(4.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    when (mode) {
+                                        ReadingMode.LIGHT -> Icon(
+                                            Icons.Default.Brightness7,
+                                            contentDescription = "Light mode",
+                                            modifier = Modifier.size(16.dp),
+                                            tint = if (readingMode.value == mode)
+                                                MaterialTheme.colorScheme.onPrimary
+                                            else
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        ReadingMode.SEPIA -> Text(
+                                            "📖",
+                                            fontSize = 12.sp
+                                        )
+                                        ReadingMode.DARK -> Icon(
+                                            Icons.Default.Brightness4,
+                                            contentDescription = "Dark mode",
+                                            modifier = Modifier.size(16.dp),
+                                            tint = if (readingMode.value == mode)
+                                                MaterialTheme.colorScheme.onPrimary
+                                            else
+                                                MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // The pill itself - Royal Road-style rounded button, centered. The main tap
+            // target toggles the panel above (quick, in-session, live) - it's a single
+            // persistent affordance, not a one-shot navigation. The small gear beside it
+            // is the only way from here into the Reader settings page (font family,
+            // brightness, keep-screen-on, fullscreen - the "set and forget" ones), so the
+            // two stay separate surfaces with no option shown on both.
             //
-            // Non-immersive only (bottomPill == PREFERENCES): the settings aren't
+            // Non-immersive only (bottomPill == PREFERENCES): font/spacing/mode aren't
             // needed while immersed. In immersive mode this slot belongs to the
             // read-aloud controls pill instead (TtsControlsBar, below) - the two swap
             // places with a water ripple (see WaterRipple.kt) rather than showing
@@ -879,13 +1053,13 @@ fun ReaderScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Surface(
-                        modifier = Modifier.clickable { onOpenReaderSettings() },
+                        modifier = Modifier.clickable { showPreferences.value = !showPreferences.value },
                         color = MaterialTheme.colorScheme.primary,
                         shape = RoundedCornerShape(50),
                         shadowElevation = 4.dp
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
+                            modifier = Modifier.padding(start = 20.dp, end = 8.dp, top = 10.dp, bottom = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -895,6 +1069,17 @@ fun ReaderScreen(
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
+                            IconButton(
+                                onClick = onOpenReaderSettings,
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(
+                                    Icons.Filled.Settings,
+                                    contentDescription = "Reader settings",
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }

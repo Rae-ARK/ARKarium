@@ -27,6 +27,13 @@ object ReadingStats {
     // they skip, etc.) without that meaning they didn't actually finish it.
     const val COMPLETION_THRESHOLD = 0.9f
 
+    // True once `progress` (0f..1f, a fraction of the chapter) has crossed
+    // COMPLETION_THRESHOLD. A tiny wrapper, but it's the one place that fraction is
+    // compared against the threshold, so a caller never has to know the comparison is
+    // `>=` rather than `>`, or re-derive the fraction itself - see
+    // MainActivity.saveReadingProgress, the only caller.
+    fun isCompletionThreshold(progress: Float): Boolean = progress >= COMPLETION_THRESHOLD
+
     private const val DATE_PATTERN = "yyyy-MM-dd"
 
     // A fresh formatter per call rather than a shared companion-object instance:
