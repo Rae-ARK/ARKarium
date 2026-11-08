@@ -176,6 +176,16 @@ class MainActivity : ComponentActivity() {
     // Activity recreation (any config change, not just rotation), replaying the
     // splash and its audio every time. rememberSaveable survives recreation the same
     // way the rest of the Activity's saved instance state does.
+    // Set when the "Continue Reading" static app shortcut (long-press the launcher
+    // icon - see res/xml/shortcuts.xml) is tapped. Mirrors pendingNotificationNovelId
+    // immediately below: resolution is deferred to renderMainContent's LaunchedEffect
+    // rather than done here, because this can arrive as the cold-start intent before
+    // startScan (kicked off later in onCreate) has populated `novels`, and because
+    // which novel to resume isn't known yet either - unlike a notification tap, the
+    // shortcut doesn't carry a novel id, it means "whichever novel reading_progress
+    // says was read most recently".
+    private val pendingContinueReadingShortcut = mutableStateOf(false)
+
     // Set when a "new chapter" notification is tapped (see onNewIntent/handleNotificationIntent
     // below) and read by the LaunchedEffect in renderMainContent that navigates to it -
     // null the rest of the time. Kept as Activity state rather than acted on directly
@@ -410,10 +420,22 @@ class MainActivity : ComponentActivity() {
         pendingNotificationNovelId.value = novelId
     }
 
+    // Reads the "Continue Reading" static shortcut's launch extra (see
+    // EXTRA_CONTINUE_READING_SHORTCUT below and res/xml/shortcuts.xml) and stashes it
+    // for renderMainContent's LaunchedEffect to resolve - see
+    // pendingContinueReadingShortcut's own doc comment. A no-op for any intent
+    // without that extra (a plain launcher tap, a notification tap, or an
+    // onNewIntent delivery from something else entirely).
+    private fun handleShortcutIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(EXTRA_CONTINUE_READING_SHORTCUT, false) != true) return
+        pendingContinueReadingShortcut.value = true
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleNotificationIntent(intent)
+        handleShortcutIntent(intent)
     }
 
     // resolveMissingFolderBySyncing/resolveByRemovingFromLibrary/
@@ -468,6 +490,13 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val CRASH_PREFS = "arkarium_crash_info"
         private const val CRASH_KEY = "last_crash"
+        // Extra carried by the "Continue Reading" static app shortcut's launch intent
+        // (see res/xml/shortcuts.xml's <extra>) - true marks "this launch/onNewIntent
+        // came from that shortcut", read back by handleShortcutIntent. Not private:
+        // referenced from res/xml/shortcuts.xml indirectly via its literal string
+        // value, so the two must be kept in sync by hand - there's no way for a
+        // manifest-declared shortcut's <extra> to reference a Kotlin constant.
+        const val EXTRA_CONTINUE_READING_SHORTCUT = "com.arkarium.app.EXTRA_CONTINUE_READING_SHORTCUT"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -567,6 +596,11 @@ class MainActivity : ComponentActivity() {
         // renderMainContent's LaunchedEffect to act on once startScan (kicked off
         // below) actually populates it.
         handleNotificationIntent(intent)
+
+        // Same deal as handleNotificationIntent immediately above, for a cold start
+        // from the "Continue Reading" static shortcut instead of a notification tap -
+        // see pendingContinueReadingShortcut's own doc comment.
+        handleShortcutIntent(intent)
 
         // Auto-scan on every cold launch, before the user has touched anything.
         // Custom folder OFF (the default): always resolves to the app's private storage
@@ -730,6 +764,39 @@ class MainActivity : ComponentActivity() {
                     // while already there.
                     navController.navigate("novelDetail/${target.id}") { launchSingleTop = true }
                     pendingNotificationNovelId.value = null
+                }
+
+                // Resolves and jumps straight into wherever the user last left off,
+                // once the "Continue Reading" static shortcut sets
+                // pendingContinueReadingShortcut (see handleShortcutIntent) AND
+                // `novels` has actually loaded - same two-key gating as the
+                // notification effect above, for the same reason (a cold start from
+                // the shortcut races startScan). recentNovelIds(1) is
+                // reading_progress's own "most recently updated" ordering (see
+                // ReadingProgressDao) - unlike Home's onContinueReading row below,
+                // which already knows which novel it's resuming, this entry point
+                // isn't scoped to any particular novel, so it resumes whichever one
+                // was read last, library-wide. Falls through to the Home screen (no
+                // navigation) when there's no reading history yet at all, same as the
+                // "forNovel is null" branch of onContinueReading further down.
+                LaunchedEffect(pendingContinueReadingShortcut.value, libraryViewModel.novels.size) {
+                    if (!pendingContinueReadingShortcut.value) return@LaunchedEffect
+                    // Still waiting on startScan to populate `novels` - leave the flag
+                    // set so this re-runs once libraryViewModel.novels.size changes,
+                    // instead of giving up on a race it can still win.
+                    if (libraryViewModel.novels.isEmpty()) return@LaunchedEffect
+                    val lastNovelId = db.readingProgressDao().recentNovelIds(1).firstOrNull()
+                    val novel = lastNovelId?.let { id -> libraryViewModel.novels.firstOrNull { it.id == id } }
+                    val lastProgress = novel?.let { db.readingProgressDao().forNovel(it.id) }
+                    val chapter = lastProgress?.let { db.chapterDao().findById(it.chapterId) }
+                    if (novel != null && chapter != null) {
+                        // Same loadNovelDetails-before-navigating-into-the-reader
+                        // sequencing as onContinueReading below, and for the same
+                        // reason - see its own comment on this.
+                        libraryViewModel.loadNovelDetails(novel)
+                        navController.navigate("reader/${novel.id}/${chapter.id}") { launchSingleTop = true }
+                    }
+                    pendingContinueReadingShortcut.value = false
                 }
 
                 if (showSplash.value) {

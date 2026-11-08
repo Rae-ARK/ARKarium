@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Everything else in the app (the app name included - see AndroidManifest.xml's
+     android:label) is hardcoded in Kotlin rather than routed through string
+     resources, so this file didn't exist before. It exists now only because
+     res/xml/shortcuts.xml's <shortcut> requires its labels to be @string
+     references, not inline text - the static-shortcuts schema doesn't allow a
+     literal android:shortcutShortLabel="Continue Reading" the way a manifest
+     android:label does. -->
+<resources>
+    <!-- Shown under the icon in the long-press shortcut menu - kept short, same
+         constraint the Android docs give for shortcutShortLabel (ideally under 10
+         characters so it doesn't truncate). -->
+    <string name="shortcut_continue_reading_short_label">Continue</string>
+    <!-- Shown instead of the short label when there's room for it (e.g. some
+         launchers' shortcut picker) - this is the one users actually read, so it
+         spells out what the shortcut does. -->
+    <string name="shortcut_continue_reading_long_label">Continue Reading</string>
+</resources>

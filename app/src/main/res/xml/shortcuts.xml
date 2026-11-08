@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Static app shortcuts, surfaced by long-pressing the launcher icon (API 25+ - see
+     the <meta-data> on MainActivity in AndroidManifest.xml). Just the one shortcut
+     for now: jump straight back into whatever the user was last reading. Its target
+     intent can't reference MainActivity.EXTRA_CONTINUE_READING_SHORTCUT directly
+     (there's no way for a manifest resource to read a Kotlin constant) - the literal
+     string below must be kept in sync with that constant by hand. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="continue_reading"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_continue_reading"
+        android:shortcutShortLabel="@string/shortcut_continue_reading_short_label"
+        android:shortcutLongLabel="@string/shortcut_continue_reading_long_label">
+        <!-- android:action is required by the <intent> schema but otherwise unused
+             here - MainActivity dispatches on the EXTRA_CONTINUE_READING_SHORTCUT
+             extra below, not on the action string, the same way the "new chapter"
+             notification's PendingIntent (see NewChapterNotifier) is dispatched on
+             EXTRA_NOVEL_ID rather than its action. ACTION_VIEW is simply the
+             conventional choice for "open the app to a specific place" shortcuts. -->
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.arkarium.app"
+            android:targetClass="com.arkarium.app.MainActivity">
+            <extra
+                android:name="com.arkarium.app.EXTRA_CONTINUE_READING_SHORTCUT"
+                android:value="true" />
+        </intent>
+    </shortcut>
+</shortcuts>
