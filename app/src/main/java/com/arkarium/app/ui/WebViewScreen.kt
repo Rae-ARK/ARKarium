@@ -89,6 +89,27 @@ fun WebViewScreen(
                     }
                     loadUrl(url)
                 }
+            },
+            // WebView leak: this factory's WebView was never released - leaving
+            // composition (Back, or the Activity recreating on rotation, since nothing in
+            // the manifest opts this Activity out of that) just detached it from the view
+            // hierarchy. AndroidView never called WebView.destroy() for it, and per
+            // Android's own guidance a WebView "should not outlive its host Activity" -
+            // skipping destroy() leaves its Chromium-backed native engine, JS context and
+            // DOM storage alive, pinning the Context passed into the factory above
+            // (an Activity leak) along with everything it holds. Fixed the way Android's
+            // own WebView-memory guidance (developer.android.com/develop/ui/views/layout/
+            // webapps/manage-webview-memory) spells out: detach from its parent first
+            // (a WebView keeps a reference to its host Activity context even once removed
+            // from the hierarchy, so this step is what actually lets that reference go),
+            // stop any in-flight load and drop navigation history, then destroy() - in
+            // that order, since destroying first and detaching after is the ordering the
+            // same guidance specifically warns can still leak.
+            onRelease = { webView ->
+                (webView.parent as? android.view.ViewGroup)?.removeView(webView)
+                webView.stopLoading()
+                webView.clearHistory()
+                webView.destroy()
             }
         )
     }
