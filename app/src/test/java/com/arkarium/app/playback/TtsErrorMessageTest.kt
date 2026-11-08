@@ -5,7 +5,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-// Rung 2 coverage for ttsErrorMessage (tts-settings-rework.md, D4): every
+// Coverage for ttsErrorMessage (design-notes.md's "A failed chunk stops the session"): every
 // TextToSpeech.ERROR_* code this app can see maps to a message, and the two network
 // codes specifically mention trying a local voice.
 class TtsErrorMessageTest {

@@ -1,6 +1,6 @@
 # Architecture
 
-> **Kind:** foundational · **Verified:** 2026-11-06 @ b4fcc2f · **Truth lives in:** `app/src/main/java/com/arkarium/app/`
+> **Kind:** foundational · **Verified:** 2026-11-08 @ (this patch) · **Truth lives in:** `app/src/main/java/com/arkarium/app/`
 
 Describes what is **built**. Unbuilt ideas live in [`../proposal/`](../proposal/README.md).
 If code and this file disagree, the code wins: fix this file in the same change.
@@ -159,11 +159,18 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
 
 ## Text-to-speech (as built)
 
-System `android.speech.tts.TextToSpeech` only (`ui/Tts.kt`, `rememberChapterTts`).
-No voices bundled; "Change voice" links to the system TTS setting. Chapter text
-is spoken in chunks with live rate (pill) and persisted defaults on
-`settings/tts`: default rate, pitch, auto-continue to next chapter, keep screen
-on while speaking (`PreferencesManager` keys `tts_*`). Multi-voice,
+System `android.speech.tts.TextToSpeech` only (`ui/Tts.kt`,
+`playback/TtsPlaybackService.kt`, `rememberChapterTts`); no engine switcher,
+"Change voice" (on `settings/tts`) still links to the system TTS setting.
+Chapter text is spoken in chunks (`splitForTts`, whole `BreakIterator`
+sentences packed per chunk) with live rate (pill) and persisted defaults on
+`settings/tts`: default rate, pitch, auto-continue to next chapter, keep
+screen on while speaking (`PreferencesManager` keys `tts_*`). The **voice**
+is chosen in-app on its own `settings/tts/voice` page (`TtsVoicePickerScreen`):
+one language at a time, favorites starred first (`tts_voice_name`,
+`tts_favorite_voices`), applied the moment the engine reports ready so a
+choice made before init finishes is never dropped. A chunk that fails stops
+the session and reports why instead of silently advancing. Multi-voice,
 character-aware reading is **not built**: see [`../proposal/tts-multivoice.md`](../proposal/tts-multivoice.md).
 
 ## Metadata and extras

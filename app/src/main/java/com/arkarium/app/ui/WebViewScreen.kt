@@ -30,7 +30,7 @@ import androidx.webkit.WebViewClientCompat
 // library's feature-detection APIs if this screen grows more configuration
 // later.
 //
-// Link policy (robustness.md F18): navigation stays inside this WebView only
+// Link policy (F18, engineering-review.md): navigation stays inside this WebView only
 // while it's on the same site the screen was opened to show (see
 // isSameSite below). Any other link - a different host, or a non-http(s)
 // scheme like mailto: or intent: - is handed to the system via ACTION_VIEW

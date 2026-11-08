@@ -54,7 +54,7 @@ class ChapterTtsState internal constructor() {
     var speechRate by mutableFloatStateOf(1.0f)
         internal set
 
-    // Step 3 of docs/arkarium/proposal/tts-voice-picker.md: mirrors
+    // The voice picker's state: mirrors
     // TtsPlaybackService.availableVoices/currentVoiceName the same way the properties
     // above mirror its speaking/available/paused state - pulled fresh in attach()
     // below, not pushed live mid-session (the engine's voice list doesn't change
@@ -65,7 +65,7 @@ class ChapterTtsState internal constructor() {
     var currentVoiceName by mutableStateOf<String?>(null)
         internal set
 
-    // Rung 2 (tts-settings-rework.md, D4): the message for the most recent chunk
+    // The message for the most recent chunk
     // failure, or null once consumed. ReaderScreen shows this once (Toast - no
     // Snackbar host exists today) and calls clearError() right after, the same
     // one-shot-event shape as a SnackbarHostState's showSnackbar, just without a
@@ -165,8 +165,8 @@ class ChapterTtsState internal constructor() {
     }
 
     // Pass-through to TtsPlaybackService.setVoice() - "push live" the same way
-    // setRate() does, per tts-voice-picker.md's UI sketch ("Selecting a row calls
-    // ChapterTtsState.setVoice() immediately if a service is attached"). Only
+    // setRate() does: selecting a row calls ChapterTtsState.setVoice() immediately
+    // if a service is attached. Only
     // advances currentVoiceName when the service actually resolved the name (its
     // own silent-no-op rule), so picking a voice that fails to resolve doesn't make
     // this controller claim a voice is active that the engine never actually set.
@@ -258,7 +258,7 @@ fun rememberChapterTts(): ChapterTtsState {
                 coroutineScope.launch {
                     val defaultRate = prefsManager.ttsDefaultRate.first()
                     val defaultPitch = prefsManager.ttsPitch.first()
-                    // tts-voice-picker.md Step 2/3: the voice list isn't populated until
+                    // The voice list isn't populated until
                     // the engine's onInit callback runs, which can land after or before
                     // this attach - svc.availableVoices is read fresh right after the
                     // seed call below rather than cached from the connection callback's

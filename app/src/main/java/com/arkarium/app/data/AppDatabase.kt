@@ -352,7 +352,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // F8 (engineering-backlog.md rung 3 / robustness.md): MainActivity and
+        // F8 (engineering-backlog.md rung 3): MainActivity and
         // NewChapterCheckWorker each used to call create() independently and get
         // back two live RoomDatabase instances in the same process - against
         // Room's own per-process-singleton guidance, and meaning the worker's

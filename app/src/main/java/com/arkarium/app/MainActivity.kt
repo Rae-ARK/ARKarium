@@ -677,8 +677,8 @@ class MainActivity : ComponentActivity() {
                 val ttsPitch = prefsManager.ttsPitch.collectAsState(initial = 1.0f)
                 val ttsAutoContinue = prefsManager.ttsAutoContinue.collectAsState(initial = false)
                 val ttsKeepScreenOn = prefsManager.ttsKeepScreenOn.collectAsState(initial = false)
-                // Step 4/5 of docs/arkarium/proposal/tts-voice-picker.md - collected here
-                // too, same reasoning as the four tts_* flows above, so the "Voice" row's
+                // Voice and favorites, per design-notes.md's "TTS settings split" - collected
+                // here too, same reasoning as the four tts_* flows above, so the "Voice" row's
                 // current-selection text doesn't flash null->real-value on first
                 // composition. The voice *list* itself (availableVoices) isn't a
                 // PreferencesManager flow - it comes from TtsPlaybackService via a
@@ -696,7 +696,7 @@ class MainActivity : ComponentActivity() {
                 val readerFullscreen = prefsManager.readerFullscreen.collectAsState(initial = false)
                 val readerBrightnessSliderEnabled = prefsManager.readerBrightnessSliderEnabled.collectAsState(initial = false)
                 val readerBrightness = prefsManager.readerBrightness.collectAsState(initial = -1f)
-                // Rung 5 of docs/arkarium/implementation/tts-settings-rework.md -
+                // Favorite voices (design-notes.md's "TTS settings split") -
                 // collected here too, same reasoning as ttsVoiceName above, so
                 // settings/tts/voice's stars don't flash empty before the real
                 // read lands.
@@ -1474,14 +1474,13 @@ class MainActivity : ComponentActivity() {
                         // Stage 3.2 (see docs/arkarium/foundational/design-notes.md): direct
                         // PreferencesManager access hoisted at the Activity, same
                         // pattern settings/splash above already uses - no
-                        // TtsSettingsViewModel. Stages 3.3-3.5 and
-                        // tts-voice-picker.md's Step 4 (below) wired this screen's
-                        // controls up to actually take effect, so this is no longer
+                        // TtsSettingsViewModel. Stages 3.3-3.5 and the voice
+                        // picker (below) wired this screen's controls up to
+                        // actually take effect, so this is no longer
                         // store-and-reflect only.
                         //
-                        // tts-voice-picker.md's Step 4: "bind TtsSettingsScreen to
-                        // TtsPlaybackService the same way rememberChapterTts() already
-                        // does for the reader" - rememberChapterTts() already is that
+                        // Binds TtsSettingsScreen to TtsPlaybackService the same way
+                        // rememberChapterTts() already does for the reader - that
                         // binding (ServiceConnection + BIND_AUTO_CREATE), so this reuses
                         // it directly rather than writing a second one. This composable
                         // leaves ReaderScreen's own rememberChapterTts() call (the one
@@ -1533,7 +1532,7 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/tts/voice") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Rung 4 of docs/arkarium/implementation/tts-settings-rework.md.
+                        // The voice page (design-notes.md's "TTS settings split").
                         // Binds its own ChapterTtsState the same way settings/tts above
                         // does - rememberChapterTts()'s DisposableEffect unbinds
                         // settings/tts's ChapterTtsState as this composable replaces it

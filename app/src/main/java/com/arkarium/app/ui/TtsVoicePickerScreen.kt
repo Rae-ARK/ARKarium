@@ -47,13 +47,13 @@ import com.arkarium.app.playback.toTtsVoiceInfo
 import com.arkarium.app.playback.withFavoritesFirst
 import java.util.Locale
 
-// Rung 4 of docs/arkarium/implementation/tts-settings-rework.md: a full
+// A full
 // `settings/tts/voice` page, replacing TtsSettingsScreen's old 420dp
 // AlertDialog (VoicePickerDialog/VoicePickerRow, now deleted). Reads the
 // reference screenshots' two-step flow ("Language" line opens a language
 // dialog, then one page of voices for that language) rather than one long
-// scrollable list of every voice at once - see tts-settings-rework.md's
-// "What the screenshots show".
+// scrollable list of every voice at once - matching a reference reader app's
+// language-then-voice flow.
 //
 // Also answers that doc's "Should the voice page have a play a sample
 // button?" open question: yes, and tapping a row both selects that voice
@@ -87,9 +87,9 @@ fun TtsVoicePickerScreen(
 
     // Sample-playback engine, owned by this page alone - deliberately not the
     // shared TtsPlaybackService (ui/Tts.kt's ChapterTtsState/rememberChapterTts),
-    // which tts-voice-picker.md's own "Decision: service-owned voice list, not
-    // a second TextToSpeech instance" section reserves for actual chapter
-    // playback. Previewing a voice here would otherwise have to borrow that
+    // which is reserved for actual chapter playback (TtsPlaybackService's own
+    // doc comment is explicit that it is the engine's sole owner, so nothing
+    // races its init). Previewing a voice here would otherwise have to borrow that
     // engine mid-preview, stomping whatever voice/rate a real read-aloud
     // session already had live. This instance only ever speaks SAMPLE_TEXT,
     // never a chapter, and is shut down the moment this screen leaves
@@ -184,8 +184,7 @@ fun TtsVoicePickerScreen(
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
             // Kept as the list's first row rather than folded into the
-            // language filter (it has no language of its own) - same
-            // resolution tts-settings-rework.md's open question suggested.
+            // language filter (it has no language of its own).
             item {
                 TtsVoiceRow(
                     title = "System default",
@@ -236,9 +235,9 @@ fun TtsVoicePickerScreen(
 // The device's languages first (already `languages`' own order, from
 // languagesOf), each shown by its display name - the reference screenshots'
 // "Language dialog" step. ARKarium only ever lists languages a voice is
-// actually available for (tts-settings-rework.md's rung 4 note on why the
-// reference's "Specify language" - every language the engine supports,
-// voice or not - isn't copied: that list would have empty pages here).
+// actually available for - a reference app's "Specify language" (every
+// language the engine supports, voice or not) isn't copied: that list
+// would have empty pages here.
 @Composable
 private fun LanguageDialog(
     languages: List<String>,

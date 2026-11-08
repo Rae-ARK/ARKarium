@@ -133,7 +133,7 @@ preview both need to inspect the same file set before anything is pushed.
 ### 5. Reader details
 
 - **TTS chunk granularity.** ARKarium's ~3800-character TTS chunks
-  (`ui/Tts.kt`'s `TTS_MAX_CHUNK_CHARS`, see `robustness.md` F11) already
+  (`ui/Tts.kt`'s `TTS_MAX_CHUNK_CHARS`, see `engineering-review.md` F11) already
   avoid the "sentence-at-a-time is choppy" complaint some peer apps' users
   raise — keep the chunk size, and highlight within a chunk rather than
   switching to sentence-level chunks.
