@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
@@ -39,8 +40,13 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.arkarium.app.navigation.AppBottomBar
+import com.arkarium.app.navigation.AppDestination
+import com.arkarium.app.navigation.isBottomBarRoute
+import com.arkarium.app.ui.NoticeBoardScreen
 import com.arkarium.app.ui.ChapterEditorScreen
 import com.arkarium.app.ui.AuthorPageScreen
 import com.arkarium.app.ui.HomeScreen
@@ -889,8 +895,48 @@ class MainActivity : ComponentActivity() {
                 // but unreadable in Dark theme (black-on-near-black). Routing the whole tree
                 // through Surface fixes it for every screen at once instead of patching each
                 // Text() call individually.
-                Surface(
+                // Home-screen rework (see navigation/AppBottomBar.kt's own doc comment):
+                // Home, Browse All Novels, Notice Board and Settings are now one
+                // persistent bottom bar instead of four separately-reached screens.
+                // currentBackStackEntryAsState is the standard Navigation-Compose way to
+                // know "what route is actually on screen right now" reactively - it's
+                // what both drives which tab is highlighted and decides whether the bar
+                // shows at all (isBottomBarRoute: only on the four tab destinations
+                // themselves, never NovelDetail/Reader/Author/any settings/* sub-page -
+                // see that function's own doc comment).
+                val currentBackStackEntry by navController.currentBackStackEntryAsState()
+                val currentRoute = currentBackStackEntry?.destination?.route
+
+                Scaffold(
                     modifier = Modifier.fillMaxSize(),
+                    containerColor = colorScheme.background,
+                    contentColor = colorScheme.onBackground,
+                    bottomBar = {
+                        if (isBottomBarRoute(currentRoute)) {
+                            AppBottomBar(
+                                currentRoute = currentRoute,
+                                onTabSelected = { destination ->
+                                    // Standard "switch tabs, don't push a new one every
+                                    // time" pattern: popUpTo the start destination with
+                                    // saveState so each tab's own back stack/scroll
+                                    // position is kept rather than torn down, restoreState
+                                    // brings that state back when the tab is revisited,
+                                    // and launchSingleTop stops repeated taps on the same
+                                    // tab from piling up duplicate entries.
+                                    navController.navigate(destination.route) {
+                                        popUpTo("home") { saveState = true }
+                                        launchSingleTop = true
+                                        restoreState = true
+                                    }
+                                }
+                            )
+                        }
+                    }
+                ) { innerPadding ->
+                Surface(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(innerPadding),
                     color = colorScheme.background,
                     contentColor = colorScheme.onBackground
                 ) {
@@ -1403,7 +1449,33 @@ class MainActivity : ComponentActivity() {
                                     onOpenTtsSettings = { navController.navigate("settings/tts") },
                                     // The "Reader Preferences" pill: one place for reader
                                     // settings. Forward nav so Back returns to this reader.
-                                    onOpenReaderSettings = { navController.navigate("settings/reader") }
+                                    onOpenReaderSettings = { navController.navigate("settings/reader") },
+                                    // Continue-Reading-loses-progress fix (see ReaderScreen's
+                                    // own doc comment on this parameter): same save as
+                                    // onBack/onPrevious/onNext above, just without any
+                                    // navigation attached, so ReaderScreen can call it
+                                    // opportunistically (on Activity pause, and once more on
+                                    // leaving composition) instead of only at an explicit
+                                    // in-app exit tap.
+                                    onPositionChanged = { position ->
+                                        lifecycleScope.launch {
+                                            saveReadingProgress(novelId, chapterId, position, content.length)
+                                        }
+                                    },
+                                    // Continue-Reading-loses-progress fix, part 2: the
+                                    // system/gesture Back action never ran onBack (see
+                                    // ReaderScreen's own doc comment on this parameter), so it
+                                    // never saved. Saves, then pops the back stack directly -
+                                    // the same thing NavController's own default
+                                    // OnBackPressedCallback would have done here - rather than
+                                    // routing through onBack's own navigate("home"), which
+                                    // would change where gesture Back lands versus today.
+                                    onSystemBack = { position ->
+                                        lifecycleScope.launch {
+                                            saveReadingProgress(novelId, chapterId, position, content.length)
+                                            navController.popBackStack()
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -1473,6 +1545,14 @@ class MainActivity : ComponentActivity() {
                                 navController.popBackStack()
                             }
                         )
+                    }
+                }
+
+                // Home-screen rework's fourth bottom-bar tab - a deliberate stub for now
+                // (see NoticeBoardScreen.kt's own doc comment and AppDestination.NOTICE_BOARD).
+                composable("noticeBoard") {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        NoticeBoardScreen()
                     }
                 }
 
@@ -1750,6 +1830,7 @@ class MainActivity : ComponentActivity() {
                 }
                 } // closes NavHost
                 } // closes Surface
+                } // closes Scaffold
 
                 when (val state = metadataViewModel.metadataSearchState.value) {
                     is MetadataSearchState.Loading -> {

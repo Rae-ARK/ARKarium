@@ -367,8 +367,9 @@ fun ReaderSettingsScreen(
                         ) {
                             Text("Full-screen mode", style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                "Hides the status and navigation bars too, " +
-                                    "not just ARKarium's own top bar.",
+                                "Hides the status and navigation bars while " +
+                                    "you're reading - swipe from the edge to " +
+                                    "reveal them for a moment.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )

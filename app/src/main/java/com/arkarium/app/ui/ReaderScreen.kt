@@ -87,7 +87,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
@@ -323,7 +327,37 @@ fun ReaderScreen(
     // TtsControlsBar below. No-op by default so this stays source-compatible with any
     // other call site, same rationale as onAuthorClick's own default.
     onOpenTtsSettings: () -> Unit = {},
-    onOpenReaderSettings: () -> Unit = {}
+    onOpenReaderSettings: () -> Unit = {},
+    // Continue-Reading-loses-progress fix (see the lifecycle DisposableEffect and
+    // BackHandler further down, near currentAnchor()): onBack/onBackToFiction/
+    // onPrevious/onNext were the *only* places progress ever got saved, and all four
+    // are in-app taps. The system/gesture Back action never called any of them - it
+    // just let NavController pop its back stack on its own - and nothing at all ran
+    // when the Activity was paused or the process was killed in the background (the
+    // OS reclaiming memory while the app is backgrounded, a plain screen-off, or
+    // `MainActivity` simply being recreated). A reader who used gesture-nav Back, or
+    // who left the app any way other than tapping the in-app arrow/Previous/Next and
+    // got swept away by any of those, had whatever they'd read since their last tap
+    // silently discarded - "Continue Reading" would reopen at the last *tapped* exit,
+    // not the last *read* position, which is what "it gets lost" and "restarting the
+    // app resets it" were describing. onPositionChanged is the fix: a no-op-by-default
+    // callback the caller wires to the same per-chapter save onBack already uses, but
+    // without any navigation attached, so it's safe to call opportunistically - on
+    // every Activity pause and right before a system Back is allowed to proceed -
+    // rather than only at an explicit in-app exit.
+    onPositionChanged: (ReaderPosition) -> Unit = {},
+    // Continue-Reading-loses-progress fix, part 2 (see the BackHandler near
+    // currentAnchor()): the system/gesture Back action bypassed the TopAppBar's own
+    // Back arrow entirely - NavController installs its own OnBackPressedCallback that
+    // pops its back stack directly, so system Back never ran onBack and never saved
+    // anything. Deliberately a separate callback from onBack rather than reusing it:
+    // onBack always navigates to Home (see its own doc comment - an explicit, existing
+    // design choice for the in-app arrow), while system/gesture Back is expected to go
+    // wherever the back stack naturally leads (NovelDetail, Home, whatever this reader
+    // was opened from) - conflating the two would silently change where gesture-nav
+    // Back lands. No-op by default so this stays source-compatible with any other call
+    // site, same as onBack's sibling callbacks.
+    onSystemBack: (ReaderPosition) -> Unit = {}
 ) {
     // reader-settings.md's "cheap" batch: these four used to be hardcoded/
     // in-session-only `remember` state with no persistence at all. They're
@@ -474,48 +508,57 @@ fun ReaderScreen(
     val showPreferences = remember { mutableStateOf(false) }
 
     // reader-settings.md's Full-screen mode section: hides the system status
-    // and navigation bars (not just ARKarium's own chrome) while the reader
-    // is in immersive mode (showControls false) and this opt-in is on;
-    // restores them on every exit path - Back, Previous/Next, navigating to
-    // settings/tts mid-read-aloud, and leaving the reader entirely - since
-    // all of those tear down this composition the same way, which is what
-    // onDispose below runs for. transient-bars-by-swipe (BEHAVIOR_SHOW_
-    // TRANSIENT_BARS_BY_SWIPE) lets a reader still pull the bars back
-    // temporarily with an edge swipe instead of being fully locked out.
+    // and navigation bars (not just ARKarium's own chrome) for as long as the
+    // setting is on, restoring them on every exit path - Back, Previous/Next,
+    // navigating to settings/tts mid-read-aloud, and leaving the reader
+    // entirely - since all of those tear down this composition the same way,
+    // which is what onDispose below runs for. transient-bars-by-swipe
+    // (BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE) lets a reader still pull the
+    // bars back temporarily with an edge swipe instead of being fully locked
+    // out.
     //
-    // Display cutout (notch / camera hole): full-screen + immersive, in *either*
+    // PREVIOUS BUG (the one this replaces): this used to be gated on
+    // `fullscreenEnabled && !showControls.value` - i.e. the system bars only
+    // hid once the reader was *also* put into tap-to-hide-chrome ("immersive")
+    // mode. That made the switch in Reader settings look broken: turning it
+    // on and going back to a chapter changed nothing until the reader also
+    // discovered the separate, undocumented tap gesture, and even then
+    // `showControls` is `rememberSaveable` *per back-stack entry* - Previous/
+    // Next replace the reader's route with a brand-new entry
+    // (`popUpTo(...) { inclusive = true }` in MainActivity), which has no
+    // saved state of its own, so every page turn silently reset showControls
+    // to `true` and dropped straight back out of full-screen. Tying this
+    // effect to `fullscreenEnabled` alone - not `showControls` - fixes both:
+    // the setting now takes effect the moment it's turned on (and the moment
+    // the reader is opened with it already on), and it survives Previous/
+    // Next and the tap gesture alike, since neither one is in its key list
+    // anymore. ARKarium's own top bar/chrome still follows `showControls`
+    // exactly as before (see the tap handler and TopAppBar below) - only the
+    // *system* bars' visibility moved off of it.
+    //
+    // Display cutout (notch / camera hole): full-screen, in *either*
     // orientation, opts the window into drawing under the cutout (SHORT_EDGES) and
     // into edge-to-edge (see applyWindowLayout's own doc comment - this used to be
-    // landscape-only, which was the bug: portrait stayed on DEFAULT while immersive,
+    // landscape-only, which was a bug: portrait stayed on DEFAULT while full-screen,
     // so the vacated status-bar strip at the top was letterboxed instead of filled).
     // The root column below re-pads by the cutout's own insets (now all sides, not
     // just horizontal - the cutout sits on a side edge in landscape but at the top in
     // portrait) so text still never sits under the notch itself; that inset is zero
     // whenever the window isn't drawing into the cutout, so this costs nothing outside
-    // immersive mode.
-    //
-    // drawIntoCutout is now broader than edgeToEdge (see applyWindowLayout's doc
-    // comment, bug 2): it's also true in plain landscape whenever the full-screen
-    // setting is on, even with the system bars showing, so the letterboxed strip
-    // next to the cutout picks up the reading background instead of staying black.
-    // edgeToEdge (hiding the bars, drawing the app under them) stays tied to
-    // immersiveFullscreen only. isLandscape is a key so rotating while this setting
-    // is on but not immersive (bars showing) re-runs the effect and flips
-    // drawIntoCutout as the device turns, instead of only reacting to immersive
-    // mode toggling. requestApplyInsets inside applyWindowLayout (bug 1) is what
-    // makes that rotation - and leaving immersive mode - actually show up instead
-    // of leaving Compose padding by a stale inset.
+    // full-screen mode. isLandscape is still a key so rotating while full-screen is on
+    // re-runs the effect and keeps drawIntoCutout correct as the device turns.
+    // requestApplyInsets inside applyWindowLayout is what makes that rotation - and
+    // turning the setting off - actually show up instead of leaving Compose padding by
+    // a stale inset.
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    DisposableEffect(fullscreenEnabled, showControls.value, isLandscape) {
+    DisposableEffect(fullscreenEnabled, isLandscape) {
         val window = context.findActivity()?.window
         val view = window?.decorView
         val controller = if (window != null && view != null) {
             WindowCompat.getInsetsController(window, view)
         } else null
-        val immersiveFullscreen = fullscreenEnabled && !showControls.value
-        val drawIntoCutout = immersiveFullscreen || (fullscreenEnabled && isLandscape)
-        if (immersiveFullscreen) {
+        if (fullscreenEnabled) {
             controller?.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             controller?.hide(WindowInsetsCompat.Type.systemBars())
@@ -523,7 +566,7 @@ fun ReaderScreen(
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
         if (window != null) {
-            applyWindowLayout(window, edgeToEdge = immersiveFullscreen, drawIntoCutout = drawIntoCutout)
+            applyWindowLayout(window, edgeToEdge = fullscreenEnabled, drawIntoCutout = fullscreenEnabled)
         }
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
@@ -678,6 +721,44 @@ fun ReaderScreen(
             ?.key
             ?: (currentProgress() * content.length).toInt().coerceIn(0, content.length)
         return ReaderPosition(charOffset, ReaderPosition.snippetFrom(content, charOffset))
+    }
+
+    // Continue-Reading-loses-progress fix, part 1: save on every Activity pause, not
+    // just on an explicit in-app exit tap. ON_PAUSE (not ON_STOP) because it's the
+    // last callback guaranteed to run before the process can be killed in the
+    // background - screen-off, Home/Recents, an incoming call, or the OS reclaiming
+    // memory all pass through it, and it fires well before a config change finishes
+    // tearing this composition down too. onDispose also calls it once more, covering
+    // the plain in-composition exits that *don't* flow through onBack/onPrevious/
+    // onNext - e.g. the app process dying between ON_PAUSE and this composable
+    // actually leaving composition - and because re-saving the same or a
+    // further-along anchor on an ordinary exit is harmless (ReadingProgressDao.upsert
+    // is keyed one row per novel, so this never creates a duplicate or stale-wins
+    // race against onBack's own save, which always runs after this one on a tap).
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, chapter.id) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                onPositionChanged(currentAnchor())
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            onPositionChanged(currentAnchor())
+        }
+    }
+
+    // Continue-Reading-loses-progress fix, part 2: hands the anchor to onSystemBack
+    // (see its own doc comment) instead of calling the platform dispatcher again from
+    // inside this callback - re-invoking onBackPressedDispatcher.onBackPressed() here
+    // would just call this same BackHandler right back (it's still the topmost
+    // enabled callback until this lambda returns), looping forever instead of
+    // actually leaving. The caller's onSystemBack does the real navigation
+    // (`navController.popBackStack()`), same as NavController's own default
+    // OnBackPressedCallback would have, just with a save first.
+    BackHandler(enabled = true) {
+        onSystemBack(currentAnchor())
     }
 
     // Rough page estimate for the progress readout: ~2000 characters per "page",
