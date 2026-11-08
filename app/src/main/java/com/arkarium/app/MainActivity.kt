@@ -96,6 +96,7 @@ import com.arkarium.app.navigation.SyncResolutionReason
 import com.arkarium.app.navigation.SyncResolutionState
 import com.arkarium.app.ui.theme.colorSchemeFor
 import com.arkarium.app.ui.theme.resolveTheme
+import com.arkarium.app.util.Haptics
 import com.arkarium.app.viewmodel.LibraryViewModel
 import com.arkarium.app.viewmodel.MetadataViewModel
 import com.arkarium.app.viewmodel.SettingsViewModel
@@ -380,6 +381,12 @@ class MainActivity : ComponentActivity() {
                     readAt = now
                 )
             )
+            // Micro-haptics (util/Haptics.kt): fires once per chapter actually
+            // finished, same gate as the read-event upsert just above - not once per
+            // scroll tick or per saveReadingProgress call, both of which this
+            // threshold check already protects against (see the comment on this
+            // function's own call sites).
+            Haptics.confirm(this@MainActivity)
         }
         libraryViewModel.refreshRecentlyRead()
     }

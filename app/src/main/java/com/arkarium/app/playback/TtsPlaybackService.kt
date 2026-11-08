@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.arkarium.app.MainActivity
 import com.arkarium.app.R
+import com.arkarium.app.util.Haptics
 
 // Android's TextToSpeech.speak() silently truncates (or on some engines rejects
 // outright) input longer than TextToSpeech.getMaxSpeechInputLength() - around 4000
@@ -658,6 +659,9 @@ class TtsPlaybackService : Service() {
         registerNoisyReceiver()
         updateMediaSession()
         listener?.onSpeakingChanged(true)
+        // Micro-haptics (util/Haptics.kt) - fires only once audio focus was actually
+        // granted and the session is really starting, not on the early return above.
+        Haptics.tick(this)
         speakNextChunk(TextToSpeech.QUEUE_FLUSH)
     }
 
@@ -684,6 +688,10 @@ class TtsPlaybackService : Service() {
         listener?.onPausedChanged(false)
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
+        // Micro-haptics (util/Haptics.kt) - the explicit stop this function is (see
+        // its own doc comment above); pause doesn't call stop() so this doesn't also
+        // fire every time the user pauses.
+        Haptics.tick(this)
     }
 
     // Pause is not a TextToSpeech feature (see uiux.md's playback-controls entry);

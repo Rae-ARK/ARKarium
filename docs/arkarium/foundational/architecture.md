@@ -258,6 +258,32 @@ choice made before init finishes is never dropped. A chunk that fails stops
 the session and reports why instead of silently advancing. Multi-voice,
 character-aware reading is **not built**: see [`../proposal/tts-multivoice.md`](../proposal/tts-multivoice.md).
 
+## Micro-haptics
+
+`util/Haptics.kt` - one shared object, two one-shot `Vibrator.vibrate()`
+calls (`confirm`, a short double-click; `tick`, a single short pulse), each
+fired from the call site that owns the relevant state transition rather than
+from a View/composable's `HapticFeedbackConstants`, since two of the three
+sites below aren't composables:
+
+- **Chapter complete**: `confirm`, from `MainActivity.saveReadingProgress`'s
+  `ReadingStats.isCompletionThreshold` branch - the same gate that upserts
+  `ChapterReadEventEntity`, so this fires once per chapter actually finished,
+  not per scroll tick or per `saveReadingProgress` call.
+- **Sync done**: `confirm`, from `SyncViewModel.syncAllRaeArkNovels`'s
+  `syncAllState.value = SyncAllState.Done(...)`. Not fired on
+  `SyncAllState.Error` - a buzz on failure would read as confirmation, not
+  warning.
+- **TTS session start/stop**: `tick`, from `TtsPlaybackService.start()` (after
+  audio focus is granted, not on the early-return paths) and `.stop()` (the
+  explicit stop `stop()` already is, per its own doc comment - `pause()` goes
+  through `pauseInternal` instead, so pausing doesn't also buzz).
+
+`VIBRATE` is a normal, install-time-granted permission (`AndroidManifest.xml`);
+nothing to prompt for at runtime. No vibrator on the device (e.g. some
+tablets) is a no-op, not a crash - `Haptics` returns null and every caller
+already just returns past that.
+
 ## Metadata and extras
 
 - `GoogleBooksMetadataProvider` suggests metadata the user can apply; once
