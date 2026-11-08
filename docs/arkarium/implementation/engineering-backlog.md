@@ -230,10 +230,15 @@ opens a card of eight options, each previewed in its own face - all Android syst
 families (Serif, Sans, Sans light, Sans medium, Condensed, Monospace, Casual) plus the
 existing Dyslexia-friendly, so no font files are bundled. Stored names are unchanged.
 
-**Full-screen and the notch:** while full-screen + immersive + **landscape**, the window now
-draws into the display cutout (`SHORT_EDGES`) and stops fitting itself inside the system
-insets, so the background covers the whole screen; the page is re-padded by the cutout's own
-horizontal insets only, so text never sits under the notch. Portrait and reverse portrait are
-left alone, as the cutout is at the top there and the status bar is already hidden.
+**Full-screen and the notch:** while full-screen + immersive, the window now stops fitting
+itself inside the system insets (`setDecorFitsSystemWindows(window, false)`) in **every**
+orientation, so the background covers the whole screen once the bars are hidden - **fixed**:
+this used to only happen in landscape (tied to the cutout-draw flag below), which meant
+portrait full-screen - the common case - hid the bars but left their space reserved as
+empty, so the screen never actually went full. In landscape specifically, the window also
+draws into the display cutout itself (`SHORT_EDGES`); the page is re-padded by the cutout's
+own horizontal insets only, so text never sits under the notch. Portrait and reverse portrait
+don't need the cutout-draw part, since the cutout is at the top there and the status bar is
+already hidden - but now get the `setDecorFitsSystemWindows(false)` part same as landscape.
 Everything is restored on every exit path. Needs checking on a notched device, in both
-landscape directions.
+landscape directions and portrait.

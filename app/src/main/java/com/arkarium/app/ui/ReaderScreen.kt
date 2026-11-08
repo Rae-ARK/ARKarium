@@ -193,12 +193,19 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
-// Switches the window between "fit inside the system insets, cutout letterboxed" (the
-// default, drawIntoCutout = false) and "draw edge to edge including under the display
-// cutout" (true) - see the full-screen block in ReaderScreen. layoutInDisplayCutoutMode
-// is API 28+; below that there is no cutout API and the default behavior is all there is.
-private fun applyCutoutLayout(window: android.view.Window, drawIntoCutout: Boolean) {
-    WindowCompat.setDecorFitsSystemWindows(window, !drawIntoCutout)
+// Two independent window-layout switches, previously conflated into one `drawIntoCutout`
+// flag that only went true in landscape - which meant portrait immersive full-screen
+// (the common case) left `setDecorFitsSystemWindows` at its legacy-fit default even
+// while the system bars were hidden, so the window kept reserving their space instead
+// of letting content fill it: hide() made the bars disappear, but the screen still
+// wasn't actually full. `edgeToEdge` is the fix - it now follows immersiveFullscreen
+// itself (any orientation), not just the landscape-cutout case, so content expands to
+// cover the vacated bar area in portrait too. `drawIntoCutout` stays landscape-only -
+// it is specifically about not letterboxing the display cutout, a separate concern
+// from whether the window fits system windows at all. layoutInDisplayCutoutMode is API
+// 28+; below that there is no cutout API and the default behavior is all there is.
+private fun applyWindowLayout(window: android.view.Window, edgeToEdge: Boolean, drawIntoCutout: Boolean) {
+    WindowCompat.setDecorFitsSystemWindows(window, !edgeToEdge)
     if (Build.VERSION.SDK_INT >= 28) {
         val params = window.attributes
         params.layoutInDisplayCutoutMode = if (drawIntoCutout)
@@ -421,13 +428,16 @@ fun ReaderScreen(
     // edge, and by default Android letterboxes it - the strip beside the cutout is
     // painted as a black bar and the app's content is fitted inside the rest, so
     // "full screen" wasn't. While full-screen + immersive + landscape, the window now
-    // opts in to drawing into the cutout area (SHORT_EDGES) and stops fitting itself
-    // inside the system insets, so the page background fills every pixel; the root
-    // column below then re-pads *only* by the cutout's own insets, so text still never
-    // sits under the notch itself. In portrait or reverse portrait none of this
-    // applies: the cutout is at the top, the status bar is hidden anyway in this mode,
-    // and nothing gains from drawing up there. Everything is put back (cutout mode
-    // DEFAULT, decor fitting on) on every exit path, same as the bars.
+    // opts in to drawing into the cutout area (SHORT_EDGES); the root column below then
+    // re-pads *only* by the cutout's own insets, so text still never sits under the
+    // notch itself. In portrait or reverse portrait the cutout mode itself doesn't
+    // matter - the cutout is at the top, the status bar is hidden anyway in this mode,
+    // and nothing gains from drawing *into the cutout specifically* up there - but the
+    // window still needs to stop fitting itself inside the system insets at all
+    // (edgeToEdge below), or the status/nav bar area stays reserved as empty space even
+    // once hidden; see applyWindowLayout's own doc comment for why that's a separate
+    // switch from the cutout mode and not implied by it. Everything is put back (not
+    // edge-to-edge, cutout mode DEFAULT) on every exit path, same as the bars.
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     DisposableEffect(fullscreenEnabled, showControls.value, isLandscape) {
         val window = context.findActivity()?.window
@@ -445,12 +455,12 @@ fun ReaderScreen(
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
         if (window != null) {
-            applyCutoutLayout(window, drawIntoCutout)
+            applyWindowLayout(window, edgeToEdge = immersiveFullscreen, drawIntoCutout = drawIntoCutout)
         }
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
             if (window != null) {
-                applyCutoutLayout(window, false)
+                applyWindowLayout(window, edgeToEdge = false, drawIntoCutout = false)
             }
         }
     }
