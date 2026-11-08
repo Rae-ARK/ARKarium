@@ -20,7 +20,7 @@ class DatabaseDowngradeException(message: String) : IllegalStateException(messag
 // list actually reaches it. @Database below reads it from here - bump this (and add the
 // matching MIGRATION_n_m + a committed app/schemas/.../n.json) together, never the
 // annotation alone.
-const val APP_DATABASE_VERSION = 13
+const val APP_DATABASE_VERSION = 14
 
 // @Database must sit directly above the RoomDatabase subclass it annotates - an
 // annotation binds to the very next declaration, and with DatabaseDowngradeException's
@@ -288,13 +288,29 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v13 to v14: adds the position_snippet column reading_progress
+        // needs for rung 14 (F9, docs/arkarium/proposal/reader-playback.md -
+        // ReaderPosition.kt). Purely additive, nullable, no default to backfill - every
+        // existing row is positionType PERCENTAGE and stays that way; it just gets a
+        // null snippet, same as any future PERCENTAGE row would. Nothing re-anchors an
+        // existing saved position onto a paragraph offset retroactively; a novel with a
+        // pre-rung-14 PERCENTAGE row simply isn't restored into mid-chapter on its next
+        // open (same as today - see ReaderScreen's restoreReaderPosition) until the
+        // reader leaves that chapter at least once more and a CHAR_OFFSET row is
+        // written in its place.
+        val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE reading_progress ADD COLUMN position_snippet TEXT")
+            }
+        }
+
         // Every migration, in order - the one list create() hands to Room, and the one
         // MigrationChainTest (JVM) and MigrationTest (instrumented) check. A new
         // MIGRATION_n_m only counts once it is added here.
         val ALL_MIGRATIONS: Array<Migration> = arrayOf(
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
             MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
-            MIGRATION_11_12, MIGRATION_12_13
+            MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14
         )
 
         // NOTE: deliberately no fallbackToDestructiveMigration() here. That fallback

@@ -57,6 +57,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -66,6 +67,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -83,8 +86,11 @@ import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.ChapterSegment
 import com.arkarium.app.data.PreferencesManager
+import com.arkarium.app.data.ReaderPosition
 import com.arkarium.app.data.ReadingModeDefault
 import com.arkarium.app.data.Theme
+import com.arkarium.app.data.paragraphForCharOffset
+import com.arkarium.app.data.paragraphOffsets
 import com.arkarium.app.data.parseChapterSegments
 import kotlinx.coroutines.flow.first
 
@@ -224,20 +230,29 @@ fun ReaderScreen(
     // reads - see AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md's Stage 3 section. Null renders no
     // "About the author" card at all, same as a fiction with no linked author today.
     author: AuthorEntity? = null,
-    onBack: (Float) -> Unit,
+    // Rung 14 (F9): the character-offset anchor saved the last time this chapter was
+    // left, if any (null for a chapter never read before, or whose saved row predates
+    // this rung - a plain PERCENTAGE row, which this screen no longer restores into).
+    // The caller resolves this from ReadingProgressEntity before composing
+    // ReaderScreen rather than this screen reading the DB itself, same decoupling
+    // novelTitle/arcTitle/author already follow.
+    initialPosition: ReaderPosition? = null,
+    // All four callbacks below took (Float) -> Unit (a scroll-pixel fraction) before
+    // this rung; they now take the same anchor instead, since the caller's job is
+    // still just "save the exit position", just with a better position to save - see
+    // ReaderPosition.kt and currentAnchor() below.
+    onBack: (ReaderPosition) -> Unit,
     // Distinct from onBack: onBack is the existing top-app-bar arrow (goes to whatever
     // the caller currently sends it, e.g. Home); onBackToFiction is the new Royal
     // Road-style breadcrumb link that always means "this fiction's detail page". Kept
     // separate rather than repurposing onBack so this stage doesn't silently change the
-    // existing top-bar arrow's behavior. Same (Float) -> Unit shape as onBack so this
-    // exit path saves reading progress too, instead of silently dropping it.
-    onBackToFiction: (Float) -> Unit = {},
+    // existing top-bar arrow's behavior.
+    onBackToFiction: (ReaderPosition) -> Unit = {},
     // Null (not just "does nothing when clicked") means "there is no previous/next
     // chapter" - the caller passes null at the first/last chapter so the buttons render
-    // disabled instead of merely inert. Takes the same (Float) -> Unit progress-on-exit
-    // shape as onBack so navigating via Previous/Next still saves reading progress.
-    onPrevious: ((Float) -> Unit)? = null,
-    onNext: ((Float) -> Unit)? = null,
+    // disabled instead of merely inert.
+    onPrevious: ((ReaderPosition) -> Unit)? = null,
+    onNext: ((ReaderPosition) -> Unit)? = null,
     onAuthorClick: () -> Unit = {},
     // Opens the "settings/tts" page (TtsSettingsScreen) from the gear icon in
     // TtsControlsBar below. No-op by default so this stays source-compatible with any
@@ -266,14 +281,15 @@ fun ReaderScreen(
     // Stage 3.4 (see docs/arkarium/foundational/design-notes.md): reassigned every recomposition
     // so the closure always captures whichever onNext this screen currently has (it
     // changes chapter-to-chapter, and is null at the last chapter) - cheap and
-    // idempotent, so no LaunchedEffect/key needed. Passes 1f rather than
-    // currentProgress(): auto-continue fires because the reader finished the chapter by
-    // ear, not by eye, so scroll position isn't a meaningful signal of how much of the
-    // chapter was actually heard - same "chapter complete" progress a manual Next tap
-    // would leave behind if the reader had scrolled to the bottom first. tts itself
-    // gates this on autoContinueEnabled (off by default), so onChapterFinished being
-    // set here is not itself a behavior change until a reader opts in on settings/tts.
-    tts.onChapterFinished = { onNext?.invoke(1f) }
+    // idempotent, so no LaunchedEffect/key needed. Passes an anchor at the very end of
+    // the text rather than currentAnchor(): auto-continue fires because the reader
+    // finished the chapter by ear, not by eye, so scroll position isn't a meaningful
+    // signal of how much of the chapter was actually heard - same "chapter complete"
+    // position a manual Next tap would leave behind if the reader had scrolled to the
+    // bottom first. tts itself gates this on autoContinueEnabled (off by default), so
+    // onChapterFinished being set here is not itself a behavior change until a reader
+    // opts in on settings/tts.
+    tts.onChapterFinished = { onNext?.invoke(ReaderPosition(content.length, "")) }
     // Stage 3.5 (see docs/arkarium/foundational/design-notes.md): keeps the screen on for exactly
     // the duration of active read-aloud, gated by tts_keep_screen_on (off by default,
     // same reasoning as auto-continue above). Direct PreferencesManager access, same
@@ -459,6 +475,39 @@ fun ReaderScreen(
         scrollState.scrollTo(0)
     }
 
+    // Rung 14 (F9) - the paragraph offsets for this chapter's own text, and the pixel
+    // position each paragraph's Text composable actually lands at once laid out
+    // (scrollContainerTop + paragraphContentTop below), used both to capture an exit
+    // position (currentAnchor()) and to restore initialPosition once layout catches up.
+    val paragraphOffsetList = remember(content) { paragraphOffsets(content) }
+    // Key: a paragraph's ParagraphOffset.rawStart. Value: that paragraph's scroll
+    // offset - the value scrollState.value would need to be for this paragraph to sit
+    // flush with the top of the scrollable area - computed from its onGloballyPositioned
+    // position in root plus the scroll amount at the time, minus the scrollable
+    // container's own (scroll-invariant) position in root. Cleared per chapter so a
+    // stale entry from the previous chapter's paragraphs (different rawStarts, but
+    // best not to rely on that alone) can't linger.
+    val paragraphContentTop = remember(chapter.id) { mutableStateMapOf<Int, Float>() }
+    var scrollContainerTop by remember(chapter.id) { mutableFloatStateOf(0f) }
+    var positionRestored by remember(chapter.id) { mutableStateOf(initialPosition == null) }
+
+    // Restores initialPosition once enough paragraphs have reported a position to
+    // resolve it - re-runs as paragraphContentTop fills in (each onGloballyPositioned
+    // callback below touches it), stopping the first time the target paragraph's
+    // offset is actually known. A paragraph past the very first screenful may not have
+    // laid out yet on a long chapter, so this can take a few recompositions rather than
+    // firing once; it gives up and leaves the reader at the top if initialPosition's
+    // paragraph never shows up at all (e.g. the chapter was edited shorter since).
+    LaunchedEffect(chapter.id, paragraphContentTop.size) {
+        if (positionRestored) return@LaunchedEffect
+        val target = initialPosition ?: run { positionRestored = true; return@LaunchedEffect }
+        val paragraph = paragraphForCharOffset(paragraphOffsetList, target.charOffset)
+            ?: run { positionRestored = true; return@LaunchedEffect }
+        val offset = paragraphContentTop[paragraph.rawStart] ?: return@LaunchedEffect
+        scrollState.scrollTo(offset.toInt().coerceIn(0, scrollState.maxValue))
+        positionRestored = true
+    }
+
     // Reconciles this composition with a read-aloud session that may have outlived the
     // previous one. The session lives in TtsPlaybackService, not here, so it keeps
     // playing while the reader is covered by another screen (the TTS settings page
@@ -487,6 +536,25 @@ fun ReaderScreen(
     fun currentProgress(): Float {
         val max = scrollState.maxValue
         return if (max <= 0) 1f else (scrollState.value.toFloat() / max.toFloat()).coerceIn(0f, 1f)
+    }
+
+    // Rung 14 (F9) - what onBack/onBackToFiction/onPrevious/onNext now save instead of
+    // currentProgress()'s plain fraction: the paragraph currently at (or just above)
+    // the top of the viewport, identified by its own offset into the chapter's text
+    // rather than by where that happens to land on screen at the current font size and
+    // width. Picks the entry in paragraphContentTop with the largest recorded offset
+    // that's still <= the current scroll position - the paragraph the reader has
+    // scrolled down to, not past. Falls back to currentProgress()'s proportional
+    // estimate only if no paragraph has reported a position yet at all (leaving before
+    // the first layout pass completes - e.g. backing out instantly), so this never
+    // saves nothing.
+    fun currentAnchor(): ReaderPosition {
+        val charOffset = paragraphContentTop.entries
+            .filter { it.value <= scrollState.value + 1f }
+            .maxByOrNull { it.value }
+            ?.key
+            ?: (currentProgress() * content.length).toInt().coerceIn(0, content.length)
+        return ReaderPosition(charOffset, ReaderPosition.snippetFrom(content, charOffset))
     }
 
     // Rough page estimate for the progress readout: ~2000 characters per "page",
@@ -544,7 +612,7 @@ fun ReaderScreen(
             TopAppBar(
                 title = { Text(chapter.title, maxLines = 1) },
                 navigationIcon = {
-                    IconButton(onClick = { onBack(currentProgress()) }) {
+                    IconButton(onClick = { onBack(currentAnchor()) }) {
                         Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
@@ -582,6 +650,12 @@ fun ReaderScreen(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
+                // Rung 14 (F9) - this Column's own position in root is the fixed
+                // baseline paragraphContentTop below is measured against; unlike its
+                // children, it doesn't move as scrollState changes, so this only ever
+                // needs (re)capturing when the layout around it changes (e.g. the top
+                // bar showing/hiding), not per scroll tick.
+                .onGloballyPositioned { scrollContainerTop = it.positionInRoot().y }
                 .verticalScroll(scrollState)
                 // `showControls` already existed and correctly gated both the top bar and
                 // the bottom Text/Spacing/Mode panel below - but nothing ever toggled it, so
@@ -609,7 +683,7 @@ fun ReaderScreen(
                             // The row's only visible text is the fiction's title, which on
                             // its own doesn't say that activating it goes back to the fiction.
                             modifier = Modifier.clickable(onClickLabel = "Back to fiction") {
-                                onBackToFiction(currentProgress())
+                                onBackToFiction(currentAnchor())
                             },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -657,8 +731,8 @@ fun ReaderScreen(
                 hasPrevious = onPrevious != null,
                 hasNext = onNext != null,
                 textColor = textColor,
-                onPrevious = { onPrevious?.invoke(currentProgress()) },
-                onNext = { onNext?.invoke(currentProgress()) }
+                onPrevious = { onPrevious?.invoke(currentAnchor()) },
+                onNext = { onNext?.invoke(currentAnchor()) }
             )
 
             // Chapter content with enhanced typography. Parsed into segments so inline
@@ -676,9 +750,22 @@ fun ReaderScreen(
                 shape = RoundedCornerShape(8.dp)
             ) {
                 Column(modifier = Modifier.padding(20.dp)) {
+                    // Rung 14 (F9) - walked in lockstep with paragraphOffsetList, which
+                    // was built by the exact same tag-matching loop over the same
+                    // `content` (see paragraphOffsets' doc comment), so the Nth
+                    // Paragraph segment here is always paragraphOffsetList[nth]. Only
+                    // advanced inside the Paragraph branch below, in the same place
+                    // and under the same isNotBlank() condition as flushPlain()/this
+                    // loop's own filter - a blank Paragraph still consumes an entry
+                    // (paragraphOffsets kept it too) but never renders a Text to attach
+                    // onGloballyPositioned to, so it's skipped without recording a
+                    // position for it.
+                    var paragraphCursor = 0
                     segments.forEach { segment ->
                         when (segment) {
                             is ChapterSegment.Paragraph -> {
+                                val rawStart = paragraphOffsetList.getOrNull(paragraphCursor)?.rawStart
+                                paragraphCursor++
                                 if (segment.text.isNotBlank()) {
                                     Text(
                                         text = segment.text,
@@ -689,7 +776,13 @@ fun ReaderScreen(
                                             fontFamily = resolveFontFamily(fontFamilyChoice.value),
                                             letterSpacing = extraLetterSpacing(fontFamilyChoice.value),
                                             textAlign = TextAlign.Justify
-                                        )
+                                        ),
+                                        modifier = if (rawStart != null) {
+                                            Modifier.onGloballyPositioned { coordinates ->
+                                                paragraphContentTop[rawStart] = coordinates.positionInRoot().y +
+                                                    scrollState.value - scrollContainerTop
+                                            }
+                                        } else Modifier
                                     )
                                 }
                             }
@@ -717,8 +810,8 @@ fun ReaderScreen(
                 hasPrevious = onPrevious != null,
                 hasNext = onNext != null,
                 textColor = textColor,
-                onPrevious = { onPrevious?.invoke(currentProgress()) },
-                onNext = { onNext?.invoke(currentProgress()) },
+                onPrevious = { onPrevious?.invoke(currentAnchor()) },
+                onNext = { onNext?.invoke(currentAnchor()) },
                 // Only offered where there's actually somewhere to send the reader -
                 // the top copy of this row (above the chapter body) is left as a plain
                 // disabled button at the end of a fiction, since "About the Author" as

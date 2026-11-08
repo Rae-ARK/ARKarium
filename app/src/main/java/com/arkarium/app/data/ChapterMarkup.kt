@@ -99,3 +99,80 @@ fun parseChapterSegments(raw: String): List<ChapterSegment> {
     flushPlain()
     return segments
 }
+
+// Rung 14 (F9, docs/arkarium/proposal/reader-playback.md): pairs each Paragraph
+// segment parseChapterSegments() would produce with the offset in `raw` where its
+// text begins, so ReaderScreen can anchor a saved reading position to a point in the
+// chapter's own text (CHAR_OFFSET, see data/Entities.kt's ReadingProgressEntity doc
+// comment) instead of a scroll-pixel fraction that only means anything at the exact
+// font size/width it was captured at.
+//
+// Deliberately a separate function rather than changing parseChapterSegments' return
+// type - every existing caller of that function is unaffected, and this one runs the
+// identical tag-matching loop (same TAG_SPECS, same flush condition) so its Paragraph
+// entries are guaranteed to line up one-for-one, in order, with the Paragraph segments
+// parseChapterSegments(raw) returns for the same `raw`. ReaderScreen zips the two by
+// walking both in lockstep rather than this function trying to also build
+// ChapterBreak/AuthorNote/News entries it has no use for.
+data class ParagraphOffset(val rawStart: Int, val text: String)
+
+fun paragraphOffsets(raw: String): List<ParagraphOffset> {
+    val result = mutableListOf<ParagraphOffset>()
+    val plain = StringBuilder()
+    var plainStart = -1
+    var cursor = 0
+
+    fun flushPlain() {
+        if (plain.isNotEmpty()) {
+            result.add(ParagraphOffset(plainStart, plain.toString()))
+            plain.clear()
+            plainStart = -1
+        }
+    }
+
+    fun append(from: Int, to: Int) {
+        if (to <= from) return
+        if (plainStart == -1) plainStart = from
+        plain.append(raw, from, to)
+    }
+
+    while (cursor < raw.length) {
+        var openMatch: MatchResult? = null
+        var spec: TagSpec? = null
+        for (candidate in TAG_SPECS) {
+            val m = candidate.open.find(raw, cursor) ?: continue
+            if (openMatch == null || m.range.first < openMatch!!.range.first) {
+                openMatch = m
+                spec = candidate
+            }
+        }
+
+        if (openMatch == null || spec == null) {
+            append(cursor, raw.length)
+            break
+        }
+
+        val closeMatch = spec.close.find(raw, openMatch.range.last + 1)
+        if (closeMatch == null) {
+            append(cursor, openMatch.range.last + 1)
+            cursor = openMatch.range.last + 1
+            continue
+        }
+
+        append(cursor, openMatch.range.first)
+        flushPlain()
+
+        cursor = closeMatch.range.last + 1
+    }
+
+    flushPlain()
+    return result
+}
+
+// The paragraph a saved CHAR_OFFSET should restore into: the last paragraph that
+// starts at or before the offset (the paragraph the offset falls inside or just past),
+// falling back to the first paragraph when the offset is before everything (e.g. a
+// stale offset from a chapter that has since been edited shorter). Null only when the
+// chapter has no paragraphs at all (an empty or all-markup body).
+fun paragraphForCharOffset(offsets: List<ParagraphOffset>, charOffset: Int): ParagraphOffset? =
+    offsets.lastOrNull { it.rawStart <= charOffset } ?: offsets.firstOrNull()

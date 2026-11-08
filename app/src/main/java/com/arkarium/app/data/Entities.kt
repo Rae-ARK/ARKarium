@@ -174,6 +174,13 @@ data class ReadingProgressEntity(
     @ColumnInfo(name = "chapter_id") val chapterId: String,
     @ColumnInfo val position: Float,
     @ColumnInfo(name = "position_type") val positionType: String = "PERCENTAGE",
+    // Populated only for positionType == CHAR_OFFSET (rung 14, see ReaderPosition.kt) -
+    // a short run of the chapter's own text starting at `position`, the proposal doc's
+    // fallback for the offset no longer lining up. Null for every PERCENTAGE row,
+    // including every row written before this column existed (MIGRATION_13_14 adds it
+    // with no default data to backfill - there's nothing to compute a snippet from for
+    // an offset that was never a character offset in the first place).
+    @ColumnInfo(name = "position_snippet") val positionSnippet: String? = null,
     @ColumnInfo(name = "updated_at") val updatedAt: Long
 )
 
