@@ -135,7 +135,7 @@ class LibraryScanTest {
 
     // ScannerImpl.buildNovelEntity can now set syncSourceUrl on `scanned` itself (a
     // FictionLut title match - see that function's comment and
-    // docs/arkarium/proposal/bugs/other/notify-toggle-confirmation.md), for a folder
+    // docs/arkarium/implementation/engineering-backlog.md Rung 11), for a folder
     // that reached the library by some route other than this app's own sync and so
     // never got a chance to earn the column the normal way. This is the fill-in half
     // of that fix: a novel that was scanned (and stored) as purely local before this

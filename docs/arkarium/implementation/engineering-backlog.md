@@ -20,7 +20,7 @@ and point this row at that instead.
 
 | Rung | Item | Effort | Status | Detail |
 |---|---|---|---|---|
-| 1 | Scan reconcile cascade-deletes a novel's history on an ordinary scan (steps 1–2: mark seen before I/O that can fail; don't reconcile-as-stale on an empty listing while the DB isn't) | Tiny | **done** | [`../proposal/bugs/critical/scan-reconcile-treats-errors-as-absence.md`](../proposal/bugs/critical/scan-reconcile-treats-errors-as-absence.md) |
+| 1 | Scan reconcile cascade-deletes a novel's history on an ordinary scan (steps 1–2: mark seen before I/O that can fail; don't reconcile-as-stale on an empty listing while the DB isn't) | Tiny | **done** | [Rung 1 — what changed](#rung-1--what-changed), below (origin bug report deleted per [`../proposal/bugs/README.md`](../proposal/bugs/README.md)'s rule) |
 | 2 | F23 — Room downgrade throws uncaught, only "recovery" is clearing app data | Tiny | **done** | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 3 | F8 — two separate `AppDatabase` instances (`MainActivity` + the worker) | Tiny | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F8 |
 | 4 | Arc cover enlarger is undiscoverable (one-time ripple + tip) | Tiny | **done** | [`../proposal/uiux.md`](../proposal/uiux.md) |
@@ -30,7 +30,7 @@ and point this row at that instead.
 | 8 | F20 — accessibility audit of `contentDescription = null` across ~13 files | Small | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F20 |
 | 9 | F1/F2 remainder — commit Room schema, add migration tests, move KAPT → KSP | Medium | **done** (see below) | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 10 | F22 — TTS audio focus, `MediaSession`, `ACTION_AUDIO_BECOMING_NOISY` | Medium | **done** | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
-| 11 | "Notify me" toggle bug, remaining steps - confirmed on-device, which surfaced a real sync-detection bug in place of the original remaining steps (see below) | Medium | **done** | [`../proposal/bugs/other/notify-toggle-confirmation.md`](../proposal/bugs/other/notify-toggle-confirmation.md) |
+| 11 | "Notify me" toggle bug, remaining steps - confirmed on-device, which surfaced a real sync-detection bug in place of the original remaining steps (see below) | Medium | **done** | [Rung 11 — what changed](#rung-11--what-changed), below (origin bug report deleted per [`../proposal/bugs/README.md`](../proposal/bugs/README.md)'s rule; the sync-detection fix is also sync invariant S10 in [`../foundational/architecture.md`](../foundational/architecture.md)) |
 | 12 | F3 — novel identity tied to SAF URI (D3 decided: opaque id, re-link-with-confirmation) | Large | queued — own ladder when started | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 13 | F4 — manifest signing (D5 decided: key custody; ECDSA vs Ed25519 still open) | Large | queued — own ladder when started | [`../proposal/manifest-signing.md`](../proposal/manifest-signing.md) |
 | 14 | F9 — reading position drifts (scroll fraction → offset-based anchor; bundled with TTS controls/highlight) | Large | **done in code, at paragraph granularity - on-device verification still open, see below** | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
@@ -112,10 +112,11 @@ undiscoverability fix (already shipped before this rung) is confirmed working, t
 API 33+ permission/notification path is confirmed working end to end, and the owner's
 original report turned out to be about a fiction that reached the library's disk by a
 route other than this app's own sync flow - exactly the "second, different bug in the
-sync-detection path itself" the detail doc's step 1 flagged as a possibility. That bug,
-not the originally-queued "remaining steps," is what this rung actually fixes - see
-[`../proposal/bugs/other/notify-toggle-confirmation.md`](../proposal/bugs/other/notify-toggle-confirmation.md)
-for the full writeup.
+sync-detection path itself" the original bug report's step 1 flagged as a possibility
+(that report is now deleted per [`../proposal/bugs/README.md`](../proposal/bugs/README.md)'s
+rule for fixed bugs). That bug, not the originally-queued "remaining steps," is what
+this rung actually fixes, detailed below; the fix is also recorded as sync invariant
+S10 in [`../foundational/architecture.md`](../foundational/architecture.md).
 
 `ScannerImpl.buildNovelEntity` now runs the same `FictionLut` lookup "Add fiction" uses
 against each scanned novel's resolved title; an exact normalized match (Sync invariants

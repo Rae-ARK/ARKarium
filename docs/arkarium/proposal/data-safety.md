@@ -81,12 +81,16 @@ Folded into F1 above — same root cause, same fix. **Fixed** (backlog rung 9): 
 
 ### F3. `novelId` depends on SAF URIs, so re-picking the folder or restoring a backup loses data
 
-> **Related, not the same bug:** a scan can cascade-delete a local novel's
-> history on an *ordinary* scan — no folder re-pick needed — when a novel is
-> skipped or the folder listing comes back empty/partial. See
-> [`bugs/critical/scan-reconcile-treats-errors-as-absence.md`](bugs/critical/scan-reconcile-treats-errors-as-absence.md).
-> Fixing that bug's step 3 (soft-delete instead of cascade) also covers most
-> of the damage described below, independently of the D3 decision.
+> **Related, not the same bug, and now fixed:** a scan used to be able to
+> cascade-delete a local novel's history on an *ordinary* scan — no folder
+> re-pick needed — when a novel was skipped or the folder listing came back
+> empty/partial. See
+> [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) rung 1.
+> That rung's step 3 (soft-delete instead of cascade) was **not** included —
+> it's bundled with F3's identity work (rung 12, below) per that rung's own
+> note — so a confirmed-gone local novel is still deleted outright for now;
+> fixing it will also cover most of the damage described below,
+> independently of the D3 decision.
 
 **Severity:** Medium. **Tags:** V (id derivation and rescan merge logic both read in code), I (not run on a device).
 **Where:** `data/ScannerImpl.kt` `buildNovelEntity()` (id derivation), `viewmodel/LibraryViewModel.kt` `startScan()` (rescan merge/stale handling), `AndroidManifest.xml` (`android:allowBackup="true"`, no `fullBackupContent` rules).

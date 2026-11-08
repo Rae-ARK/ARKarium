@@ -1,11 +1,11 @@
 # Bug reports
 
-> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-07 @ b777145
+> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-08 @ (this patch)
 
 Open, unfixed bugs, one file per bug. A fixed bug's file is deleted; if the
 cause taught a rule, it goes in
 [`../../foundational/`](../../foundational/README.md) (see sync invariants
-S6–S9 in `architecture.md` for the pattern), otherwise the commit message is
+S6–S10 in `architecture.md` for the pattern), otherwise the commit message is
 the record.
 
 Split by severity into two folders:
@@ -23,7 +23,11 @@ Historic ARKster-era bug history is frozen in
 
 ## Open bugs
 
-| Bug | Severity |
-|---|---|
-| [`critical/scan-reconcile-treats-errors-as-absence.md`](critical/scan-reconcile-treats-errors-as-absence.md) | critical |
-| [`other/notify-toggle-confirmation.md`](other/notify-toggle-confirmation.md) | other |
+None currently. The two previously tracked here are both fixed and their
+files deleted per the rule above:
+
+- Scan reconcile cascade-deleting a novel's history on an ordinary scan —
+  see [`../../implementation/engineering-backlog.md`](../../implementation/engineering-backlog.md) rung 1.
+- "Notify me" toggle undiscoverability and the sync-detection bug it
+  surfaced — see [`../../implementation/engineering-backlog.md`](../../implementation/engineering-backlog.md) rung 11,
+  and sync invariant S10 in [`../../foundational/architecture.md`](../../foundational/architecture.md).
