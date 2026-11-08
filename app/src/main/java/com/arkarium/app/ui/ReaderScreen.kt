@@ -3,7 +3,6 @@ package com.arkarium.app.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
-import android.content.res.Configuration
 import android.os.Build
 import android.view.WindowManager
 import android.widget.Toast
@@ -16,9 +15,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -71,7 +68,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -197,22 +193,35 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     else -> null
 }
 
-// Two independent window-layout switches, previously conflated into one `drawIntoCutout`
-// flag that only went true in landscape - which meant portrait immersive full-screen
-// (the common case) left `setDecorFitsSystemWindows` at its legacy-fit default even
-// while the system bars were hidden, so the window kept reserving their space instead
-// of letting content fill it: hide() made the bars disappear, but the screen still
-// wasn't actually full. `edgeToEdge` is the fix - it now follows immersiveFullscreen
-// itself (any orientation), not just the landscape-cutout case, so content expands to
-// cover the vacated bar area in portrait too. `drawIntoCutout` stays landscape-only -
-// it is specifically about not letterboxing the display cutout, a separate concern
-// from whether the window fits system windows at all. layoutInDisplayCutoutMode is API
-// 28+; below that there is no cutout API and the default behavior is all there is.
-private fun applyWindowLayout(window: android.view.Window, edgeToEdge: Boolean, drawIntoCutout: Boolean) {
-    WindowCompat.setDecorFitsSystemWindows(window, !edgeToEdge)
+// Full-screen-in-portrait bug (reported: landscape looked right, portrait
+// didn't; fixed here - see architecture.md's "Reading and local state",
+// `reader_fullscreen` bullet, for the lesson this taught, per
+// docs/arkarium/proposal/bugs/README.md's "fixed bugs are deleted, the
+// lesson moves to foundational/" rule). This used to take two *independent*
+// switches, `edgeToEdge` and a landscape-only `drawIntoCutout`, on the theory
+// that the cutout only needs SHORT_EDGES to fix a side-of-screen letterbox in
+// landscape, and "doesn't matter" in portrait since the status bar is hidden
+// anyway. That theory is backwards. Per Android's own display-cutout guidance,
+// LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT already renders into the cutout in
+// portrait *while the status bar is showing* (the tall status bar covers it) -
+// but "in landscape or fullscreen mode, your app window is letterboxed so that
+// none of your content displays in the cutout area" (emphasis the point this
+// missed: fullscreen, not just landscape). So the exact moment this app hides
+// the status bar for immersive reading - the one time DEFAULT's portrait
+// carve-out no longer applies - is also the moment portrait was left on
+// DEFAULT, leaving the top strip where the status bar used to be as dead,
+// letterboxed space instead of content. Landscape looked fixed because that
+// orientation already had SHORT_EDGES from the old landscape-only flag;
+// portrait never did. The two switches are now the same single `immersive`
+// condition: SHORT_EDGES and edge-to-edge both apply whenever the reader is in
+// immersive full-screen, in either orientation, and both revert together the
+// moment it isn't. layoutInDisplayCutoutMode is API 28+; below that there is
+// no cutout API and the default behavior is all there is.
+private fun applyWindowLayout(window: android.view.Window, immersive: Boolean) {
+    WindowCompat.setDecorFitsSystemWindows(window, !immersive)
     if (Build.VERSION.SDK_INT >= 28) {
         val params = window.attributes
-        params.layoutInDisplayCutoutMode = if (drawIntoCutout)
+        params.layoutInDisplayCutoutMode = if (immersive)
             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
         else
             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
@@ -430,29 +439,28 @@ fun ReaderScreen(
     // TRANSIENT_BARS_BY_SWIPE) lets a reader still pull the bars back
     // temporarily with an edge swipe instead of being fully locked out.
     //
-    // Display cutout (notch / camera hole): in landscape the cutout sits on a side
-    // edge, and by default Android letterboxes it - the strip beside the cutout is
-    // painted as a black bar and the app's content is fitted inside the rest, so
-    // "full screen" wasn't. While full-screen + immersive + landscape, the window now
-    // opts in to drawing into the cutout area (SHORT_EDGES); the root column below then
-    // re-pads *only* by the cutout's own insets, so text still never sits under the
-    // notch itself. In portrait or reverse portrait the cutout mode itself doesn't
-    // matter - the cutout is at the top, the status bar is hidden anyway in this mode,
-    // and nothing gains from drawing *into the cutout specifically* up there - but the
-    // window still needs to stop fitting itself inside the system insets at all
-    // (edgeToEdge below), or the status/nav bar area stays reserved as empty space even
-    // once hidden; see applyWindowLayout's own doc comment for why that's a separate
-    // switch from the cutout mode and not implied by it. Everything is put back (not
+    // Display cutout (notch / camera hole): full-screen + immersive, in *either*
+    // orientation, opts the window into drawing under the cutout (SHORT_EDGES) and
+    // into edge-to-edge (see applyWindowLayout's own doc comment - this used to be
+    // landscape-only, which was the bug: portrait stayed on DEFAULT while immersive,
+    // so the vacated status-bar strip at the top was letterboxed instead of filled).
+    // The root column below re-pads by the cutout's own insets (now all sides, not
+    // just horizontal - the cutout sits on a side edge in landscape but at the top in
+    // portrait) so text still never sits under the notch itself; that inset is zero
+    // whenever the window isn't drawing into the cutout, so this costs nothing outside
+    // immersive mode. No longer keyed on orientation: the condition applying SHORT_EDGES
+    // is just `immersiveFullscreen` now, the same in both orientations, so rotating
+    // while already immersive needs no re-run of this effect to stay correct - Compose
+    // re-measures the existing insets padding on its own as the cutout's own geometry
+    // (which edge it's on) changes with rotation. Everything is put back (not
     // edge-to-edge, cutout mode DEFAULT) on every exit path, same as the bars.
-    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    DisposableEffect(fullscreenEnabled, showControls.value, isLandscape) {
+    DisposableEffect(fullscreenEnabled, showControls.value) {
         val window = context.findActivity()?.window
         val view = window?.decorView
         val controller = if (window != null && view != null) {
             WindowCompat.getInsetsController(window, view)
         } else null
         val immersiveFullscreen = fullscreenEnabled && !showControls.value
-        val drawIntoCutout = immersiveFullscreen && isLandscape
         if (immersiveFullscreen) {
             controller?.systemBarsBehavior =
                 WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -461,12 +469,12 @@ fun ReaderScreen(
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
         if (window != null) {
-            applyWindowLayout(window, edgeToEdge = immersiveFullscreen, drawIntoCutout = drawIntoCutout)
+            applyWindowLayout(window, immersive = immersiveFullscreen)
         }
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
             if (window != null) {
-                applyWindowLayout(window, edgeToEdge = false, drawIntoCutout = false)
+                applyWindowLayout(window, immersive = false)
             }
         }
     }
@@ -662,11 +670,15 @@ fun ReaderScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundColor)
-            // Pads by the cutout's own horizontal insets only - zero unless the
+            // Pads by the cutout's own insets on every side - zero unless the
             // full-screen block above let the window draw into the cutout, in which
             // case the background (set just above) already covers it and this keeps
-            // the text and chrome clear of the notch itself.
-            .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
+            // the text and chrome clear of the notch itself. All sides, not just
+            // horizontal: the cutout sits on a side edge in landscape but at the top
+            // in portrait, and portrait immersive now draws into it too (the
+            // fullscreen-in-portrait fix above), so a horizontal-only pad would leave
+            // the first line or two of text under the notch in portrait.
+            .windowInsetsPadding(WindowInsets.displayCutout)
     ) {
         // Top bar
         if (showControls.value) {
