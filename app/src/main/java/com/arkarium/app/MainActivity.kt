@@ -904,8 +904,15 @@ class MainActivity : ComponentActivity() {
                 // shows at all (isBottomBarRoute: only on the four tab destinations
                 // themselves, never NovelDetail/Reader/Author/any settings/* sub-page -
                 // see that function's own doc comment).
-                val currentBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentRoute = currentBackStackEntry?.destination?.route
+                // .value, not `by` - this file never imports androidx.compose.runtime.getValue
+                // and uses the explicit-.value style for every other collectAsState()/
+                // mutableStateOf() read above (savedUri.value, useCustomFolder.value, etc.);
+                // matching that here instead of introducing the only `by` delegate in the
+                // file is what the build log from the previous patch's attempted build
+                // caught - `by` needs that import's getValue/setValue operators and this
+                // file doesn't have it.
+                val currentBackStackEntry = navController.currentBackStackEntryAsState()
+                val currentRoute = currentBackStackEntry.value?.destination?.route
 
                 Scaffold(
                     modifier = Modifier.fillMaxSize(),
