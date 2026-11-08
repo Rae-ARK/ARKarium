@@ -251,6 +251,12 @@ interface ChapterReadEventDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(event: ChapterReadEventEntity)
 
+    // Lets the caller tell "this chapter was just finished today" from "an already-logged
+    // finished chapter was saved again" (see MainActivity.saveReadingProgress). The
+    // table's key is (chapter_id, read_date), so "logged" means logged for that day.
+    @Query("SELECT EXISTS(SELECT 1 FROM chapter_read_events WHERE chapter_id = :chapterId AND read_date = :readDate)")
+    suspend fun isLogged(chapterId: String, readDate: String): Boolean
+
     // "Chapters read this week" - `sinceDate` is a "yyyy-MM-dd" key (see
     // ReadingStats.dayKey); plain string >= works because ISO dates sort
     // lexicographically the same as chronologically.

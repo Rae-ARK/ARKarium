@@ -111,6 +111,7 @@ import com.arkarium.app.viewmodel.MetadataViewModel
 import com.arkarium.app.viewmodel.SettingsViewModel
 import com.arkarium.app.viewmodel.SyncViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -353,51 +354,65 @@ class MainActivity : ComponentActivity() {
     // compared against it without knowing how long the chapter is. Every call site has
     // the loaded chapter body (`content`) in scope, so this is just passing its length
     // through rather than a new lookup.
+    //
+    // Single authority for "where was the reader": every writer of reading_progress goes
+    // through here. The DB write runs under NonCancellable so that whichever scope the
+    // caller happens to be in (lifecycleScope for the in-app exits, AppScope.io for the
+    // pause/dispose checkpoints) being cancelled mid-flight - MainActivity being
+    // destroyed during a rotation, say - can no longer abort a write that already
+    // started. The UI refresh afterwards is on Main: refreshRecentlyRead mutates
+    // Compose snapshot lists, which must not be rebuilt (clear + addAll) from IO.
     private suspend fun saveReadingProgress(
         novelId: String,
         chapterId: String,
         position: ReaderPosition,
         chapterLength: Int
     ) {
-        db.readingProgressDao().upsert(
-            ReadingProgressEntity(
-                novelId = novelId,
-                chapterId = chapterId,
-                position = position.charOffset.toFloat(),
-                positionType = ReaderPosition.POSITION_TYPE,
-                positionSnippet = position.snippet,
-                updatedAt = System.currentTimeMillis()
-            )
-        )
-        // Reading-stats streak/weekly-count (see ChapterReadEventEntity's doc
-        // comment) only cares about chapters actually finished, not every scroll
-        // position update - COMPLETION_THRESHOLD gates that. Every caller of
-        // saveReadingProgress already only invokes it once, on leaving a chapter
-        // (Back/Back-to-fiction/Previous/Next), so there's no risk of this logging
-        // several events for one chapter-read the way a per-scroll-tick save would.
-        // The actual stats recompute happens below via refreshRecentlyRead (which
-        // always calls refreshReadingStats too), so a plain progress update that
-        // doesn't cross the threshold still gets its "Continue Reading" ordering
-        // refreshed without redundantly re-querying stats that haven't changed.
-        val progress = if (chapterLength > 0) position.charOffset.toFloat() / chapterLength else 0f
-        if (ReadingStats.isCompletionThreshold(progress)) {
-            val now = System.currentTimeMillis()
-            db.chapterReadEventDao().upsert(
-                ChapterReadEventEntity(
-                    chapterId = chapterId,
+        val finishedNow = withContext(NonCancellable + Dispatchers.IO) {
+            db.readingProgressDao().upsert(
+                ReadingProgressEntity(
                     novelId = novelId,
-                    readDate = ReadingStats.dayKey(now),
-                    readAt = now
+                    chapterId = chapterId,
+                    position = position.charOffset.toFloat(),
+                    positionType = ReaderPosition.POSITION_TYPE,
+                    positionSnippet = position.snippet,
+                    updatedAt = System.currentTimeMillis()
                 )
             )
-            // Micro-haptics (util/Haptics.kt): fires once per chapter actually
-            // finished, same gate as the read-event upsert just above - not once per
-            // scroll tick or per saveReadingProgress call, both of which this
-            // threshold check already protects against (see the comment on this
-            // function's own call sites).
-            Haptics.confirm(this@MainActivity)
+            // Reading-stats streak/weekly-count (see ChapterReadEventEntity's doc
+            // comment) only cares about chapters actually finished, not every scroll
+            // position update - COMPLETION_THRESHOLD gates that.
+            val progress = if (chapterLength > 0) position.charOffset.toFloat() / chapterLength else 0f
+            if (ReadingStats.isCompletionThreshold(progress)) {
+                val now = System.currentTimeMillis()
+                val today = ReadingStats.dayKey(now)
+                // The read-event row is keyed by chapter and day, so re-saving the same finished
+                // chapter (a pause checkpoint, then the dispose checkpoint, then Next's
+                // own save) just rewrites it - but the haptic below must only fire the
+                // first time, or one finished chapter buzzes two or three times.
+                val alreadyLogged = db.chapterReadEventDao().isLogged(chapterId, today)
+                db.chapterReadEventDao().upsert(
+                    ChapterReadEventEntity(
+                        chapterId = chapterId,
+                        novelId = novelId,
+                        readDate = today,
+                        readAt = now
+                    )
+                )
+                !alreadyLogged
+            } else {
+                false
+            }
         }
-        libraryViewModel.refreshRecentlyRead()
+        withContext(NonCancellable + Dispatchers.Main) {
+            if (finishedNow) {
+                // Micro-haptics (util/Haptics.kt): once per chapter actually finished.
+                // applicationContext, not the Activity - this can run after the
+                // instance that launched it has been destroyed.
+                Haptics.confirm(applicationContext)
+            }
+            libraryViewModel.refreshRecentlyRead()
+        }
     }
 
     // addFictionByName, syncAllRaeArkNovels, and checkForUpdates formerly lived here
@@ -447,6 +462,16 @@ class MainActivity : ComponentActivity() {
     private fun handleShortcutIntent(intent: Intent?) {
         if (intent?.getBooleanExtra(EXTRA_CONTINUE_READING_SHORTCUT, false) != true) return
         pendingContinueReadingShortcut.value = true
+    }
+
+    // The pending one-shot intents are Activity state that only exists until the
+    // LaunchedEffects in renderMainContent resolve them (which can take a while on a
+    // cold start - they wait for the scan to surface the novel). Without this, a
+    // recreation in that window silently dropped them.
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(STATE_PENDING_CONTINUE_READING, pendingContinueReadingShortcut.value)
+        outState.putString(STATE_PENDING_NOTIFICATION_NOVEL, pendingNotificationNovelId.value)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -506,8 +531,12 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val CRASH_PREFS = "arkarium_crash_info"
-        private const val CRASH_KEY = "last_crash"
+        // internal, not private: ArkariumApp (the process-level owner of the crash
+        // recorder) writes this record, onCreate below reads and clears it.
+        internal const val CRASH_PREFS = "arkarium_crash_info"
+        internal const val CRASH_KEY = "last_crash"
+        private const val STATE_PENDING_CONTINUE_READING = "pending_continue_reading"
+        private const val STATE_PENDING_NOTIFICATION_NOVEL = "pending_notification_novel"
         // Extra carried by the "Continue Reading" static app shortcut's launch intent
         // (see res/xml/shortcuts.xml's <extra>) - true marks "this launch/onNewIntent
         // came from that shortcut", read back by handleShortcutIntent. Not private:
@@ -520,32 +549,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Safety net of last resort. The try/catch blocks below only catch exceptions
-        // thrown synchronously on THIS call stack - they cannot catch anything thrown
-        // inside a lifecycleScope.launch { } coroutine body (theme.collect, libraryUri.
-        // collect, etc.), since those run on their own dispatcher and throw well after
-        // the launch{} call that started them has already returned. An uncaught
-        // exception there crashes the process instantly with nothing on screen and
-        // nothing catchable here - which is exactly what "opens and immediately exits,
-        // no error screen" looks like. Installing a global handler is the only way to
-        // observe it: it can't stop the crash (the process still has to die), but it
-        // persists the trace first so the NEXT launch can show it.
-        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            try {
-                getSharedPreferences(CRASH_PREFS, MODE_PRIVATE).edit()
-                    .putString(
-                        CRASH_KEY,
-                        "ARKarium v${BuildConfig.VERSION_NAME}\n\n" +
-                            (throwable::class.java.name + ": " + throwable.message) + "\n\n" +
-                            throwable.stackTrace.take(30).joinToString("\n") { "  at $it" }
-                    )
-                    .commit() // commit(), not apply() - must be on disk before the process dies
-            } catch (_: Throwable) {
-                // Never let the crash handler itself throw and mask the original crash.
-            }
-            previousHandler?.uncaughtException(thread, throwable)
-        }
+        // The global uncaught-exception handler that records a crash for the next launch
+        // is installed once per process by ArkariumApp - not here, since onCreate runs
+        // again on every recreation (see ArkariumApp's doc comment). The try/catch blocks
+        // below only catch exceptions thrown synchronously on THIS call stack; anything
+        // thrown inside a lifecycleScope coroutine is only observable through that handler.
 
         // If the previous launch crashed, show that trace now instead of trying to
         // start normally again (which would likely just crash the same way a second
@@ -613,12 +621,28 @@ class MainActivity : ComponentActivity() {
         // `novels` has loaded anything: this only ever stashes the novel id for
         // renderMainContent's LaunchedEffect to act on once startScan (kicked off
         // below) actually populates it.
-        handleNotificationIntent(intent)
+        //
+        // Only on a genuinely fresh launch (savedInstanceState == null). getIntent() on
+        // a *recreated* instance (rotation, multi-window resize, memory reclaim, process
+        // restore) returns the very intent that originally launched the Activity, extras
+        // and all - so handling it unconditionally re-fired the shortcut/notification on
+        // every recreation, yanking the reader from wherever they were back to the
+        // shortcut's target. A one-shot intent is consumed once; whatever was still
+        // unresolved when the previous instance went away comes back through
+        // savedInstanceState below instead.
+        if (savedInstanceState == null) {
+            handleNotificationIntent(intent)
 
-        // Same deal as handleNotificationIntent immediately above, for a cold start
-        // from the "Continue Reading" static shortcut instead of a notification tap -
-        // see pendingContinueReadingShortcut's own doc comment.
-        handleShortcutIntent(intent)
+            // Same deal as handleNotificationIntent immediately above, for a cold
+            // start from the "Continue Reading" static shortcut instead of a
+            // notification tap - see pendingContinueReadingShortcut's own doc comment.
+            handleShortcutIntent(intent)
+        } else {
+            pendingContinueReadingShortcut.value =
+                savedInstanceState.getBoolean(STATE_PENDING_CONTINUE_READING, false)
+            pendingNotificationNovelId.value =
+                savedInstanceState.getString(STATE_PENDING_NOTIFICATION_NOVEL)
+        }
 
         // Auto-scan on every cold launch, before the user has touched anything.
         // Custom folder OFF (the default): always resolves to the app's private storage
@@ -1275,14 +1299,27 @@ class MainActivity : ComponentActivity() {
                     val novel = libraryViewModel.novels.firstOrNull { it.id == novelId }
                     val chapter = libraryViewModel.chapters.firstOrNull { it.id == chapterId }
                     if (chapter == null) {
-                        // Mirrors novelDetail/{novelId}'s own null-novel handling above -
-                        // the chapter this route pointed to is no longer in
-                        // libraryViewModel.chapters (e.g. a rescan dropped it), so there's
-                        // nothing left to render. Leave for the novel's detail page if we
-                        // at least still know the novel, otherwise Home.
+                        // `libraryViewModel.chapters` is only a cache of whichever novel was
+                        // loaded last; the database is the authority on whether this chapter
+                        // exists. After process death (or any cold start that restores the
+                        // back stack straight onto this route) the cache is simply empty, and
+                        // the old code read that as "chapter deleted" and bounced the reader to
+                        // Home/NovelDetail - losing "where I left off". So ask the database
+                        // first: if the chapter and its novel are really there, (re)load the
+                        // novel's chapters, which makes this composable re-run with `chapter`
+                        // non-null. Only a chapter the database doesn't know (a rescan really
+                        // dropped it) leaves for NovelDetail/Home.
                         LaunchedEffect(novelId, chapterId) {
-                            if (novel != null) {
-                                navController.navigate("novelDetail/${novel.id}") {
+                            val dbChapter = db.chapterDao().findById(chapterId)
+                            val dbNovel = db.novelDao().findById(novelId)
+                            if (dbChapter != null && dbNovel != null && dbChapter.novelId == dbNovel.id) {
+                                libraryViewModel.loadNovelDetails(dbNovel)
+                                if (libraryViewModel.chapters.any { it.id == chapterId }) {
+                                    return@LaunchedEffect
+                                }
+                            }
+                            if (dbNovel != null) {
+                                navController.navigate("novelDetail/${dbNovel.id}") {
                                     popUpTo("home") { inclusive = false }
                                     launchSingleTop = true
                                 }
@@ -1347,13 +1384,32 @@ class MainActivity : ComponentActivity() {
                         // back as CHAR_OFFSET so this is a one-time migration per chapter,
                         // not a re-estimate on every open.
                         val initialReaderPosition = remember(chapterId) { mutableStateOf<ReaderPosition?>(null) }
+                        // "No saved position" (null above) and "haven't looked yet" used to be
+                        // the same value, and ReaderScreen was composed the moment the chapter
+                        // text arrived - usually *before* this lookup finished. ReaderScreen
+                        // decides once, at first composition, whether there is anything to
+                        // restore, so a late answer was ignored and the reader opened at the top
+                        // (and then saved that top position over the real one on the next
+                        // pause). This flag is what ReaderScreen's composition now waits on:
+                        // the position is resolved - found or genuinely absent - before the
+                        // reader exists at all.
+                        val initialPositionResolved = remember(chapterId) { mutableStateOf(false) }
                         LaunchedEffect(novelId, chapterId, content) {
+                            // Both the CHAR_OFFSET row and the legacy PERCENTAGE conversion are
+                            // settled against the loaded text, and ReaderScreen can't show
+                            // without it anyway - so wait for it rather than answering early.
+                            if (content == null) {
+                                // A retry reload: forget the old answer so the reader isn't shown
+                                // again until the position is re-read against the new text.
+                                initialPositionResolved.value = false
+                                return@LaunchedEffect
+                            }
                             val saved = db.readingProgressDao().forNovel(novelId)
                             initialReaderPosition.value = if (saved == null || saved.chapterId != chapterId) {
                                 null
                             } else if (saved.positionType == ReaderPosition.POSITION_TYPE) {
                                 ReaderPosition(saved.position.toInt(), saved.positionSnippet ?: "")
-                            } else if (content != null && content.isNotEmpty()) {
+                            } else if (content.isNotEmpty()) {
                                 val approxOffset = (saved.position.coerceIn(0f, 1f) * content.length).toInt()
                                 val paragraph = paragraphForCharOffset(paragraphOffsets(content), approxOffset)
                                 if (paragraph != null) {
@@ -1373,11 +1429,9 @@ class MainActivity : ComponentActivity() {
                                     null
                                 }
                             } else {
-                                // Content hasn't loaded yet - leave unresolved rather than
-                                // guessing null, so the LaunchedEffect's `content` key
-                                // re-runs this once it has and still converts correctly.
-                                initialReaderPosition.value
+                                null
                             }
+                            initialPositionResolved.value = true
                         }
                         if (loadResult is ChapterLoadResult.Failed) {
                             // Lost SAF permission, provider hiccup, file moved/deleted
@@ -1394,7 +1448,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             )
-                        } else if (content != null) {
+                        } else if (content != null && initialPositionResolved.value) {
                             Column(modifier = Modifier.fillMaxSize()) {
                                 val currentIndex = libraryViewModel.chapters.indexOfFirst { it.id == chapterId }
                                 val previousChapter = libraryViewModel.chapters.getOrNull(currentIndex - 1).takeIf { currentIndex > 0 }

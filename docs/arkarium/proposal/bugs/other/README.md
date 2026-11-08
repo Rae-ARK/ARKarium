@@ -6,6 +6,7 @@ for the format and the critical/other split.
 
 | Bug | Status |
 |---|---|
+| [`continue-reading-position-lost.md`](continue-reading-position-lost.md) | fix applied (7 causes), needs on-device confirmation |
 | [`scrolling-bug.md`](scrolling-bug.md) | open — cause 1 (progress readout recomposition scope) fixed, unmeasured; causes 2-4 untouched; moved here from `critical/` (its own severity line already said Medium, not critical) |
 
 Fixed and deleted per the rule in `../README.md`:
