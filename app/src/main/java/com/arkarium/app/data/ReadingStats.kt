@@ -19,15 +19,21 @@ import java.util.Locale
 // one day correctly lands on Dec 31 of the previous year), so there's no real
 // downside to sticking with it here.
 object ReadingStats {
-    // How far into a chapter (0f..1f, same scale as ReadingProgressEntity.position)
-    // the user needs to have scrolled when leaving it for that to count as "read"
-    // for streak/weekly-count purposes - see MainActivity.saveReadingProgress, the
-    // only caller that checks this. Deliberately not 1.0f: readers routinely leave
-    // a chapter's last line or two unscrolled (short final paragraph, author's note
-    // they skip, etc.) without that meaning they didn't actually finish it.
+    // How far into a chapter (0f..1f) the user needs to have scrolled when leaving it
+    // for that to count as "read" for streak/weekly-count purposes - see
+    // MainActivity.saveReadingProgress, the only caller that checks this. Deliberately
+    // not 1.0f: readers routinely leave a chapter's last line or two unscrolled (short
+    // final paragraph, author's note they skip, etc.) without that meaning they didn't
+    // actually finish it.
+    //
+    // NOT the same scale as ReadingProgressEntity.position since rung 14 (F9): that
+    // column stores a CHAR_OFFSET resume anchor now, not a 0f..1f fraction. This is
+    // compared against ReaderPosition.completionFraction instead - the real scroll
+    // fraction, computed separately in ReaderScreen (see that field's doc comment for
+    // the regression this split fixed: the two used to be conflated).
     const val COMPLETION_THRESHOLD = 0.9f
 
-    // True once `progress` (0f..1f, a fraction of the chapter) has crossed
+    // True once `progress` (0f..1f, ReaderPosition.completionFraction) has crossed
     // COMPLETION_THRESHOLD. A tiny wrapper, but it's the one place that fraction is
     // compared against the threshold, so a caller never has to know the comparison is
     // `>=` rather than `>`, or re-derive the fraction itself - see

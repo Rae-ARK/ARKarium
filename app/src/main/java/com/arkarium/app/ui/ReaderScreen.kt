@@ -264,7 +264,14 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 //
 // layoutInDisplayCutoutMode is API 28+; below that there is no cutout API and
 // the default behavior is all there is.
-private fun applyWindowLayout(window: android.view.Window, edgeToEdge: Boolean, drawIntoCutout: Boolean) {
+// Not private: landscape-tablet.md's cutout fix reuses this from MainActivity so
+// every route - not just Reader - stops letterboxing the display cutout. Reader's own
+// DisposableEffect(fullscreenEnabled, isLandscape) below still owns applying this
+// *while a reader route is on screen*; MainActivity's own effect (see its
+// renderMainContent) only re-applies the edge-to-edge/cutout-drawing default once
+// `currentRoute` is no longer a reader route, so the two never fight over the same
+// frame - see that effect's own doc comment for why the ordering works out.
+internal fun applyWindowLayout(window: android.view.Window, edgeToEdge: Boolean, drawIntoCutout: Boolean) {
     WindowCompat.setDecorFitsSystemWindows(window, !edgeToEdge)
     if (Build.VERSION.SDK_INT >= 28) {
         val params = window.attributes
@@ -390,7 +397,10 @@ fun ReaderScreen(
     // bottom first. tts itself gates this on autoContinueEnabled (off by default), so
     // onChapterFinished being set here is not itself a behavior change until a reader
     // opts in on settings/tts.
-    tts.onChapterFinished = { onNext?.invoke(ReaderPosition(content.length, "")) }
+    // completionFraction = 1f: the reader finished the chapter by ear, so this is
+    // unambiguously a completed chapter regardless of where the scroll happens to
+    // sit (see ReaderPosition's doc comment).
+    tts.onChapterFinished = { onNext?.invoke(ReaderPosition(content.length, "", 1f)) }
     // Stage 3.5 (see docs/arkarium/foundational/design-notes.md): keeps the screen on for exactly
     // the duration of active read-aloud, gated by tts_keep_screen_on (off by default,
     // same reasoning as auto-continue above). Direct PreferencesManager access, same
@@ -761,7 +771,10 @@ fun ReaderScreen(
             .maxByOrNull { it.value }
             ?.key
             ?: (currentProgress() * content.length).toInt().coerceIn(0, content.length)
-        return ReaderPosition(charOffset, ReaderPosition.snippetFrom(content, charOffset))
+        // completionFraction is the real scroll fraction (see ReaderPosition's doc
+        // comment on the regression this fixes) - independent of charOffset, which is
+        // the resume anchor (top-of-viewport paragraph), not a completion measure.
+        return ReaderPosition(charOffset, ReaderPosition.snippetFrom(content, charOffset), currentProgress())
     }
 
     // Continue-Reading-loses-progress fix, part 1: save on every Activity pause, not

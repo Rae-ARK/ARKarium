@@ -11,6 +11,7 @@ documented but **not being worked on**. This is the **future**.
 | [`relay-chain.md`](relay-chain.md) | feature | Multi-relay fallback. |
 | [`app-shortcuts.md`](app-shortcuts.md) | feature | Two more launcher-icon app shortcuts beyond the built "Continue Reading": pin a specific novel, and dynamic per-novel shortcuts for more than just the most-recent read. |
 | [`notice-board.md`](notice-board.md) | feature | A persistent "which fictions got new chapters" log screen, closing the gap left by today's transient-only notification; phase 2 (sketched, not designed) turns it into a launcher home-screen widget. |
+| [`landscape-tablet.md`](landscape-tablet.md) | feature | Nav rail in landscape, Home two-column layout + a new Home Settings page with tag shelves, the fiction page and reader split into panes, and the display-cutout letterboxing fix (built). |
 | [`backend-social.md`](backend-social.md) | feature | Gating, comments, ratings, position sync without owning a backend. |
 | [`bugs/`](bugs/README.md) | reports | Open bugs, split into `critical/` and `other/`. |
 | [`uiux.md`](uiux.md) | reports | Open UI/UX issues. |
