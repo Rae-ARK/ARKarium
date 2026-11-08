@@ -1186,7 +1186,18 @@ fun ReaderScreen(
                 // animates in step with it automatically - no separate offset math
                 // needed to keep the two in sync, unlike the old overlay approach.
                 .animateContentSize()
-                .padding(horizontal = 16.dp, vertical = 16.dp)
+                .let { base ->
+                    // Nothing in this Column is ever composed while showControls is
+                    // false (see readerBottomPill: PREFERENCES is only returned when
+                    // !immersive, and the progress readout below is itself gated on
+                    // showControls.value) - so the padding that gives its visible
+                    // content breathing room has no reason to exist when there's no
+                    // content to pad. Without this gate, an empty Column still
+                    // reserved 16dp top + 16dp bottom from its own padding modifier,
+                    // which is exactly the unwanted bottom margin seen in full
+                    // immersive mode.
+                    if (showControls.value) base.padding(horizontal = 16.dp, vertical = 16.dp) else base
+                }
         ) {
             // The pill's own panel: Text size/Spacing/read-aloud Speed/Mode, adjusted
             // live for this session only (see showPreferences's doc comment above) and

@@ -226,6 +226,20 @@ data class SyncOutcome(
 // (Consideration #3).
 class SyncManager(private val context: Context, private val client: SyncClient = SyncClient()) {
 
+    // Guards uniqueFolderName()+createDirectory() in downloadInitial as one atomic
+    // unit now that multiple novels can sync concurrently through the same
+    // SyncManager instance (see SyncViewModel.syncAllRaeArkNovels). uniqueFolderName
+    // is a plain check-then-act (findFile, then createDirectory once nothing matched)
+    // - fine when only one downloadInitial could ever be in flight at a time, but a
+    // real TOCTOU race once two can run at once: both could findFile() "Foo Bar" and
+    // see nothing, then both createDirectory("Foo Bar"), landing two different
+    // novels' content in folders SAF doesn't itself guarantee are uniquely named.
+    // Scoped to just this one check-then-create sequence per call, not the network
+    // download that follows it - the whole point of this fix is to keep the slow part
+    // (file downloads) concurrent while only serializing the cheap part that actually
+    // needs to be atomic.
+    private val folderCreationMutex = Mutex()
+
     companion object {
         // How many chapter downloads downloadManifestFiles runs at once. Bounded rather
         // than unlimited so a large fiction doesn't open dozens of simultaneous
@@ -311,9 +325,12 @@ class SyncManager(private val context: Context, private val client: SyncClient =
     ): Pair<String, SyncOutcome> = withContext(Dispatchers.IO) {
         onProgress("Fetching manifest...")
         val manifest = client.fetchManifest(baseUrl)
-        val folderName = uniqueFolderName(libraryRoot, sanitizeFolderName(displayName))
-        val folder = libraryRoot.createDirectory(folderName)
-            ?: throw IOException("Could not create a folder for this fiction")
+        val folder = folderCreationMutex.withLock {
+            val folderName = uniqueFolderName(libraryRoot, sanitizeFolderName(displayName))
+            libraryRoot.createDirectory(folderName)
+                ?: throw IOException("Could not create a folder for this fiction")
+        }
+        val folderName = folder.name ?: sanitizeFolderName(displayName)
 
         val records = downloadManifestFiles(baseUrl, manifest, folder, libraryRoot, existing = emptyList(), onProgress)
         folderName to SyncOutcome(newVersion = manifest.version, files = records, changed = true, folderName = folderName)

@@ -10,6 +10,7 @@ package com.arkarium.app.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Campaign
@@ -28,7 +29,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun NoticeBoardScreen() {
     Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(title = { Text("Notice Board") })
+        TopAppBar(title = { Text("Notice Board") }, windowInsets = WindowInsets(0, 0, 0, 0))
 
         Column(
             modifier = Modifier

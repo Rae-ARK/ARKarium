@@ -90,6 +90,7 @@ import com.arkarium.app.data.ReadingProgressEntity
 import com.arkarium.app.data.ReadingStats
 import com.arkarium.app.data.ScannerImpl
 import com.arkarium.app.data.NewChapterCheckWorker
+import com.arkarium.app.data.ReadingProgressSaveWorker
 import com.arkarium.app.data.NewChapterNotifier
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.ChapterEntity
@@ -581,10 +582,24 @@ class MainActivity : ComponentActivity() {
         // screen with the real exception instead of a silent, undebuggable instant crash.
         try {
             db = AppDatabase.create(this)
-            scanner = ScannerImpl(this)
-            prefsManager = PreferencesManager(this)
+            // scanner/prefsManager/syncManager are all stored as fields on ViewModels
+            // (LibraryViewModel, SettingsViewModel, SyncViewModel) below, and ViewModels
+            // are explicitly designed to outlive a single Activity *instance* across
+            // rotation. Building these with `this` (the Activity) instead of
+            // applicationContext pins the destroyed Activity - its View hierarchy,
+            // Window, everything reachable from it - in memory for as long as the
+            // surviving ViewModel holds the reference, i.e. for the rest of the
+            // process's life. applicationContext has exactly one instance for the
+            // whole process, so it can never leak an Activity. None of these three
+            // classes does anything Activity-specific (no startActivity, no theming,
+            // no window access), so there's no behavioral downside.
+            scanner = ScannerImpl(applicationContext)
+            prefsManager = PreferencesManager(applicationContext)
+            syncManager = SyncManager(applicationContext)
+            // contentRepo is the control case: it's only ever referenced as a
+            // MainActivity-owned field, never handed into a ViewModel, so it correctly
+            // dies with the Activity on every rotation - built with `this` on purpose.
             contentRepo = TextChapterContentRepository(this)
-            syncManager = SyncManager(this)
             settingsViewModel = ViewModelProvider(this, SettingsViewModel.factory(prefsManager))
                 .get(SettingsViewModel::class.java)
             libraryViewModel = ViewModelProvider(this, LibraryViewModel.factory(db, scanner))
@@ -1585,6 +1600,19 @@ class MainActivity : ComponentActivity() {
                                         AppScope.io.launch {
                                             saveReadingProgress(novelId, chapterId, position)
                                         }
+                                        // Durable backstop (see ReadingProgressSaveWorker's own
+                                        // doc comment): AppScope.io survives Activity
+                                        // recreation but not the process being killed
+                                        // outright mid-write, which is exactly the risk at
+                                        // this specific checkpoint (ON_PAUSE, "about to go
+                                        // away"). WorkManager persists the request itself
+                                        // before doWork() runs, so it survives and retries
+                                        // even if this process dies before the line above
+                                        // commits. Same upsert-by-key write either way, so
+                                        // running both is idempotent.
+                                        ReadingProgressSaveWorker.enqueue(
+                                            applicationContext, novelId, chapterId, position
+                                        )
                                     },
                                     // Continue-Reading-loses-progress fix, part 2: the
                                     // system/gesture Back action never ran onBack (see
@@ -1609,6 +1637,11 @@ class MainActivity : ComponentActivity() {
                                                 navController.popBackStack()
                                             }
                                         }
+                                        // See onPositionChanged above for why this runs
+                                        // alongside, not instead of, the AppScope.io write.
+                                        ReadingProgressSaveWorker.enqueue(
+                                            applicationContext, novelId, chapterId, position
+                                        )
                                     }
                                 )
                             }
