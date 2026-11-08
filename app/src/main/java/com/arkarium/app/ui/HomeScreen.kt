@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -127,6 +128,7 @@ fun HomeScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         // Top bar
         TopAppBar(
+            windowInsets = WindowInsets(0, 0, 0, 0),
             title = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     // The real app icon art (assets/app-icon-source.png - see

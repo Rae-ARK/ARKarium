@@ -9,7 +9,12 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.TimeUnit
 
 // Background half of "Notify me when new chapters are available" (see
@@ -50,22 +55,40 @@ class NewChapterCheckWorker(
         val candidates = db.novelDao().notifyEnabledSynced()
         if (candidates.isEmpty()) return Result.success()
 
-        for (novel in candidates) {
-            try {
-                checkOneNovel(db, scanner, syncManager, libraryRoot, novel)
-            } catch (e: kotlinx.coroutines.CancellationException) {
-                // The worker's scope has been cancelled (WorkManager stopping us, e.g.
-                // constraints no longer met) - propagate instead of swallowing, or this
-                // loop keeps hitting the network for every remaining novel after the
-                // coroutine is supposed to have stopped.
-                throw e
-            } catch (e: Exception) {
-                // One novel's manifest fetch failing (network blip, relay hiccup) shouldn't
-                // block every other novel in this pass from being checked - same
-                // "report and move on" tradeoff syncAllRaeArkNovels makes for
-                // SourceGoneException, just broadened to any failure since there's no
-                // dialog here to report a per-novel error into.
-            }
+        // Bounded fan-out instead of one novel at a time - same bottleneck
+        // SyncViewModel.syncAllRaeArkNovels fixes for the user-facing batch add: each
+        // novel's manifest fetch used to wait for the previous novel's entire
+        // check+sync+rescan to finish first, serializing a full network round-trip
+        // per novel even though nothing here actually depends on another novel's
+        // result. Safe to run concurrently without SyncManager's folder-creation
+        // mutex (see downloadInitial) because checkOneNovel always passes
+        // allowRecreateMissingFolder = false - this path only ever resyncs a folder
+        // that already exists, never creates one, so there's no check-then-create
+        // race between novels to guard against.
+        coroutineScope {
+            val semaphore = Semaphore(NOVEL_CHECK_CONCURRENCY)
+            candidates.map { novel ->
+                async {
+                    semaphore.withPermit {
+                        try {
+                            checkOneNovel(db, scanner, syncManager, libraryRoot, novel)
+                        } catch (e: kotlinx.coroutines.CancellationException) {
+                            // The worker's scope has been cancelled (WorkManager stopping
+                            // us, e.g. constraints no longer met) - propagate instead of
+                            // swallowing, or every other in-flight novel keeps hitting the
+                            // network after the coroutine is supposed to have stopped.
+                            throw e
+                        } catch (e: Exception) {
+                            // One novel's manifest fetch failing (network blip, relay
+                            // hiccup) shouldn't block any other novel in this pass from
+                            // being checked - same "report and move on" tradeoff
+                            // syncAllRaeArkNovels makes for SourceGoneException, just
+                            // broadened to any failure since there's no dialog here to
+                            // report a per-novel error into.
+                        }
+                    }
+                }
+            }.awaitAll()
         }
         return Result.success()
     }
@@ -138,6 +161,13 @@ class NewChapterCheckWorker(
     }
 
     companion object {
+        // How many novels doWork() checks at once - same reasoning as
+        // SyncViewModel.NOVEL_SYNC_CONCURRENCY (see its own doc comment): high enough
+        // to overlap several novels' manifest-fetch latency, not so high that this
+        // periodic background pass opens dozens of simultaneous connections to the
+        // relay the moment it wakes up.
+        private const val NOVEL_CHECK_CONCURRENCY = 4
+
         private const val UNIQUE_WORK_NAME = "new_chapter_check"
 
         // Called once from MainActivity.onCreate. ExistingPeriodicWorkPolicy.KEEP means

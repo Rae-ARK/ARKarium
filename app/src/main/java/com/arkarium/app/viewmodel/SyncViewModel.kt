@@ -25,10 +25,16 @@ import com.arkarium.app.navigation.SyncResolutionReason
 import com.arkarium.app.navigation.SyncResolutionState
 import com.arkarium.app.util.Haptics
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 
 // Stage 2.5 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the fourth and last of the
 // plan's feature-scoped ViewModels pulled out of MainActivity. Owns syncAllState,
@@ -213,14 +219,14 @@ class SyncViewModel(
 
     // Moved from MainActivity (Stage 2.5). "Sync all Rae ARK's novels" (EmptyLibraryPrompt's
     // primary first-run action, see HomeScreen.kt). Downloads every fiction
-    // FictionLut.allEntries lists, one after another, reusing exactly the same
-    // per-fiction download/persist steps as addFictionByName above - this is just that
-    // same flow run in a loop with one shared progress dialog instead of one dialog per
-    // fiction.
+    // FictionLut.allEntries lists, several at a time (see downloadFiction and
+    // NOVEL_SYNC_CONCURRENCY below), reusing exactly the same per-fiction
+    // download/persist steps as addFictionByName above - this is just that same flow
+    // fanned out with one shared progress dialog instead of one dialog per fiction.
     //
-    // Two differences from the original version (see docs/arkarium/foundational/architecture.md, Sync invariants S8 and #2):
+    // Differences from the original version (see docs/arkarium/foundational/architecture.md, Sync invariants S8 and #2):
     //
-    // - Each iteration now calls scanSingleSyncedNovel (scoped to just the one
+    // - Each fiction now calls scanSingleSyncedNovel (scoped to just the one
     //   just-downloaded folder) instead of a full startScan() pass. The old version's
     //   full-rescan-per-iteration was O(M x N) SAF directory listings for M fictions
     //   being synced into a library of N - every already-synced novel got re-listed
@@ -230,10 +236,27 @@ class SyncViewModel(
     //   completes) without paying for a full-library rescan per fiction.
     // - A SourceGoneException for one fiction (the relay 404s on its manifest - e.g. a
     //   stale FictionLut entry) no longer aborts the whole batch. It's reported and
-    //   skipped, and the batch continues with the next fiction - a single stale/removed
-    //   entry shouldn't block every other fiction from syncing. Any other exception
-    //   (a real relay/network problem) still stops the batch, same as before, so a
-    //   genuine outage isn't masked by "finished anyway."
+    //   skipped, and the batch continues with the rest - a single stale/removed entry
+    //   shouldn't block every other fiction from syncing. Any other exception (a real
+    //   relay/network problem) still stops the batch, same as before, so a genuine
+    //   outage isn't masked by "finished anyway."
+    // - Previously ran one fiction fully to completion (manifest fetch, every file,
+    //   the scan, the DB writes) before the next fiction's manifest fetch even
+    //   started - for a library of 1000 that serialized 1000 round-trips of pure
+    //   network latency that could otherwise overlap, even though each fiction's own
+    //   files were already downloading concurrently one level down (see
+    //   SyncManager.DOWNLOAD_CONCURRENCY). downloadFiction below now runs several
+    //   fictions' full sequences at once, bounded by NOVEL_SYNC_CONCURRENCY.
+
+    // One fiction's outcome from a syncAllRaeArkNovels batch - folded into the
+    // skipped/syncedCount/lastCoverUrl summary only after every concurrent task has
+    // finished (see syncAllRaeArkNovels), rather than mutated from inside each task
+    // the way the old sequential loop's local vars were.
+    private sealed class SyncAllItemResult {
+        data class Synced(val coverUrl: String?) : SyncAllItemResult()
+        data class Skipped(val displayName: String) : SyncAllItemResult()
+    }
+
     fun syncAllRaeArkNovels(libraryRoot: DocumentFile) {
         val entries = FictionLut.allEntries(getApplication())
         if (entries.isEmpty()) {
@@ -242,70 +265,29 @@ class SyncViewModel(
         }
         syncAllState.value = SyncAllState.InProgress("Starting...")
         viewModelScope.launch {
-            val skipped = mutableListOf<String>()
-            var syncedCount = 0
-            // Cover of the most recently downloaded+scanned novel in this batch - carried
-            // forward into every subsequent progress update (see SyncAllState's doc
-            // comment) so the dialog shows a real cover as soon as one exists, instead of
-            // the placeholder for the whole run.
-            var lastCoverUrl: String? = null
+            val completed = AtomicInteger(0)
+            val total = entries.size
             try {
-                for ((index, entry) in entries.withIndex()) {
-                    val (displayName, slug) = entry
-                    val url = relayBaseUrlForSlug(slug)
-                    withContext(Dispatchers.Main) {
-                        syncAllState.value =
-                            SyncAllState.InProgress("${index + 1}/${entries.size}: Fetching \"$displayName\"...", lastCoverUrl)
-                    }
-                    try {
-                        // `displayName` (from FictionLut.allEntries) becomes the actual
-                        // on-disk folder name, same as addFictionByName above.
-                        val (folderName, outcome) = syncManager.downloadInitial(url, libraryRoot, displayName) { message ->
-                            withContext(Dispatchers.Main) {
-                                syncAllState.value =
-                                    SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message", lastCoverUrl)
+                val results = coroutineScope {
+                    val semaphore = Semaphore(NOVEL_SYNC_CONCURRENCY)
+                    entries.map { entry ->
+                        async {
+                            semaphore.withPermit {
+                                downloadFiction(entry, libraryRoot, completed, total)
                             }
                         }
-                        val folder = libraryRoot.findFile(folderName)
-                            ?: throw IOException("\"$displayName\" went missing before it could be scanned")
-                        val novelId = UUID.nameUUIDFromBytes(
-                            (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
-                        ).toString()
-                        // Scoped scan of just this fiction's folder (see docs/arkarium/foundational/architecture.md,
-                        // Sync invariants S8) - shows up in the library as soon as it's done, same as
-                        // before, without re-scanning every other already-synced novel.
-                        scanSingleSyncedNovel(libraryRoot, folder) { message ->
-                            withContext(Dispatchers.Main) {
-                                syncAllState.value =
-                                    SyncAllState.InProgress("${index + 1}/${entries.size}: $displayName - $message", lastCoverUrl)
-                            }
-                        }
-                        db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
-                        db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis(), folderName)
-                        val updated = db.novelDao().findById(novelId)
-                        if (updated != null) {
-                            withContext(Dispatchers.Main) {
-                                val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
-                                if (idx >= 0) libraryViewModel.novels[idx] = updated
-                            }
-                            // scanSingleSyncedNovel above already picked up cover.* from
-                            // disk into `updated.coverUri` (falling back to remoteCoverUrl,
-                            // same resolution order every other cover call site uses) - this
-                            // novel just finished, so its cover is the freshest one available
-                            // for the rest of the batch's progress updates. Falls back to
-                            // whatever lastCoverUrl already was if this particular novel has
-                            // neither, so a cover-less novel mid-batch doesn't blank out the
-                            // dialog back to the placeholder.
-                            lastCoverUrl = updated.coverUri ?: updated.remoteCoverUrl ?: lastCoverUrl
-                        }
-                        syncedCount++
-                    } catch (e: SourceGoneException) {
-                        // This one fiction isn't served here anymore (stale LUT entry, or
-                        // the author removed it) - report and move on rather than blocking
-                        // every other fiction in the batch behind it.
-                        skipped.add(displayName)
-                    }
+                    }.awaitAll()
                 }
+                val skipped = results.filterIsInstance<SyncAllItemResult.Skipped>().map { it.displayName }
+                val syncedCount = results.count { it is SyncAllItemResult.Synced }
+                // Cover of some novel this batch actually downloaded+scanned, for the
+                // Done dialog (see SyncAllState's doc comment) - "most recent" no longer
+                // means anything once novels finish in whatever order their own
+                // network calls happen to land in, so this just prefers any synced
+                // novel that has one over the placeholder.
+                val lastCoverUrl = results.filterIsInstance<SyncAllItemResult.Synced>()
+                    .lastOrNull { it.coverUrl != null }?.coverUrl
+
                 val summary = StringBuilder("Synced $syncedCount novel(s).")
                 if (skipped.isNotEmpty()) {
                     summary.append(" Skipped (source unavailable): ${skipped.joinToString(", ")}.")
@@ -316,8 +298,85 @@ class SyncViewModel(
                 // as a confirmation, not a warning).
                 Haptics.confirm(getApplication())
             } catch (e: Exception) {
+                // coroutineScope propagates the first non-SourceGoneException failure
+                // out here after cancelling every other in-flight novel (structured
+                // concurrency) - same "a real relay/network problem stops the whole
+                // batch" outcome the old sequential version had for anything that
+                // wasn't a SourceGoneException, just reached by cancellation instead
+                // of a loop simply never reaching its next iteration.
                 syncAllState.value = SyncAllState.Error("Sync stopped: ${e.message}")
             }
+        }
+    }
+
+    // One fiction's full download+scan+persist sequence, exactly what the old
+    // sequential loop's body did per iteration - factored out so syncAllRaeArkNovels
+    // can run several of these at once instead of one after another. `completed` is
+    // shared and only ever incremented (AtomicInteger.incrementAndGet), so the
+    // progress text stays meaningful ("3/1000 synced") even though several of these
+    // run concurrently and finish in no particular order.
+    private suspend fun downloadFiction(
+        entry: Pair<String, String>,
+        libraryRoot: DocumentFile,
+        completed: AtomicInteger,
+        total: Int
+    ): SyncAllItemResult {
+        val (displayName, slug) = entry
+        val url = relayBaseUrlForSlug(slug)
+        withContext(Dispatchers.Main) {
+            syncAllState.value =
+                SyncAllState.InProgress("${completed.get()}/$total synced - fetching \"$displayName\"...")
+        }
+        return try {
+            // `displayName` (from FictionLut.allEntries) becomes the actual on-disk
+            // folder name, same as addFictionByName above.
+            val (folderName, outcome) = syncManager.downloadInitial(url, libraryRoot, displayName) { message ->
+                withContext(Dispatchers.Main) {
+                    syncAllState.value =
+                        SyncAllState.InProgress("${completed.get()}/$total synced - $displayName: $message")
+                }
+            }
+            val folder = libraryRoot.findFile(folderName)
+                ?: throw IOException("\"$displayName\" went missing before it could be scanned")
+            val novelId = UUID.nameUUIDFromBytes(
+                (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
+            ).toString()
+            // Scoped scan of just this fiction's folder (see docs/arkarium/foundational/architecture.md,
+            // Sync invariants S8) - shows up in the library as soon as it's done, same as
+            // before, without re-scanning every other already-synced novel.
+            scanSingleSyncedNovel(libraryRoot, folder) { message ->
+                withContext(Dispatchers.Main) {
+                    syncAllState.value =
+                        SyncAllState.InProgress("${completed.get()}/$total synced - $displayName: $message")
+                }
+            }
+            db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
+            db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis(), folderName)
+            val updated = db.novelDao().findById(novelId)
+            if (updated != null) {
+                withContext(Dispatchers.Main) {
+                    val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
+                    if (idx >= 0) libraryViewModel.novels[idx] = updated
+                }
+            }
+            val justCompleted = completed.incrementAndGet()
+            withContext(Dispatchers.Main) {
+                syncAllState.value = SyncAllState.InProgress(
+                    "$justCompleted/$total synced - $displayName done",
+                    // scanSingleSyncedNovel above already picked up cover.* from disk
+                    // into `updated.coverUri` (falling back to remoteCoverUrl, same
+                    // resolution order every other cover call site uses) - show it the
+                    // moment this novel finishes.
+                    updated?.coverUri ?: updated?.remoteCoverUrl
+                )
+            }
+            SyncAllItemResult.Synced(updated?.coverUri ?: updated?.remoteCoverUrl)
+        } catch (e: SourceGoneException) {
+            // This one fiction isn't served here anymore (stale LUT entry, or the
+            // author removed it) - report and move on rather than blocking every
+            // other fiction in the batch behind it.
+            completed.incrementAndGet()
+            SyncAllItemResult.Skipped(displayName)
         }
     }
 
@@ -485,6 +544,18 @@ class SyncViewModel(
     }
 
     companion object {
+        // How many fictions downloadFiction (syncAllRaeArkNovels) runs at once - see
+        // that function's own doc comment. Bounded for the same reason
+        // SyncManager.DOWNLOAD_CONCURRENCY bounds per-file downloads within one novel:
+        // high enough that overlapping several novels' network latency is where the
+        // real win is, not so high that a library of 1000 opens 1000 connections to
+        // the relay at once. Android's platform HttpURLConnection implementation only
+        // keeps up to ~5 idle connections warm for reuse regardless of this number
+        // (it's a global cap the app can't raise without bringing in a real HTTP
+        // client), so pushing this much higher stops buying overlapping latency and
+        // starts just paying for more simultaneous fresh TCP+TLS handshakes instead.
+        private const val NOVEL_SYNC_CONCURRENCY = 4
+
         // Same manual-Factory shape as the other three ViewModel factories (rule 4 - no
         // DSL needed for one Factory method), extended with the Application instance
         // AndroidViewModel requires. Takes the Activity's existing db/scanner/

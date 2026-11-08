@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -82,6 +83,7 @@ fun ChapterEditorScreen(
 
     Column(modifier = Modifier.fillMaxWidth()) {
         TopAppBar(
+            windowInsets = WindowInsets(0, 0, 0, 0),
             title = { Text("Edit Chapters") },
             navigationIcon = {
                 IconButton(onClick = onBack) {
