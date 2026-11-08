@@ -1,6 +1,6 @@
 # UI/UX bugs (consolidated)
 
-> **Kind:** proposal · **Status:** open — 6 of 7 confirmed open by source read, 1 fixed, 1 needs on-device confirmation · **Verified:** 2026-11-09 @ ecf4228
+> **Kind:** proposal · **Status:** open — 6 of 7 confirmed open by source read, 1 fixed · **Verified:** 2026-11-09 @ ecf4228
 > **Origin:** owner reports (two WhatsApp sessions, 2026-11-09) + a line-by-line re-check of every file each report names, against the commit above — not a transcription of the reports as given. Where a report's claim no longer matches source (fixed since reported, or a different file than named), that's called out explicitly rather than filed as-is.
 
 **Tags used below:** **V** — verified directly by reading the cited lines in this
@@ -317,77 +317,115 @@ carry one left over from before the bottom-bar rework merged them into tabs.
 So: if a software back arrow was seen top-left, it's near-certain it was on
 the **Settings** or **Browse** tab, not Notice Board — worth confirming
 which tab was actually open when it was seen, since the fix differs by
-screen (remove the leftover `navigationIcon`/`onBack` wiring from
-`SettingsScreen`/`FictionBrowseScreen` and their `MainActivity` call sites,
-to match what `HomeScreen`/`NoticeBoardScreen` already do correctly) from
-what it would be if Notice Board really does show one on-device (which
-would mean something outside this file's own composable — not found in
-source).
+screen from what it would be if Notice Board really does show one on-device
+(which would mean something outside this file's own composable — not found
+in source).
+
+**Confirmed: Home needs no back button, and already has none.** `HomeScreen`
+is a bottom-tab root reached purely by tapping its tab, never pushed onto
+the back stack the way a drill-down screen is — there is nothing to "go
+back" to from a tab in that sense, the bottom bar already is the
+navigation. `HomeScreen.kt` has no `navigationIcon` anywhere, which is the
+correct baseline, not an oversight. `NoticeBoardScreen` already matches that
+baseline too (confirmed above). Settings and Browse are the two that don't
+match it yet.
+
+**Fix:** remove the leftover `navigationIcon { IconButton(onClick = onBack) {...} }`
+block from `SettingsScreen.kt` (191–198) and `FictionBrowseScreen.kt`
+(119–122), drop the now-unused `onBack` parameter from both composables, and
+drop the matching `onBack = { navController.popBackStack() }` wiring from
+their two `MainActivity.kt` call sites (1163–1165, 1711–1713) — bringing
+both in line with what `HomeScreen`/`NoticeBoardScreen` already do
+correctly, rather than adding anything new anywhere.
 
 **Severity:** Low — not broken (popping back from a tab root still lands
 somewhere sane), but inconsistent with the tab-bar paradigm the other two
-roots already follow, and a stray back arrow on a destination that's
-supposed to be switched to, not navigated into, is exactly the kind of
-"seems odd" the report called out.
+roots already follow correctly, and a stray back arrow on a destination
+that's supposed to be switched to, not navigated into, is exactly the kind
+of "seems odd" the report called out.
 
 ---
 
-## 7. Landscape cutout: screens other than Reader reportedly draw real widgets into the cutout area, not just colour-matched background — **unconfirmed (U), needs device repro**
+## 7. Landscape cutout: screens other than Reader draw real widgets into the cutout area, not just colour-matched background — **open, root cause identified by contrast with Reader**
 
 **Where:** `MainActivity.kt`, the "landscape-tablet.md's cutout fix" comment
-and `LaunchedEffect(currentRoute)` (964–983, 989–1006); candidates for where
-content could be escaping the padded area: `ui/FictionBrowseScreen.kt`'s two
-`ModalBottomSheet`s (189, 229) and `navigation/AppBottomBar.kt`'s
-`NavigationBar` (no explicit `windowInsets` override at all).
+and `LaunchedEffect(currentRoute)` (964–983, 989–1006); the one place this
+is done correctly, `ui/ReaderScreen.kt`'s root `Column` (925–932); the two
+places it's missing, `ui/FictionBrowseScreen.kt`'s `ModalBottomSheet`s (189,
+229) and `navigation/AppBottomBar.kt`'s `NavigationBar`.
 
 **What the design comment says is supposed to happen (V):** for every
 non-reader route, the window draws edge-to-edge under the display cutout
 (`drawIntoCutout = true`) specifically so `Scaffold`'s `containerColor`
 colour-matches the cutout strip instead of the platform letterboxing it
-solid black — the comment at MainActivity.kt:1003–1006 is explicit that this
-is a *background-colour* fix: "Scaffold's default `contentWindowInsets`
-still keeps content itself clear of the cutout/status bar," i.e. nothing is
-meant to actually render inside that strip, only the colour is meant to
-reach into it.
+solid black — MainActivity.kt:1003–1006 is explicit that this is a
+*background-colour* fix only: "Scaffold's default `contentWindowInsets`
+still keeps content itself clear of the cutout/status bar." Nothing is
+meant to render inside that strip — only the colour is meant to reach into
+it.
 
-**What was reported:** on every screen except Reader, something is now
-rendering real widgets into that space in landscape, not just background
-colour — the "dreaded black-bar syndrome" fix apparently overshot into
-content actually occupying the area it was only meant to paint.
+**You asked me to check how Reader handles this, since Reader is the one
+screen that's fine in landscape — and that comparison is what pins the
+cause.** Reader's root `Column` (925–932) does this:
 
-**Why this can't be fully pinned down from source alone:** the content
-inside the `Surface`/`NavHost` subtree is padded correctly — it sits behind
-`innerPadding`, which is derived from `Scaffold`'s `contentWindowInsets`
-(`safeDrawing`, which includes the cutout) for every non-reader route, so an
-ordinary screen's own layout shouldn't be able to reach into the cutout. The
-two most plausible places content *can* bypass that padding are both
-genuinely present in this codebase and worth checking first on-device:
+```kotlin
+Column(
+    modifier = Modifier
+        .fillMaxSize()
+        .background(backgroundColor)
+        .windowInsetsPadding(WindowInsets.displayCutout)
+) {
+```
 
+`windowInsetsPadding(WindowInsets.displayCutout)` pads *every child of that
+Column* — top bar when shown, body text, the footer bar — away from the
+cutout on whatever side it's actually on (a side edge in landscape, the top
+in portrait). Reader doesn't lean on the outer `Scaffold` for this at all;
+it manages the cutout inset itself, directly on its own content, which is
+exactly why it's the one screen that's fine in landscape regardless of what
+the outer `Scaffold`/`MainActivity` machinery is doing.
+
+**Confirmed (V): this is the only call to `windowInsetsPadding(WindowInsets.displayCutout)`
+in the entire app.** Nothing else in `ui/` uses it. Every non-reader screen
+instead relies entirely on `MainActivity`'s outer `Scaffold.contentWindowInsets`
+(`safeDrawing`, which includes the cutout) being consumed once via
+`innerPadding` — and that's correct, but only for content that is actually
+inside the `Surface` the `innerPadding` is applied to. Two things in this
+codebase sit outside that padded subtree and have no `windowInsetsPadding`
+of their own to compensate, which is why they're the two concrete suspects
+for what's rendering under the notch:
+
+- **`AppBottomBar`'s `NavigationBar`** (`navigation/AppBottomBar.kt`) is
+  passed to `Scaffold`'s `bottomBar` slot (MainActivity.kt:1011), which lays
+  it out as a full-width sibling of the padded content area, not a child of
+  it — `innerPadding` never touches it. Nothing in `AppBottomBar.kt` applies
+  `windowInsetsPadding(WindowInsets.displayCutout)` or passes a `windowInsets`
+  override to `NavigationBar` that would. In landscape, with the cutout on a
+  side edge, a full-width bottom bar with no horizontal cutout padding of
+  its own is the leading candidate for tab icons/labels sitting under it.
 - **`ModalBottomSheet`** (`FictionBrowseScreen.kt:189, 229`) renders in its
-  own window layer, not as a child positioned inside the `Surface`'s padded
-  bounds — a full-width bottom sheet opened in landscape is a concrete
-  candidate for extending into a side cutout unless Material3's own
-  `ModalBottomSheet` handles the display-cutout inset itself (this app
-  doesn't pass it anything that would).
-- **`AppBottomBar`'s `NavigationBar`** (no `windowInsets` override found —
-  V) takes whatever Material3's `NavigationBarDefaults.windowInsets`
-  resolves to by default; if that default doesn't include the side cutout
-  inset in landscape the way it includes the bottom nav-bar inset, a
-  full-width bottom bar would sit under the cutout rather than clear of it.
+  own window layer, entirely outside the `Surface`'s padded bounds — same
+  gap, same missing `windowInsetsPadding`, for whenever the sort/filter
+  sheet is opened in landscape.
 
-Pinning which of these (or something else entirely) it actually is needs
-either a library-version check against the exact Material3 release this
-project pins (not fetchable in the environment this was investigated in —
-only PyPI/npm/crates/GitHub registries were reachable, not Google's Maven)
-or, more directly, an on-device repro: rotate to landscape on each
-non-reader screen and check specifically whether (a) the bottom sheet, (b)
-the bottom nav bar, or (c) something in the screen's own content is the one
-actually sitting under the cutout, versus just colour-matched behind it.
+**Fix direction:** apply the same pattern Reader already proves works —
+`windowInsetsPadding(WindowInsets.displayCutout)` (horizontal is enough here,
+since these two are bottom-anchored, not full-screen) — to `AppBottomBar`'s
+`NavigationBar` and to the content of both `ModalBottomSheet`s. This is not
+a new mechanism to design; it's applying the one that already exists and
+already works in this exact codebase to the two places that don't have it
+yet.
 
-**Severity:** Unranked until reproduced — could be purely cosmetic
-(colour-matched is fine either way) or could mean real tap targets are
-rendering under a notch/camera-hole where they're visually or physically
-unreachable, which would be a functional regression, not just a visual one.
+**Still worth an on-device pass:** confirming only these two are responsible
+(versus something else inside a specific screen's own content escaping its
+padding some other way) and confirming the fix removes the notch overlap in
+landscape on both the bottom bar and an opened sheet.
+
+**Severity:** Medium-to-high depending on what's actually under the cutout —
+if it's just the bottom bar's background/ripple extending under it,
+cosmetic; if a `NavigationBarItem`'s tap target or a bottom-sheet control
+ends up physically under the notch/camera housing, that's an unreachable
+control, not just a visual regression.
 
 ---
 
@@ -400,5 +438,5 @@ unreachable, which would be a functional regression, not just a visual one.
 | 3 | Partial-scan reconcile cascade-deletes reading history | Open — confirmed, highest severity, needs owner input before fixing |
 | 4 | "Fetch info" result can land on the wrong novel | Open — confirmed, fix direction given |
 | 5 | Reader-exit inset race leaves a gap above the next top bar | Open — newly found, root cause identified, exposure audited across all 15 non-reader screens |
-| 6 | Inconsistent back arrow on bottom-tab roots | Open — misattributed to Notice Board in the report; actually Settings + Browse |
-| 7 | Widgets reportedly drawn into the landscape cutout | Unconfirmed — two concrete suspects named, needs on-device repro to pin down |
+| 6 | Inconsistent back arrow on bottom-tab roots | Open — misattributed to Notice Board in the report; actually Settings + Browse. Home confirmed correct as-is (no change needed there) |
+| 7 | Widgets drawn into the landscape cutout | Open — root cause pinned by contrast with Reader (the only call to `windowInsetsPadding(WindowInsets.displayCutout)` in the app); `AppBottomBar` and `FictionBrowseScreen`'s `ModalBottomSheet`s are missing it |
