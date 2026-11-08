@@ -157,7 +157,9 @@ any build had generated a schema file at all. `MigrationTest.currentVersionSchem
 now passes. Versions 1-13 never had an exported schema, so the instrumented test can only
 replay forward from 14 (nothing yet, since 14 is current); migrations 1-13 are covered by
 the chain test only. CI does not run `androidTest`, so the replay itself is still unverified
-on a device.
+on a device — and, separately, still untested even in principle against a real committed
+schema below 14: see [`../proposal/data-safety.md`](../proposal/data-safety.md) F1's
+"Open gap" note.
 
 ## Rung 10 — what changed
 

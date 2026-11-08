@@ -35,6 +35,23 @@ itself is still unrun (CI doesn't run `androidTest`) — see
 [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md)
 rung 9.
 
+**Open gap, not yet closed: the one migration real upgraders hit has no
+replay coverage.** `14.json` is the only committed schema file.
+`everyCommittedOlderVersionMigratesToCurrent` loops over committed versions
+below `APP_DATABASE_VERSION`; with nothing committed below 14 that list is
+empty, so the loop body never runs and the test passes vacuously — it has
+never actually replayed `MIGRATION_13_14` against a real v13 database. `v0.82`
+(the last tagged release before rung 14) shipped at schema version 13, so
+real users upgrading through this migration are exactly what's unverified.
+Fix: `room-schema.yml`'s `workflow_dispatch` already takes a `source_ref`
+input for building the schema from a different commit — running it against
+the `v0.82` tag would generate and commit the missing `13.json`, after which
+the replay test would actually exercise `MIGRATION_13_14`. Worth adding a
+guard (fails if `APP_DATABASE_VERSION - 1` has no committed schema file) so
+this can't happen silently again on the next bump. The risk today is low —
+`MIGRATION_13_14` is a single nullable `ADD COLUMN` — but the gap is in the
+pattern, not just this one migration.
+
 **Decided (D2):** yes, but scoped to migrations specifically — one
 instrumented `MigrationTestHelper` test per migration (maybe one CI emulator
 job), not a broader push into instrumented/Robolectric coverage for the
