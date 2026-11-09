@@ -91,14 +91,17 @@ class ReadingProgressSaveWorker(
         private const val KEY_SNIPPET = "snippet"
         private const val KEY_COMPLETION_FRACTION = "completion_fraction"
 
-        // One unique name for "the most recent pending position save," not one per
-        // novel/chapter: ExistingWorkPolicy.REPLACE means a newer checkpoint (ON_PAUSE
-        // immediately followed by onDispose, say) supersedes an older still-pending one
-        // instead of piling up redundant writes - correct here because
-        // onPositionChanged/onSystemBack always fire in chronological order on the main
-        // thread, so "most recently enqueued" and "most recent position" are the same
-        // thing, and the upsert is keyed by (novelId, chapterId) regardless.
-        private const val UNIQUE_WORK_NAME = "reading_progress_save"
+        // One unique name per (novelId, chapterId), not one app-wide: REPLACE cancels
+        // and deletes the previous request even if it is mid-execution, so a single
+        // shared name let a checkpoint for chapter B (a quick chapter switch, or
+        // ON_PAUSE right before disposal) discard a still-pending save for chapter A.
+        // Scoped per chapter, REPLACE only ever supersedes an older checkpoint for the
+        // *same* chapter, which is correct: those fire in chronological order on the
+        // main thread, so the newest is the most recent position.
+        private const val UNIQUE_WORK_PREFIX = "reading_progress_save"
+
+        private fun uniqueWorkName(novelId: String, chapterId: String) =
+            "${UNIQUE_WORK_PREFIX}_${novelId}_$chapterId"
 
         fun enqueue(context: Context, novelId: String, chapterId: String, position: ReaderPosition) {
             val data = workDataOf(
@@ -113,7 +116,7 @@ class ReadingProgressSaveWorker(
                 .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
                 .build()
             WorkManager.getInstance(context).enqueueUniqueWork(
-                UNIQUE_WORK_NAME,
+                uniqueWorkName(novelId, chapterId),
                 ExistingWorkPolicy.REPLACE,
                 request
             )

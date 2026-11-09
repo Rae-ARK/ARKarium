@@ -1543,51 +1543,78 @@ class MainActivity : ComponentActivity() {
                                     coverUri = readerCoverUri,
                                     author = readerAuthor.value,
                                     initialPosition = initialReaderPosition.value,
+                                    // The four handlers below (onBack, onBackToFiction,
+                                    // onPrevious, onNext) use AppScope.io plus the durable
+                                    // Worker backstop, like onSystemBack: no later ON_PAUSE
+                                    // checkpoint exists once the reader has left composition,
+                                    // so this write is the only attempt. Navigation hops back
+                                    // to Main after the write lands (NavController isn't
+                                    // thread-safe).
                                     onBack = { position ->
-                                        lifecycleScope.launch {
+                                        AppScope.io.launch {
                                             saveReadingProgress(novelId, chapterId, position)
-                                            // Same popUpTo("home") reasoning as NovelDetail's
-                                            // onBack - Reader's Back always went straight to
-                                            // Home regardless of entry path.
-                                            navController.navigate("home") {
-                                                popUpTo("home") { inclusive = false }
-                                                launchSingleTop = true
-                                            }
-                                        }
-                                    },
-                                    onBackToFiction = { position ->
-                                        if (novel != null) {
-                                            lifecycleScope.launch {
-                                                saveReadingProgress(novelId, chapterId, position)
-                                                navController.navigate("novelDetail/${novel.id}") {
+                                            withContext(Dispatchers.Main) {
+                                                // Same popUpTo("home") reasoning as NovelDetail's
+                                                // onBack - Reader's Back always went straight to
+                                                // Home regardless of entry path.
+                                                navController.navigate("home") {
+                                                    popUpTo("home") { inclusive = false }
                                                     launchSingleTop = true
                                                 }
                                             }
                                         }
+                                        ReadingProgressSaveWorker.enqueue(
+                                            applicationContext, novelId, chapterId, position
+                                        )
+                                    },
+                                    onBackToFiction = { position ->
+                                        if (novel != null) {
+                                            AppScope.io.launch {
+                                                saveReadingProgress(novelId, chapterId, position)
+                                                withContext(Dispatchers.Main) {
+                                                    navController.navigate("novelDetail/${novel.id}") {
+                                                        launchSingleTop = true
+                                                    }
+                                                }
+                                            }
+                                            ReadingProgressSaveWorker.enqueue(
+                                                applicationContext, novelId, chapterId, position
+                                            )
+                                        }
                                     },
                                     onPrevious = previousChapter?.let { prev ->
                                         { position: ReaderPosition ->
-                                            lifecycleScope.launch {
+                                            AppScope.io.launch {
                                                 saveReadingProgress(novelId, chapterId, position)
-                                                // Replace, not push - Back from chapter 5
-                                                // returns to NovelDetail, not chapter 4,
-                                                // matching pre-NavHost behavior where
-                                                // onPrevious/onNext never touched a back
-                                                // stack because there wasn't one.
-                                                navController.navigate("reader/$novelId/${prev.id}") {
-                                                    popUpTo("reader/{novelId}/{chapterId}") { inclusive = true }
+                                                withContext(Dispatchers.Main) {
+                                                    // Replace, not push - Back from chapter 5
+                                                    // returns to NovelDetail, not chapter 4,
+                                                    // matching pre-NavHost behavior where
+                                                    // onPrevious/onNext never touched a back
+                                                    // stack because there wasn't one.
+                                                    navController.navigate("reader/$novelId/${prev.id}") {
+                                                        popUpTo("reader/{novelId}/{chapterId}") { inclusive = true }
+                                                    }
                                                 }
                                             }
+                                            ReadingProgressSaveWorker.enqueue(
+                                                applicationContext, novelId, chapterId, position
+                                            )
                                         }
                                     },
                                     onNext = nextChapter?.let { next ->
                                         { position: ReaderPosition ->
-                                            lifecycleScope.launch {
+                                            AppScope.io.launch {
                                                 saveReadingProgress(novelId, chapterId, position)
-                                                navController.navigate("reader/$novelId/${next.id}") {
-                                                    popUpTo("reader/{novelId}/{chapterId}") { inclusive = true }
+                                                withContext(Dispatchers.Main) {
+                                                    navController.navigate("reader/$novelId/${next.id}") {
+                                                        popUpTo("reader/{novelId}/{chapterId}") { inclusive = true }
+                                                    }
                                                 }
                                             }
+                                            ReadingProgressSaveWorker.enqueue(
+                                                applicationContext, novelId, chapterId, position
+                                            )
                                         }
                                     },
                                     onAuthorClick = {
