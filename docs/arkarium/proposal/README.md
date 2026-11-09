@@ -14,7 +14,6 @@ documented but **not being worked on**. This is the **future**.
 | [`landscape-tablet.md`](landscape-tablet.md) | feature | Nav rail in landscape, Home two-column layout + a new Home Settings page with tag shelves, the fiction page and reader split into panes, and the display-cutout letterboxing fix (built). |
 | [`backend-social.md`](backend-social.md) | feature | Gating, comments, ratings, position sync without owning a backend. |
 | [`bugs/`](bugs/README.md) | reports | Open bugs, split into `critical/` and `other/`. |
-| [`uiux.md`](uiux.md) | reports | Open UI/UX issues. |
 | [`engineering-review.md`](engineering-review.md) | review | Findings index (F1–F23) from a code-plus-research review; links out to the detail docs below. |
 | [`data-safety.md`](data-safety.md) | review detail | F1, F3, F23: Room's destructive migration fallback, `novelId` identity, downgrade crash-loop. |
 | [`manifest-signing.md`](manifest-signing.md) | review detail | F4: the sync manifest proves integrity, not authenticity. |
