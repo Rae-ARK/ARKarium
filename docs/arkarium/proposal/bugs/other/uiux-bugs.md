@@ -1,7 +1,7 @@
 # UI/UX bugs (consolidated)
 
-> **Kind:** proposal · **Status:** open — all 9 fixed in source; most still await an on-device pass (bug 1 needs none — see its own entry) · **Verified:** 2026-11-09 @ (this patch)
-> **Origin:** owner reports (two WhatsApp sessions, 2026-11-09) + a line-by-line re-check of every file each report names, against the commit above — not a transcription of the reports as given. Where a report's claim no longer matches source (fixed since reported, or a different file than named), that's called out explicitly rather than filed as-is. #8 is a follow-on finding from a direct request to re-check Reader's own top-bar handling in portrait, not a separate owner report. #9 is a direct owner report (2026-11-09, third session): a vacant gap between the real status bar and the Reader's own top bar, specifically with the reader's full-screen setting off - distinct from #5, which was the same symptom on the *next* screen after leaving Reader, not inside Reader itself.
+> **Kind:** proposal · **Status:** open — all 10 fixed in source; most still await an on-device pass (bug 1 needs none — see its own entry) · **Verified:** 2026-11-10 @ (this patch)
+> **Origin:** owner reports (two WhatsApp sessions, 2026-11-09) + a line-by-line re-check of every file each report names, against the commit above — not a transcription of the reports as given. Where a report's claim no longer matches source (fixed since reported, or a different file than named), that's called out explicitly rather than filed as-is. #8 is a follow-on finding from a direct request to re-check Reader's own top-bar handling in portrait, not a separate owner report. #9 is a direct owner report (2026-11-09, third session): a vacant gap between the real status bar and the Reader's own top bar, specifically with the reader's full-screen setting off - distinct from #5, which was the same symptom on the *next* screen after leaving Reader, not inside Reader itself. #10 is a direct owner report (2026-11-10): the opposite-looking symptom from the *same* screen state #9 fixed - content drawing under a still-visible status bar, not a gap above it - caused by #9's own fix removing the one remaining state (chrome hidden, full-screen off) that still had nothing padding for it.
 >
 > This status line previously read "closed" while several entries below still called for an on-device pass and both `README.md` index tables already said "open" — fixed here to match this file's own entries and its listing, per the lifecycle rule against leaving a doc that contradicts its own truth (`../../README.md`).
 
@@ -600,6 +600,64 @@ off), reproducible every time rather than on an edge case.
 
 ---
 
+## 10. Reader draws under the status bar in immersive mode with full-screen off — **fixed**
+
+**Where:** `ui/ReaderScreen.kt`, the "Top bar" `Column` (the one wrapping
+`TopAppBar` in `.animateContentSize()`, directly below the
+`DisposableEffect(fullscreenEnabled, isLandscape)` bug 9 fixed).
+
+**This matches what was reported:** with the reader's full-screen setting
+off, tapping to hide ARKarium's own chrome (the "immersive" tap gesture every
+reader screen already has, independent of the full-screen setting) leaves
+content drawing straight under the real, still-visible status bar - reported
+in landscape specifically, though the mechanism below applies in portrait
+too (see "Severity").
+
+**The mechanism (I — consistent with source, not yet measured on-device):** a
+direct side effect of bug 9's own fix. That fix made Reader edge-to-edge
+*unconditionally* - any time the screen is on, regardless of
+`fullscreenEnabled` or orientation - specifically so the `TopAppBar`'s own
+un-zeroed `windowInsets` would be the single thing reserving space for a
+real, visible status bar (see bug 9's "Fix direction"). That holds exactly
+as long as the `TopAppBar` stays in composition. It doesn't: it's wrapped in
+`if (showControls.value) { TopAppBar(...) }`, and `showControls` is the flag
+ARKarium's own tap-to-hide-chrome gesture toggles - entirely independent of
+`fullscreenEnabled` (see the `DisposableEffect`'s own "PREVIOUS BUG" comment,
+which deliberately decoupled the two for a different reason). So a reader
+can be in `showControls.value = false` while `fullscreenEnabled` is still
+`false`: chrome hidden, but the system was never told to hide its bars
+(hide/show stays keyed on `fullscreenEnabled` alone), so the real status bar
+stays on screen - now with no `TopAppBar` left to pad for it, since bug 9's
+fix made that the *only* source of the inset. The window is edge-to-edge
+either way, so nothing else steps in; content draws straight under the bar.
+Landscape makes it obvious because the Column's own `displayCutout` pad sits
+on a side edge there, not the top, so it never incidentally lands near the
+status bar the way a notch's cutout sometimes does in portrait.
+
+**Fix direction:** reserve the same inset the `TopAppBar` would have,
+directly on the "Top bar" `Column`, gated to exactly the state that's
+missing it - chrome hidden *and* the full-screen setting off - so it never
+stacks with the `TopAppBar`'s own pad once chrome (and the `TopAppBar`) is
+back.
+
+**Status:** Fixed — the "Top bar" `Column`'s modifier now adds
+`.windowInsetsPadding(WindowInsets.statusBars)` whenever
+`!showControls.value && !fullscreenEnabled`, and nothing otherwise. True
+full-screen (`fullscreenEnabled = true`) is unaffected either way - the
+status bar is actually hidden there, so there's nothing to reserve space
+for, matching that the whole point of full-screen is drawing under it.
+
+**Severity:** Medium — cosmetic, not lost functionality, and only reachable
+by tapping into immersive mode without also turning full-screen on, but that
+tap gesture is the reader's own documented way to get a distraction-free
+view (`reader-settings.md`), so it's reachable from the default
+configuration without the owner needing to open Settings first; worth
+confirming the portrait case too on an actual device, since this review
+found it by code-reading forward from #9's fix rather than from two separate
+owner repros.
+
+---
+
 ## Summary
 
 | # | Bug | Status |
@@ -613,3 +671,4 @@ off), reproducible every time rather than on an edge case.
 | 7 | Widgets drawn into the landscape cutout | **Fixed** — `AppBottomBar` and `FictionBrowseScreen`'s `ModalBottomSheet`s now pad for `WindowInsets.displayCutout`, same pattern Reader already used |
 | 8 | Reader's top bar doesn't animate with `showControls`, unlike the footer/pill | **Fixed** — top bar now wrapped in `.animateContentSize()`, matching the footer's own pattern |
 | 9 | Reader itself shows a gap above its own top bar with full-screen off | **Fixed** — Reader is now edge-to-edge unconditionally; the TopAppBar's own inset is the only remaining source of the gap |
+| 10 | Reader draws under the status bar in immersive mode with full-screen off | **Fixed** — the "Top bar" Column now reserves the status-bar inset itself whenever chrome is hidden and full-screen is off, the one state #9's fix left with no padding source |

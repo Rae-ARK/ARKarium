@@ -81,4 +81,103 @@ class ChapterMarkupOffsetsTest {
         assertTrue(offsets.isEmpty())
         assertNull(paragraphForCharOffset(offsets, 0))
     }
+
+    // --- paragraphContaining (rung 6, tts-playback-controls.md) -----------------
+
+    @Test
+    fun paragraphContaining_findsTheParagraphThatActuallyHoldsTheOffset() {
+        val raw = "AAAA\n\n<chapter break></chapter break>\n\nBBBB"
+        val offsets = paragraphOffsets(raw)
+        assertEquals(2, offsets.size)
+        val secondStart = offsets[1].rawStart
+
+        assertEquals(offsets[0], paragraphContaining(offsets, 0))
+        assertEquals(offsets[0], paragraphContaining(offsets, 3))
+        assertEquals(offsets[1], paragraphContaining(offsets, secondStart))
+        assertEquals(offsets[1], paragraphContaining(offsets, secondStart + 3))
+    }
+
+    @Test
+    fun paragraphContaining_nullOneCharPastTheEnd() {
+        // One character past a paragraph's own end is outside it (rawStart +
+        // text.length is exclusive) - unlike paragraphForCharOffset, this never
+        // falls back to "the nearest paragraph anyway".
+        val offsets = paragraphOffsets("AAAA\n\n<chapter break></chapter break>\n\nBBBB")
+        val firstEnd = offsets[0].rawStart + offsets[0].text.length
+        assertNull(paragraphContaining(offsets, firstEnd))
+    }
+
+    @Test
+    fun paragraphContaining_nullInAGapBetweenParagraphs() {
+        // The markup-tagged stretch between the two paragraphs isn't covered by
+        // either's range - this is the "mid-callout" case rung 6's highlight falls
+        // back to the chunk range for.
+        val raw = "AAAA\n\n<chapter break></chapter break>\n\nBBBB"
+        val offsets = paragraphOffsets(raw)
+        val gapOffset = raw.indexOf("<chapter break>")
+        assertNull(paragraphContaining(offsets, gapOffset))
+    }
+
+    @Test
+    fun paragraphContaining_nullForEmptyOffsets() {
+        assertNull(paragraphContaining(emptyList(), 0))
+    }
+
+    // --- proseParagraphOffsets (rung 6, tts-playback-controls.md) ---------------
+
+    @Test
+    fun proseParagraphOffsets_noBlankLines_matchesParagraphOffsets() {
+        // A markup-delimited block with no internal blank line is already a single
+        // prose paragraph - same result as paragraphOffsets itself.
+        val raw = "Just one paragraph, no tags at all."
+        assertEquals(paragraphOffsets(raw), proseParagraphOffsets(raw))
+    }
+
+    @Test
+    fun proseParagraphOffsets_splitsABlockOnBlankLines() {
+        // paragraphOffsets sees this as a single block (no markup tags anywhere),
+        // but it's two prose paragraphs separated by a blank line.
+        val raw = "First paragraph.\n\nSecond paragraph."
+        val block = paragraphOffsets(raw)
+        assertEquals(1, block.size)
+
+        val offsets = proseParagraphOffsets(raw)
+        assertEquals(listOf("First paragraph.", "Second paragraph."), offsets.map { it.text })
+        // Offsets stay in raw's own coordinate space, same as paragraphOffsets.
+        offsets.forEach { (start, text) -> assertEquals(text, raw.substring(start, start + text.length)) }
+    }
+
+    @Test
+    fun proseParagraphOffsets_splitsEveryMarkupBlockIndependently() {
+        // paragraphOffsets() doesn't cover a tag's own inner text at all (that's
+        // AuthorNote/News territory, not plain-text blocks - see paragraphContaining's
+        // doc comment), so the <author> content here contributes no paragraph; the
+        // plain-text block on either side of it is still split on its own blank line.
+        val raw = "Para one.\n\nPara two.\n\n<author>A note.\n\nSecond note line.</author>\n\nPara three."
+        val offsets = proseParagraphOffsets(raw)
+        assertEquals(listOf("Para one.", "Para two.", "Para three."), offsets.map { it.text })
+        offsets.forEach { (start, text) -> assertEquals(text, raw.substring(start, start + text.length)) }
+    }
+
+    @Test
+    fun proseParagraphOffsets_softWrapWithinAParagraphIsNotASplit() {
+        // A lone newline (no blank line) is soft-wrapped prose, not a paragraph break.
+        val raw = "Line one\nstill the same paragraph.\n\nA new paragraph."
+        val offsets = proseParagraphOffsets(raw)
+        assertEquals(listOf("Line one\nstill the same paragraph.", "A new paragraph."), offsets.map { it.text })
+    }
+
+    @Test
+    fun proseParagraphOffsets_toleratesWhitespaceOnlyBlankLines() {
+        // Trailing spaces on an otherwise-blank line still count as blank.
+        val raw = "First.\n   \t \nSecond."
+        val offsets = proseParagraphOffsets(raw)
+        assertEquals(listOf("First.", "Second."), offsets.map { it.text })
+    }
+
+    @Test
+    fun proseParagraphOffsets_emptyForNoProseAtAll() {
+        assertTrue(proseParagraphOffsets("<chapter break></chapter break>").isEmpty())
+        assertTrue(proseParagraphOffsets("").isEmpty())
+    }
 }
