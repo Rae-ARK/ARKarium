@@ -369,6 +369,18 @@ fun ReaderScreen(
     // other call site, same rationale as onAuthorClick's own default.
     onOpenTtsSettings: () -> Unit = {},
     onOpenReaderSettings: () -> Unit = {},
+    // Rung 4 fix (docs/arkarium/implementation/tts-playback-controls.md): on API 33+,
+    // POST_NOTIFICATIONS is required for *any* notification to actually post, including
+    // a foreground service's - TtsPlaybackService.startForeground() does not fail when
+    // it's missing, it just posts nothing, which is why the transport buttons silently
+    // never appeared. The only existing runtime request for this permission was wired
+    // to the "Notify new chapters" toggle, so a reader who never used that never got
+    // asked. Called right alongside tts.speak() below, best-effort - it does not gate
+    // starting playback, since the session itself works either way and the OS will show
+    // the notification on a later update once/if the permission is granted. No-op by
+    // default so this stays source-compatible with any other call site, same as
+    // onOpenTtsSettings/onOpenReaderSettings above.
+    onRequestNotificationPermission: () -> Unit = {},
     // Continue-Reading-loses-progress fix (see the lifecycle DisposableEffect and
     // BackHandler further down, near currentAnchor()): onBack/onBackToFiction/
     // onPrevious/onNext were the *only* places progress ever got saved, and all four
@@ -1047,7 +1059,10 @@ fun ReaderScreen(
                                 when {
                                     tts.isPaused -> tts.resume()
                                     tts.isSpeaking -> Unit
-                                    else -> tts.speak(context, chapter.title, content, chapter.id)
+                                    else -> {
+                                        onRequestNotificationPermission()
+                                        tts.speak(context, chapter.title, content, chapter.id)
+                                    }
                                 }
                                 showControls.value = false
                             }) {
@@ -1625,7 +1640,10 @@ fun ReaderScreen(
                 when {
                     tts.isPaused -> tts.resume()
                     tts.isSpeaking -> tts.pause()
-                    else -> tts.speak(context, chapter.title, content, chapter.id)
+                    else -> {
+                        onRequestNotificationPermission()
+                        tts.speak(context, chapter.title, content, chapter.id)
+                    }
                 }
             },
             onSkipPrevious = { tts.skipPrevious() },
