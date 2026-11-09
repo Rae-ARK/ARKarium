@@ -229,8 +229,25 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
   an attribute change made after `setContent` on their own, which was the
   cause of a second bug (stuck cutout padding and a lowered top bar after
   *leaving* immersive mode in portrait: Compose kept padding by the last
-  inset SHORT_EDGES had delivered). See `ReaderScreen.kt`'s
-  `applyWindowLayout` and the `DisposableEffect` that calls it);
+  inset SHORT_EDGES had delivered). Edge-to-edge/cutout-drawing then widened
+  twice more, both times to close a gap between the real status bar and this
+  screen's own `TopAppBar` that the narrower condition still left open: first
+  to cover landscape with the setting *off* (`DEFAULT` letterboxes landscape
+  regardless of the setting, so a reader who rotated without enabling
+  full-screen hit the same dead strip bug 2 above describes), then to cover
+  portrait with the setting off too - unlike the cutout, the status-bar inset
+  a non-edge-to-edge window is relied on to zero out is not consistently
+  zeroed by `decorFitsSystemWindows(true)` across every API level/OEM skin in
+  this app's `minSdk`-to-`compileSdk` range, so the TopAppBar's own
+  deliberately-unzeroed inset (it self-pads below a real status bar exactly
+  as it already does during full-screen's swipe-to-reveal transient bars) can
+  still report a real height on top of whatever the window itself reserved,
+  landing as a double-counted gap. Reader is now edge-to-edge any time it's
+  on screen, independent of both the setting and orientation, with system-bar
+  hide/show staying tied to the setting alone; the TopAppBar's own inset is
+  the single remaining source of the gap's size in every combination. See
+  `ReaderScreen.kt`'s `applyWindowLayout` and the `DisposableEffect` that
+  calls it);
   `reader_break_lines` (default **on**, the only reader switch that is: whether a
   bare `***`-style line draws as a chapter-break divider, see `ChapterMarkup.kt`);
   and `reader_brightness_slider_enabled`, which only toggles whether the
