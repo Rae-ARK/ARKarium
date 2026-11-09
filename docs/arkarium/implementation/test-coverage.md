@@ -1,6 +1,6 @@
 # ViewModel test coverage
 
-> **Kind:** implementation (ladder) · **Status:** 4.2 done, 4.1 next, 4.3 blocked · **Verified:** 2026-11-09 @ (this patch)
+> **Kind:** implementation (ladder) · **Status:** 4.1 done, 4.2 done, 4.3 blocked · **Verified:** 2026-11-09 @ (this patch)
 > **Truth lives in:** `app/src/test/`, `app/src/main/java/com/arkarium/app/viewmodel/`
 
 Goal: close the ViewModel test gap left after the `MainActivity` refactor.
@@ -15,9 +15,30 @@ surface or touch `MainActivity`.
 
 | Rung | State | What |
 |---|---|---|
-| 4.1 | next | `MetadataViewModelTest`: `fetchMetadataFor` with a fake `NovelMetadataProvider` (a suspend lambda). `applyMetadata` out of scope (writes through concrete `AppDatabase`). |
+| 4.1 | **done** | `MetadataViewModelTest`: `fetchMetadataFor` with a fake `NovelMetadataProvider` (a suspend lambda). `applyMetadata` out of scope (writes through concrete `AppDatabase`). |
 | 4.2 | **done** | `LibraryViewModelTest`, narrow: `reportScanSetupError` (pure state write). `refreshRecentlyRead` deferred - see below. `startScan` / `loadNovelDetails` need `DocumentFile` and Room: out of scope. |
 | 4.3 | blocked | `SyncViewModelTest`. Every public function touches `db`, `scanner`, or `syncManager`. Unblocks only if an interface seam over `SyncManager` is introduced or Robolectric is adopted. Placeholder, not a task. |
+
+## Rung 4.1 — what changed
+
+`MetadataViewModelTest` covers `fetchMetadataFor` only, with three cases: the
+success path (`Loading` set synchronously, then `Results` once the fake
+provider resolves - also checking the query text passed through is
+`novel.title`), the failure path (provider throws → `Error` carrying the
+novel and a message built from the exception), and a check that
+`libraryViewModel.novels` is untouched (only `applyMetadata` ever writes it).
+`metadataProvider` is a hand-written fake (`FakeNovelMetadataProvider`,
+backed by a `suspend (String) -> List<NovelMetadataCandidate>` lambda) against
+the real `NovelMetadataProvider` seam, same shape as `SettingsViewModelTest`'s
+`FakeSettingsPreferences`. `db` and the `LibraryViewModel` instance's own
+`db`/`scanner` have no such seam, so they're `Mockito.mock(...)`, same as
+`LibraryViewModelTest` - there only to satisfy constructors, with
+`verifyNoInteractions(db)` on each test proving `fetchMetadataFor` never
+reaches `db` for real. `applyMetadata` stays out of scope, same reasoning as
+`startScan`/`loadNovelDetails` in 4.2: it's built entirely out of
+`db.novelDao()` calls, so testing it for real needs Room, and a mock taught to
+return Room-shaped answers for `updateMetadata`/`findById` would be
+reimplementing Room rather than testing this class's own logic.
 
 ## Rung 4.2 — what changed
 
