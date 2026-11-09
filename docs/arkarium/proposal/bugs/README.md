@@ -28,7 +28,7 @@ Historic ARKster-era bug history is frozen in
 | [`other/continue-reading-position-lost.md`](other/continue-reading-position-lost.md) | other — fix applied, awaiting on-device confirmation |
 | [`other/continue-reading-completion-fraction.md`](other/continue-reading-completion-fraction.md) | other — fix applied, awaiting on-device confirmation |
 | [`other/scrolling-bug.md`](other/scrolling-bug.md) | other — reader scrolling reported not smooth with controls visible; unconfirmed, no device measurements yet |
-| [`uiux-bugs.md`](uiux-bugs.md) | open — 6 of 7 confirmed by source re-check (1 already fixed) plus a new #8; cutout-widget cause pinned by contrast with Reader's own working handling; #8 (top-bar animation) found the same way, by contrast with the footer's own working handling |
+| [`other/uiux-bugs.md`](other/uiux-bugs.md) | open — all 10 fixed in source, most awaiting an on-device pass; #10 is a fix-on-a-fix, found by re-reading forward from #9's own change rather than a separate owner repro |
 
 The three previously tracked here are all fixed and their files deleted per
 the rule above:

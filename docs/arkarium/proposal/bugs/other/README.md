@@ -9,7 +9,7 @@ for the format and the critical/other split.
 | [`continue-reading-position-lost.md`](continue-reading-position-lost.md) | fix applied (7 causes), needs on-device confirmation |
 | [`continue-reading-completion-fraction.md`](continue-reading-completion-fraction.md) | fix applied (streak/weekly-count/haptic), needs on-device confirmation |
 | [`scrolling-bug.md`](scrolling-bug.md) | open — cause 1 (progress readout recomposition scope) fixed, unmeasured; causes 2-4 untouched; moved here from `critical/` (its own severity line already said Medium, not critical) |
-| [`uiux-bugs.md`](uiux-bugs.md) | open — 6 of 7 confirmed by source re-check (1 already fixed) plus a new #8; cutout-widget cause pinned by contrast with Reader's own working handling; #8 (top-bar animation) found the same way, by contrast with the footer's own working handling |
+| [`uiux-bugs.md`](uiux-bugs.md) | open — all 10 fixed in source, most awaiting an on-device pass; #10 is a fix-on-a-fix, found by re-reading forward from #9's own change rather than a separate owner repro |
 
 Fixed and deleted per the rule in `../README.md`:
 

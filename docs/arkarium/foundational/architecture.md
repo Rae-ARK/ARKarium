@@ -1,6 +1,6 @@
 # Architecture
 
-> **Kind:** foundational · **Verified:** 2026-11-08 @ (this patch) · **Truth lives in:** `app/src/main/java/com/arkarium/app/`
+> **Kind:** foundational · **Verified:** 2026-11-10 @ (this patch) · **Truth lives in:** `app/src/main/java/com/arkarium/app/`
 
 Describes what is **built**. Unbuilt ideas live in [`../proposal/`](../proposal/README.md).
 If code and this file disagree, the code wins: fix this file in the same change.
@@ -245,9 +245,21 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
   landing as a double-counted gap. Reader is now edge-to-edge any time it's
   on screen, independent of both the setting and orientation, with system-bar
   hide/show staying tied to the setting alone; the TopAppBar's own inset is
-  the single remaining source of the gap's size in every combination. See
-  `ReaderScreen.kt`'s `applyWindowLayout` and the `DisposableEffect` that
-  calls it);
+  the single remaining source of the gap's size in every combination it's
+  actually in composition for. That carried a fix-on-a-fix: `TopAppBar` is
+  itself gated on `showControls` (chrome visible), a flag independent of the
+  full-screen setting - tap-to-hide-chrome with the setting off leaves
+  `showControls` false while the real status bar is still showing, which,
+  once the window went unconditionally edge-to-edge, left nothing padding
+  for it at all (content drew under the still-visible bar, not a gap above
+  it - the opposite-looking symptom of the same root cause, worst in
+  landscape since the cutout padding only coincidentally lands near the top
+  in portrait). Fixed by reserving the same status-bar inset directly on the
+  "Top bar" `Column` whenever `!showControls.value && !fullscreenEnabled` -
+  exactly the state with no other consumer of it - so it never stacks with
+  `TopAppBar`'s own pad once chrome returns. See `ReaderScreen.kt`'s
+  `applyWindowLayout` and the `DisposableEffect` that calls it, and the "Top
+  bar" `Column`'s own modifier just below it);
   `reader_break_lines` (default **on**, the only reader switch that is: whether a
   bare `***`-style line draws as a chapter-break divider, see `ChapterMarkup.kt`);
   and `reader_brightness_slider_enabled`, which only toggles whether the

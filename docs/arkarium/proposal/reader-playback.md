@@ -1,7 +1,7 @@
 # Reader position and TTS playback lifecycle
 
-> **Kind:** proposal · **Status:** F10 and F22 fixed in code; F9 done in code at paragraph granularity, narrower than this doc's own direction (backlog rung 14) — on-device verification still open for all three · **Verified:** 2026-11-08 @ (this patch)
-> **Origin:** [`engineering-review.md`](engineering-review.md) F9, F10, F22. Related: the playback-controls gap in [`uiux.md`](uiux.md).
+> **Kind:** proposal · **Status:** F10 and F22 fixed in code; F9 done in code at paragraph granularity, narrower than this doc's own direction (backlog rung 14) — on-device verification still open for all three · **Verified:** 2026-11-10 @ (this patch)
+> **Origin:** [`engineering-review.md`](engineering-review.md) F9, F10, F22. Related: the playback-controls gap, originally tracked in `uiux.md` (since deleted), now [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md).
 
 ### F9. Reading position is stored as a scroll fraction, not an anchor
 

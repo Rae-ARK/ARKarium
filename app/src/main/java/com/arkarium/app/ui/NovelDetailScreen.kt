@@ -694,8 +694,8 @@ private fun ArcTabCard(
     showDiscoveryRipple: Boolean = false,
     onDiscoveryInteracted: () -> Unit = {}
 ) {
-    // Double-tap opens the cover enlarged; discoverability is tracked in docs/arkarium/proposal/uiux.md.
-    // The card already has a single-tap
+    // Double-tap opens the cover enlarged; the discoverability fix (one-time ripple +
+    // tip) is done - see engineering-backlog.md rung 4. The card already has a single-tap
     // (select this arc), so combinedClickable is required here rather than a
     // second clickable - two stacked `clickable`s on the same node would just
     // have the outer one win and silently swallow the double-tap.
