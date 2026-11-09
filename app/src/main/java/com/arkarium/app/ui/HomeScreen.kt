@@ -28,7 +28,6 @@ import androidx.compose.material.icons.filled.LibraryAdd
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -84,7 +83,6 @@ fun HomeScreen(
     onNovelClick: (NovelEntity) -> Unit = {},
     onContinueReading: (NovelEntity) -> Unit = {},
     onBrowseClick: () -> Unit = {},
-    onSettingsClick: () -> Unit = {},
     onSearch: (String) -> Unit = {},
     // There was previously no reachable screen on first launch that could trigger the SAF
     // folder picker: Home -> "Browse All Novels" led to FictionBrowse (which has no picker
@@ -153,11 +151,14 @@ fun HomeScreen(
                 }
             },
             actions = {
+                // Settings' own icon button used to live here too - removed per the same
+                // reasoning as Bug 6's back-arrow cleanup (docs/arkarium/proposal/bugs/other/
+                // uiux-bugs.md): the bottom bar (AppBottomBar.kt) is the single, consistent
+                // way to reach every bottom-tab root, Settings included, so a second,
+                // redundant shortcut to it up here was just one more way to do the same
+                // thing instead of a needed affordance.
                 IconButton(onClick = onAddFictionClick) {
                     Icon(Icons.Default.LibraryAdd, contentDescription = "Add fiction")
-                }
-                IconButton(onClick = onSettingsClick) {
-                    Icon(Icons.Default.Settings, contentDescription = "Settings")
                 }
             }
         )

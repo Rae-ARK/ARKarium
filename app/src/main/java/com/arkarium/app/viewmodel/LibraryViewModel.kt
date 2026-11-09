@@ -53,6 +53,22 @@ class LibraryViewModel(
     private val scanner: ScannerImpl
 ) : ViewModel() {
 
+    // Local (non-synced) novel ids that were missing from the most recently completed
+    // scan's seenNovelIds, but not yet cascade-deleted - see onScanCompleted below and
+    // docs/arkarium/proposal/bugs/other/uiux-bugs.md Bug 3. A SAF provider is allowed to
+    // return a partial listing (DocumentsProvider not fully warmed up, a removable/
+    // network-backed DocumentFile tree still populating, ordinary I/O jitter right after
+    // process start), so one pass not seeing a novel that's still genuinely on disk isn't
+    // proof it was deleted. Requiring the novel to be missing on two *consecutive* scans
+    // before actually cascading the delete (which wipes chapters/reading_progress/
+    // chapter_read_events via the FK cascade in Entities.kt) turns one flaky pass from a
+    // silent, unrecoverable data-loss event into a no-op; the novel just needs to show up
+    // seen once more. Deliberately kept in-memory rather than persisted: a fresh process
+    // restart losing this set only ever costs one extra "benefit of the doubt" scan before
+    // a genuinely-deleted novel is cleaned up - it can never make deletion happen sooner or
+    // on less evidence than before this fix.
+    private val missingLocalOnce = mutableSetOf<String>()
+
     val novels: SnapshotStateList<NovelEntity> = mutableStateListOf()
     // Overrides already applied - see loadNovelDetails.
     val chapters: SnapshotStateList<ChapterEntity> = mutableStateListOf()
@@ -182,16 +198,34 @@ class LibraryViewModel(
                         val stale = allNovels.filter { it.id !in seenNovelIds }
                         val staleLocal = stale.filter { it.syncSourceUrl == null }
                         val staleSynced = stale.filter { it.syncSourceUrl != null && it.syncStatus != SyncStatus.MISSING_LOCALLY.name }
-                        staleLocal.forEach { db.novelDao().delete(it.id) }
+
+                        // Bug 3 fix: a local novel only gets cascade-deleted once it's been
+                        // missing on two *consecutive* scans - see missingLocalOnce's doc
+                        // comment. First time it's missing, just remember it and move on.
+                        val confirmedMissingLocal = staleLocal.filter { it.id in missingLocalOnce }
+                        val firstTimeMissingLocal = staleLocal.filter { it.id !in missingLocalOnce }
+                        // Anything seen this pass that was previously flagged was a false
+                        // alarm (the earlier miss was transient) - clear it.
+                        missingLocalOnce.removeAll { it in seenNovelIds }
+                        missingLocalOnce.addAll(firstTimeMissingLocal.map { it.id })
+                        missingLocalOnce.removeAll(confirmedMissingLocal.map { it.id })
+
+                        confirmedMissingLocal.forEach { db.novelDao().delete(it.id) }
                         staleSynced.forEach { db.novelDao().updateSyncStatus(it.id, SyncStatus.MISSING_LOCALLY.name) }
-                        if (staleLocal.isNotEmpty() || staleSynced.isNotEmpty()) {
+                        if (confirmedMissingLocal.isNotEmpty() || staleSynced.isNotEmpty()) {
                             withContext(Dispatchers.Main) {
-                                val staleLocalIds = staleLocal.map { it.id }.toSet()
-                                novels.removeAll { it.id in staleLocalIds }
+                                val confirmedMissingLocalIds = confirmedMissingLocal.map { it.id }.toSet()
+                                novels.removeAll { it.id in confirmedMissingLocalIds }
                                 staleSynced.forEach { s ->
                                     val idx = novels.indexOfFirst { it.id == s.id }
                                     if (idx >= 0) novels[idx] = novels[idx].copy(syncStatus = SyncStatus.MISSING_LOCALLY.name)
                                 }
+                            }
+                        }
+                        if (firstTimeMissingLocal.isNotEmpty()) {
+                            withContext(Dispatchers.Main) {
+                                _scanMessage.value = "${firstTimeMissingLocal.size} novel(s) not found " +
+                                    "this scan - will be removed if still missing next scan."
                             }
                         }
                     }
