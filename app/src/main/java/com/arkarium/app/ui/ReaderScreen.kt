@@ -25,11 +25,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.interaction.DragInteraction
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Brightness4
@@ -59,12 +60,9 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,8 +70,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -98,14 +94,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import coil.compose.AsyncImage
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
-import com.arkarium.app.data.ChapterSegment
 import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.ReaderPosition
 import com.arkarium.app.data.ReadingModeDefault
 import com.arkarium.app.data.Theme
-import com.arkarium.app.data.paragraphForCharOffset
-import com.arkarium.app.data.paragraphOffsets
-import com.arkarium.app.data.parseChapterSegments
 import com.arkarium.app.util.WordLookup
 import kotlinx.coroutines.flow.first
 
@@ -740,73 +732,73 @@ fun ReaderScreen(
         ttsSessionActive = ttsSessionActive,
         ttsAvailable = tts.isAvailable
     )
-    val scrollState = rememberScrollState()
+    // Scrolling-bug fix (other/scrolling-bug.md, causes 2 and 3): the chapter body used
+    // to be a plain Column + .verticalScroll(scrollState), which composes and lays out
+    // every paragraph up front - on a long chapter, during this very screen's own enter
+    // transition (NavMotion's 300ms slide+fade) - and had every paragraph register an
+    // onGloballyPositioned callback that wrote to state (paragraphContentTop) on every
+    // scroll frame. Both are gone now: the body below is a LazyColumn over readerBlocks()
+    // (ReaderBlocks.kt), which only composes/lays out the blocks actually scrolled into
+    // view, and position/progress are now derived from the LazyListState's own
+    // index/offset bookkeeping (ReaderScrollModel, readerAnchorBlock,
+    // readerBlockIndexForCharOffset, readerBlockIndexForChunkStart) instead of a
+    // per-paragraph pixel map this screen had to maintain by hand.
+    val listState = rememberLazyListState()
 
     // ReaderScreen's call site in MainActivity doesn't change when Previous/Next swaps
     // to a new chapter (it's still the same `is Screen.Reader ->` branch, just
     // re-invoked with a new Screen.Reader instance) - so `remember`-backed state above,
-    // including scrollState, survives across chapters rather than being torn down and
+    // including listState, survives across chapters rather than being torn down and
     // recreated. That's the right behavior for fontSize/lineHeight/readingMode (a
     // reading preference shouldn't reset every chapter), but scroll position is
     // per-chapter: without this, landing on a new chapter kept whatever scroll offset
     // the previous chapter was left at instead of opening at the top. Reset explicitly
     // whenever the chapter actually changes.
     LaunchedEffect(chapter.id) {
-        scrollState.scrollTo(0)
+        listState.scrollToItem(0)
     }
 
-    // Rung 14 (F9) - the paragraph offsets for this chapter's own text, and the pixel
-    // position each paragraph's Text composable actually lands at once laid out
-    // (scrollContainerTop + paragraphContentTop below), used both to capture an exit
-    // position (currentAnchor()) and to restore initialPosition once layout catches up.
-    val paragraphOffsetList = remember(content, breakLinesEnabled) { paragraphOffsets(content, breakLinesEnabled) }
-    // Key: a paragraph's ParagraphOffset.rawStart. Value: that paragraph's scroll
-    // offset - the value scrollState.value would need to be for this paragraph to sit
-    // flush with the top of the scrollable area - computed from its onGloballyPositioned
-    // position in root plus the scroll amount at the time, minus the scrollable
-    // container's own (scroll-invariant) position in root. Cleared per chapter so a
-    // stale entry from the previous chapter's paragraphs (different rawStarts, but
-    // best not to rely on that alone) can't linger.
-    val paragraphContentTop = remember(chapter.id) { mutableStateMapOf<Int, Float>() }
-    var scrollContainerTop by remember(chapter.id) { mutableFloatStateOf(0f) }
-    var scrollContainerHeight by remember(chapter.id) { mutableIntStateOf(0) }
-    // Rung 5: each text block's last TextLayoutResult (key: the block's rawStart, same as
-    // paragraphContentTop), so auto-scroll can find the line a chunk starts on. Plain map,
-    // not state - it's only read from the effect below, which re-runs on the chunk change.
+    // The flat list of lazily-composed blocks for this chapter's text (ReaderBlocks.kt) -
+    // one per prose paragraph plus one per divider/callout - and the weighted model that
+    // turns the LazyListState's visible-item bookkeeping into a 0f..1f reading-progress
+    // fraction (ReaderScrollModel's own doc comment). Both keyed on the same inputs the
+    // old paragraphOffsetList/segments were, so a chapter edit or a break-lines toggle
+    // rebuilds them exactly when it used to rebuild those.
+    val blocks = remember(content, breakLinesEnabled) { readerBlocks(content, breakLinesEnabled) }
+    val scrollModel = remember(blocks) { ReaderScrollModel(blocks) }
+    // Rung 5: each prose block's last TextLayoutResult (key: the block's rawStart), so
+    // the long-press word lookup below can turn a tap position into a character offset.
+    // Plain map, not state - nothing re-runs off its contents (unlike the pixel-offset
+    // map this replaced, which every paragraph wrote to on every scroll frame).
     val paragraphLayouts = remember(chapter.id) { HashMap<Int, TextLayoutResult>() }
     var positionRestored by remember(chapter.id) { mutableStateOf(initialPosition == null) }
 
-    // Restores initialPosition once enough paragraphs have reported a position to
-    // resolve it - re-runs as paragraphContentTop fills in (each onGloballyPositioned
-    // callback below touches it), stopping the first time the target paragraph's
-    // offset is actually known. A paragraph past the very first screenful may not have
-    // laid out yet on a long chapter, so this can take a few recompositions rather than
-    // firing once; it gives up and leaves the reader at the top if initialPosition's
-    // paragraph never shows up at all (e.g. the chapter was edited shorter since).
-    LaunchedEffect(chapter.id, paragraphContentTop.size, settingsSeeded) {
+    // Restores initialPosition once the reader settings that affect layout have been
+    // seeded (settingsSeeded - a font-size/line-height change reflows the text, but
+    // never changes which block index a given charOffset falls into, so unlike the old
+    // pixel-offset restore this doesn't also need to wait for a layout pass to report
+    // back: scrollToItem by index works the moment the target block is known). Gives up
+    // and leaves the reader at the top if initialPosition's paragraph no longer exists
+    // (e.g. the chapter was edited shorter since it was saved).
+    LaunchedEffect(chapter.id, settingsSeeded, blocks) {
         if (positionRestored) return@LaunchedEffect
         val target = initialPosition ?: run { positionRestored = true; return@LaunchedEffect }
-        // Wait for the seeded reader settings (see settingsSeeded), then for the reflow
-        // they cause to be laid out and reported, before reading any paragraph offset.
         if (!settingsSeeded) return@LaunchedEffect
-        withFrameNanos { }
-        withFrameNanos { }
-        val paragraph = paragraphForCharOffset(paragraphOffsetList, target.charOffset)
+        val blockIndex = readerBlockIndexForCharOffset(blocks, target.charOffset)
             ?: run { positionRestored = true; return@LaunchedEffect }
-        val offset = paragraphContentTop[paragraph.rawStart] ?: return@LaunchedEffect
-        scrollState.scrollTo(offset.toInt().coerceIn(0, scrollState.maxValue))
+        listState.scrollToItem(READER_LEADING_ITEMS + blockIndex)
         positionRestored = true
     }
 
-    // The restore above is a one-shot "wait for layout, then jump". If the reader takes
+    // The restore above is a one-shot "jump to the saved block". If the reader takes
     // over before it lands (they start scrolling, or read-aloud auto-scroll moves the
-    // text), the jump would now be wrong *and* currentAnchor() must stop reporting the
+    // list), the jump would now be wrong *and* currentAnchor() must stop reporting the
     // not-yet-applied initialPosition in place of where they actually are - so the
     // reader's own drag ends the wait. Deliberately a DragInteraction, not
-    // isScrollInProgress: the chapter-start scrollTo(0) and the restore's own scrollTo
-    // are programmatic scrolls and must not count as the reader taking over.
+    // isScrollInProgress: the chapter-start scrollToItem(0) and the restore's own
+    // scrollToItem are programmatic scrolls and must not count as the reader taking over.
     LaunchedEffect(chapter.id) {
-        scrollState.interactionSource.interactions.first { it is DragInteraction.Start }
+        listState.interactionSource.interactions.first { it is DragInteraction.Start }
         positionRestored = true
     }
 
@@ -838,14 +830,15 @@ fun ReaderScreen(
     // Rung 6 (paragraph-highlight variant, tts-playback-controls.md): follow the
     // narration. Whenever the range being highlighted changes - a chunk boundary, or
     // now also a paragraph boundary crossed mid-chunk, via the same ttsHighlightRange
-    // the highlight itself uses - scroll so its first line is near the top of the
-    // viewport (see ttsAutoScrollTarget for when that's skipped). Still never fights a
-    // reader who scrolls away mid-paragraph; the next paragraph (or chunk, with no
-    // narrower paragraph available) brings them back. Held back until
-    // reconcileTtsSession has run, so a stale session for another chapter (about to be
-    // stopped above) can't scroll this one. paragraphContentTop.size is a key so a
-    // session re-entered after a rotation retries once the text blocks have reported
-    // where they landed, instead of giving up on the first, too-early run.
+    // the highlight itself uses - scroll to the block it starts in, unless that block is
+    // already comfortably near the top of the viewport (the same "don't nudge for a tiny
+    // move" judgment call ttsAutoScrollTarget used to make in pixels, now made in item
+    // terms: items are one real paragraph each, so index-level following no longer needs
+    // the old per-line pixel offset to feel precise). Still never fights a reader who
+    // scrolls away mid-paragraph; the next paragraph (or chunk, with no narrower
+    // paragraph available) brings them back. Held back until reconcileTtsSession has
+    // run, so a stale session for another chapter (about to be stopped above) can't
+    // scroll this one.
     val ttsFollowing = ttsSessionActive && ttsSessionReconciled
     val (ttsScrollTargetStart, _) = ttsHighlightRange(
         paragraphStart = tts.currentParagraphStart,
@@ -853,54 +846,58 @@ fun ReaderScreen(
         chunkStart = tts.currentChunkStart,
         chunkEnd = tts.currentChunkEnd
     )
-    LaunchedEffect(ttsScrollTargetStart, ttsFollowing, paragraphContentTop.size) {
+    LaunchedEffect(ttsScrollTargetStart, ttsFollowing, blocks) {
         if (!ttsFollowing || ttsScrollTargetStart < 0) return@LaunchedEffect
-        val block = ttsBlockForChunkStart(paragraphOffsetList, ttsScrollTargetStart)
+        val blockIndex = readerBlockIndexForChunkStart(blocks, content, ttsScrollTargetStart)
             ?: return@LaunchedEffect
-        val blockTop = paragraphContentTop[block.rawStart] ?: return@LaunchedEffect
-        val layout = paragraphLayouts[block.rawStart]
-        val localStart = ttsScrollTargetStart - block.rawStart
-        val lineTop = layout?.let {
-            val offset = localStart.coerceIn(0, it.layoutInput.text.length)
-            it.getLineTop(it.getLineForOffset(offset))
-        } ?: 0f
-        val target = ttsAutoScrollTarget(
-            chunkTop = blockTop + lineTop,
-            currentScroll = scrollState.value,
-            viewportHeight = scrollContainerHeight,
-            maxScroll = scrollState.maxValue
-        )
-        if (target != null) scrollState.animateScrollTo(target)
+        val itemIndex = READER_LEADING_ITEMS + blockIndex
+        val info = listState.layoutInfo
+        val margin = info.viewportSize.height * 0.1f
+        val alreadyNearTop = info.visibleItemsInfo
+            .firstOrNull { it.index == itemIndex }
+            ?.let { it.offset <= margin } ?: false
+        if (!alreadyNearTop) listState.animateScrollToItem(itemIndex)
     }
 
+    // Progress fraction (0f..1f) from the LazyListState's own visible-item bookkeeping -
+    // see ReaderScrollModel's doc comment for why this weighs blocks by text length
+    // instead of relying on a measured scroll range the old Column + verticalScroll had
+    // up front but a lazily-composed list never fully measures.
     fun currentProgress(): Float {
-        val max = scrollState.maxValue
-        return if (max <= 0) 1f else (scrollState.value.toFloat() / max.toFloat()).coerceIn(0f, 1f)
+        val info = listState.layoutInfo
+        val first = info.visibleItemsInfo.firstOrNull() ?: return 1f
+        val last = info.visibleItemsInfo.last()
+        return scrollModel.progress(
+            first = ReaderItemEdge(first.index, first.offset, first.size),
+            last = ReaderItemEdge(last.index, last.offset, last.size),
+            viewportStart = info.viewportStartOffset,
+            viewportEnd = info.viewportEndOffset
+        )
     }
 
     // Rung 14 (F9) - what onBack/onBackToFiction/onPrevious/onNext now save instead of
-    // currentProgress()'s plain fraction: the paragraph currently at (or just above)
-    // the top of the viewport, identified by its own offset into the chapter's text
-    // rather than by where that happens to land on screen at the current font size and
-    // width. Picks the entry in paragraphContentTop with the largest recorded offset
-    // that's still <= the current scroll position - the paragraph the reader has
-    // scrolled down to, not past. Falls back to currentProgress()'s proportional
-    // estimate only if no paragraph has reported a position yet at all (leaving before
-    // the first layout pass completes - e.g. backing out instantly), so this never
-    // saves nothing.
+    // currentProgress()'s plain fraction: the paragraph currently at (or just above) the
+    // top of the viewport, identified by its own offset into the chapter's text rather
+    // than by where that happens to land on screen at the current font size and width.
+    // readerAnchorBlock walks back from the item at the top of the viewport to the
+    // nearest prose block (a divider/callout has no offset of its own), the same "at or
+    // above the top, not past it" rule the old pixel-offset lookup used. Falls back to
+    // currentProgress()'s proportional estimate only when there's no prose at all above
+    // the top item (readerAnchorBlock returns null), so this never saves nothing.
     //
     // Never reports a position the reader hasn't actually reached. While a saved
-    // initialPosition is still waiting to be scrolled to (layout hasn't produced the
-    // target paragraph's offset yet), the scroll position is still 0 - saving *that*
-    // would overwrite the real saved position with the top of the chapter, which is how
-    // a quick background/rotate/back right after opening used to lose "where I left
-    // off". Until the restore lands, the position to report is the one being restored.
+    // initialPosition is still waiting to be scrolled to, the list is still at item 0 -
+    // saving *that* would overwrite the real saved position with the top of the chapter,
+    // which is how a quick background/rotate/back right after opening used to lose
+    // "where I left off". Until the restore lands, the position to report is the one
+    // being restored.
     fun currentAnchor(): ReaderPosition {
         if (!positionRestored && initialPosition != null) return initialPosition
-        val charOffset = paragraphContentTop.entries
-            .filter { it.value <= scrollState.value + 1f }
-            .maxByOrNull { it.value }
-            ?.key
+        val topItemIndex = listState.layoutInfo.visibleItemsInfo
+            .firstOrNull { it.offset >= 0 }?.index
+            ?: listState.firstVisibleItemIndex
+        val anchor = readerAnchorBlock(blocks, topItemIndex - READER_LEADING_ITEMS)
+        val charOffset = anchor?.rawStart
             ?: (currentProgress() * content.length).toInt().coerceIn(0, content.length)
         // completionFraction is the real scroll fraction (see ReaderPosition's doc
         // comment on the regression this fixes) - independent of charOffset, which is
@@ -1114,20 +1111,20 @@ fun ReaderScreen(
             }
         }
 
-        Column(
+        // Scrolling-bug fix (other/scrolling-bug.md, causes 2 and 3) - this used to be a
+        // plain Column + .verticalScroll(scrollState) with every paragraph composed and
+        // laid out up front; see the comment on `listState` above for why it's a
+        // LazyColumn now. The header (breadcrumb/title/top nav row) and footer (bottom
+        // nav row/author card/trailing gap) are each a single item, matching
+        // READER_LEADING_ITEMS (ReaderBlocks.kt) - everything in currentAnchor()/
+        // currentProgress() that converts a `blocks` index to a LazyColumn item index
+        // assumes exactly one leading item, so a second header item must not be added
+        // here without updating that constant too.
+        LazyColumn(
+            state = listState,
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
-                // Rung 14 (F9) - this Column's own position in root is the fixed
-                // baseline paragraphContentTop below is measured against; unlike its
-                // children, it doesn't move as scrollState changes, so this only ever
-                // needs (re)capturing when the layout around it changes (e.g. the top
-                // bar showing/hiding), not per scroll tick.
-                .onGloballyPositioned {
-                    scrollContainerTop = it.positionInRoot().y
-                    scrollContainerHeight = it.size.height
-                }
-                .verticalScroll(scrollState)
                 // `showControls` already existed and correctly gated both the top bar and
                 // the bottom Text/Spacing/Mode panel below - but nothing ever toggled it, so
                 // it was permanently stuck at its initial `true` and the controls could never
@@ -1138,250 +1135,237 @@ fun ReaderScreen(
                     interactionSource = remember { MutableInteractionSource() }
                 ) { showControls.value = !showControls.value }
         ) {
-            // Fiction title / "back to fiction" breadcrumb + arc name, matching Royal
-            // Road's chapter-page top block. Only rendered when the caller has a title to
-            // show - existing callers that don't pass novelTitle see no change at all.
-            if (novelTitle != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.Top
-                ) {
-                    ReaderCoverThumbnail(coverUri = coverUri, modifier = Modifier.size(width = 40.dp, height = 56.dp))
-                    Column(modifier = Modifier.padding(start = 12.dp)) {
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    // Fiction title / "back to fiction" breadcrumb + arc name, matching
+                    // Royal Road's chapter-page top block. Only rendered when the caller
+                    // has a title to show - existing callers that don't pass novelTitle
+                    // see no change at all.
+                    if (novelTitle != null) {
                         Row(
-                            // The row's only visible text is the fiction's title, which on
-                            // its own doesn't say that activating it goes back to the fiction.
-                            modifier = Modifier.clickable(onClickLabel = "Back to fiction") {
-                                onBackToFiction(currentAnchor())
-                            },
-                            verticalAlignment = Alignment.CenterVertically
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 24.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.Top
                         ) {
-                            Icon(
-                                Icons.Filled.ArrowBack,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                            Text(
-                                novelTitle,
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
-                        }
-                        if (!arcTitle.isNullOrBlank()) {
-                            Text(
-                                arcTitle,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = textColor.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Chapter title
-            Text(
-                chapter.title,
-                style = MaterialTheme.typography.headlineMedium,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                textAlign = TextAlign.Center,
-                color = textColor
-            )
-
-            // Previous/Next above the chapter body, mirroring the row below it - Royal
-            // Road shows this pair on both ends of the chapter.
-            ChapterNavRow(
-                hasPrevious = onPrevious != null,
-                hasNext = onNext != null,
-                textColor = textColor,
-                onPrevious = { onPrevious?.invoke(currentAnchor()) },
-                onNext = { onNext?.invoke(currentAnchor()) }
-            )
-
-            // Chapter content with enhanced typography. Parsed into segments so inline
-            // <chapter break>/<author>/<news> tags (see data/ChapterMarkup.kt) render as
-            // their own centered divider / "A Note from the Author" / "News" callouts
-            // instead of printing the raw tag text. A chapter with none of these tags
-            // parses to a single Paragraph segment covering the whole body, so untagged
-            // chapters render exactly as before.
-            val segments = remember(content, breakLinesEnabled) { parseChapterSegments(content, breakLinesEnabled) }
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
-                color = backgroundColor,
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    // Rung 14 (F9) - walked in lockstep with paragraphOffsetList, which
-                    // was built by the exact same tag-matching loop over the same
-                    // `content` (see paragraphOffsets' doc comment), so the Nth
-                    // Paragraph segment here is always paragraphOffsetList[nth]. Only
-                    // advanced inside the Paragraph branch below, in the same place
-                    // and under the same isNotBlank() condition as flushPlain()/this
-                    // loop's own filter - a blank Paragraph still consumes an entry
-                    // (paragraphOffsets kept it too) but never renders a Text to attach
-                    // onGloballyPositioned to, so it's skipped without recording a
-                    // position for it.
-                    var paragraphCursor = 0
-                    segments.forEach { segment ->
-                        when (segment) {
-                            is ChapterSegment.Paragraph -> {
-                                val rawStart = paragraphOffsetList.getOrNull(paragraphCursor)?.rawStart
-                                paragraphCursor++
-                                if (segment.text.isNotBlank()) {
-                                    // Rung 6 (paragraph-highlight variant): the paragraph
-                                    // being read aloud, shaded in place - or rung 5's
-                                    // whole chunk when there's no narrower paragraph range
-                                    // to use (see ttsHighlightRange). Plain String (exactly
-                                    // the old rendering) unless this block actually
-                                    // contains part of that range.
-                                    val highlight = if (ttsFollowing && rawStart != null) {
-                                        val (rangeStart, rangeEnd) = ttsHighlightRange(
-                                            paragraphStart = tts.currentParagraphStart,
-                                            paragraphEnd = tts.currentParagraphEnd,
-                                            chunkStart = tts.currentChunkStart,
-                                            chunkEnd = tts.currentChunkEnd
-                                        )
-                                        ttsHighlightWithin(
-                                            blockStart = rawStart,
-                                            blockLength = segment.text.length,
-                                            chunkStart = rangeStart,
-                                            chunkEnd = rangeEnd
-                                        )
-                                    } else null
-                                    val shownText = remember(segment.text, highlight, textColor) {
-                                        buildAnnotatedString {
-                                            append(segment.text)
-                                            if (highlight != null) {
-                                                addStyle(
-                                                    SpanStyle(background = textColor.copy(alpha = 0.16f)),
-                                                    highlight.start,
-                                                    highlight.endExclusive
-                                                )
-                                            }
-                                        }
-                                    }
+                            ReaderCoverThumbnail(coverUri = coverUri, modifier = Modifier.size(width = 40.dp, height = 56.dp))
+                            Column(modifier = Modifier.padding(start = 12.dp)) {
+                                Row(
+                                    // The row's only visible text is the fiction's title,
+                                    // which on its own doesn't say that activating it goes
+                                    // back to the fiction.
+                                    modifier = Modifier.clickable(onClickLabel = "Back to fiction") {
+                                        onBackToFiction(currentAnchor())
+                                    },
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Filled.ArrowBack,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                     Text(
-                                        text = shownText,
-                                        onTextLayout = { layout ->
-                                            if (rawStart != null) paragraphLayouts[rawStart] = layout
-                                        },
-                                        style = TextStyle(
-                                            fontSize = fontSize.value.sp,
-                                            lineHeight = (fontSize.value * lineHeight.value).sp,
-                                            color = textColor,
-                                            fontFamily = resolveFontFamily(fontFamilyChoice.value),
-                                            letterSpacing = extraLetterSpacing(fontFamilyChoice.value),
-                                            textAlign = TextAlign.Justify
-                                        ),
-                                        modifier = if (rawStart != null) {
-                                            Modifier
-                                                .onGloballyPositioned { coordinates ->
-                                                    paragraphContentTop[rawStart] = coordinates.positionInRoot().y +
-                                                        scrollState.value - scrollContainerTop
-                                                }
-                                                // Long-press-a-word lookup: this used to fire
-                                                // on a plain tap, which - since paragraph text
-                                                // covers nearly the whole reading area - meant a
-                                                // tap almost anywhere in a chapter opened a
-                                                // dictionary/translate app instead of doing the
-                                                // one thing every other tap on this screen does
-                                                // (toggle showControls). detectTapGestures'
-                                                // own pointerInput consumes the gesture before
-                                                // it can bubble up to the reading Column's
-                                                // clickable below, so a plain tap on text was
-                                                // silently swallowed into a lookup (or a no-op
-                                                // on whitespace/punctuation) and never toggled
-                                                // the controls the way tapping the margin did -
-                                                // normal reading (tap to show/hide the top bar
-                                                // and Reader Preferences pill while turning
-                                                // pages) was broken on every word. onTap now
-                                                // matches the Column's own toggle so tapping
-                                                // text behaves exactly like tapping the margin;
-                                                // only onLongPress - a deliberate, can't-happen-
-                                                // by-accident gesture - does the lookup.
-                                                // paragraphLayouts[rawStart] is written by
-                                                // onTextLayout above, so by the time either
-                                                // gesture can land the layout for offset math is
-                                                // already there; a long-press that somehow lands
-                                                // before the first layout pass, or on whitespace/
-                                                // punctuation (WordLookup.wordAt returns null),
-                                                // is a silent no-op rather than falling through
-                                                // to anything else.
-                                                .pointerInput(rawStart, segment.text) {
-                                                    detectTapGestures(
-                                                        onTap = { showControls.value = !showControls.value },
-                                                        onLongPress = { pressOffset ->
-                                                            val layout = paragraphLayouts[rawStart]
-                                                            val charIndex = layout?.getOffsetForPosition(pressOffset)
-                                                            val word = charIndex?.let { WordLookup.wordAt(segment.text, it) }
-                                                            if (word != null) WordLookup.lookup(context, word)
-                                                        }
-                                                    )
-                                                }
-                                        } else Modifier
+                                        novelTitle,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(start = 4.dp)
+                                    )
+                                }
+                                if (!arcTitle.isNullOrBlank()) {
+                                    Text(
+                                        arcTitle,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = textColor.copy(alpha = 0.7f),
+                                        modifier = Modifier.padding(top = 4.dp)
                                     )
                                 }
                             }
-                            is ChapterSegment.ChapterBreak -> ChapterBreakDivider(
-                                label = segment.label,
-                                textColor = textColor
-                            )
-                            is ChapterSegment.AuthorNote -> AuthorNoteCallout(
-                                author = author,
-                                body = segment.text,
-                                textColor = textColor
-                            )
-                            is ChapterSegment.News -> ChapterCalloutCard(
-                                icon = "📰",
-                                heading = "News",
-                                body = segment.text,
-                                textColor = textColor
+                        }
+                    }
+
+                    // Chapter title
+                    Text(
+                        chapter.title,
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        textAlign = TextAlign.Center,
+                        color = textColor
+                    )
+
+                    // Previous/Next above the chapter body, mirroring the row below it -
+                    // Royal Road shows this pair on both ends of the chapter.
+                    ChapterNavRow(
+                        hasPrevious = onPrevious != null,
+                        hasNext = onNext != null,
+                        textColor = textColor,
+                        onPrevious = { onPrevious?.invoke(currentAnchor()) },
+                        onNext = { onNext?.invoke(currentAnchor()) }
+                    )
+                }
+            }
+
+            // Chapter content with enhanced typography, one LazyColumn item per block
+            // (ReaderBlocks.kt): inline <chapter break>/<author>/<news> tags (see
+            // data/ChapterMarkup.kt) render as their own centered divider / "A Note from
+            // the Author" / "News" callouts instead of printing the raw tag text, and
+            // running prose is split further on blank lines into one item per actual
+            // paragraph - see readerBlocks()'s own doc comment for why that split, not
+            // just one item per markup-delimited segment, is what makes this lazy at all.
+            // The 40.dp horizontal/vertical padding below reproduces the old shared
+            // Surface+Column(padding 20.dp) wrapper's combined inset without wrapping
+            // every item in its own copy of that (functionally invisible, since the
+            // Surface's color was always the same as the surrounding background) card.
+            itemsIndexed(blocks, key = { index, _ -> index }) { index, block ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 40.dp)
+                        .padding(
+                            top = when {
+                                index == 0 -> 36.dp
+                                block is ReaderBlock.Prose && block.blankLinesBefore > 0 ->
+                                    (block.blankLinesBefore * 12).dp
+                                else -> 0.dp
+                            }
+                        )
+                ) {
+                    when (block) {
+                        is ReaderBlock.Prose -> {
+                            val rawStart = block.rawStart
+                            // Rung 6 (paragraph-highlight variant): the paragraph being
+                            // read aloud, shaded in place - or rung 5's whole chunk when
+                            // there's no narrower paragraph range to use (see
+                            // ttsHighlightRange). Plain String (exactly the old
+                            // rendering) unless this block actually contains part of
+                            // that range.
+                            val highlight = if (ttsFollowing) {
+                                val (rangeStart, rangeEnd) = ttsHighlightRange(
+                                    paragraphStart = tts.currentParagraphStart,
+                                    paragraphEnd = tts.currentParagraphEnd,
+                                    chunkStart = tts.currentChunkStart,
+                                    chunkEnd = tts.currentChunkEnd
+                                )
+                                ttsHighlightWithin(
+                                    blockStart = rawStart,
+                                    blockLength = block.text.length,
+                                    chunkStart = rangeStart,
+                                    chunkEnd = rangeEnd
+                                )
+                            } else null
+                            val shownText = remember(block.text, highlight, textColor) {
+                                buildAnnotatedString {
+                                    append(block.text)
+                                    if (highlight != null) {
+                                        addStyle(
+                                            SpanStyle(background = textColor.copy(alpha = 0.16f)),
+                                            highlight.start,
+                                            highlight.endExclusive
+                                        )
+                                    }
+                                }
+                            }
+                            Text(
+                                text = shownText,
+                                onTextLayout = { layout -> paragraphLayouts[rawStart] = layout },
+                                style = TextStyle(
+                                    fontSize = fontSize.value.sp,
+                                    lineHeight = (fontSize.value * lineHeight.value).sp,
+                                    color = textColor,
+                                    fontFamily = resolveFontFamily(fontFamilyChoice.value),
+                                    letterSpacing = extraLetterSpacing(fontFamilyChoice.value),
+                                    textAlign = TextAlign.Justify
+                                ),
+                                modifier = Modifier
+                                    // Long-press-a-word lookup: this used to fire on a
+                                    // plain tap, which - since paragraph text covers
+                                    // nearly the whole reading area - meant a tap almost
+                                    // anywhere in a chapter opened a dictionary/translate
+                                    // app instead of doing the one thing every other tap
+                                    // on this screen does (toggle showControls).
+                                    // detectTapGestures' own pointerInput consumes the
+                                    // gesture before it can bubble up to the LazyColumn's
+                                    // clickable above, so a plain tap on text was silently
+                                    // swallowed into a lookup (or a no-op on whitespace/
+                                    // punctuation) and never toggled the controls the way
+                                    // tapping the margin did - normal reading (tap to
+                                    // show/hide the top bar and Reader Preferences pill
+                                    // while turning pages) was broken on every word. onTap
+                                    // now matches the LazyColumn's own toggle so tapping
+                                    // text behaves exactly like tapping the margin; only
+                                    // onLongPress - a deliberate, can't-happen-by-accident
+                                    // gesture - does the lookup. paragraphLayouts[rawStart]
+                                    // is written by onTextLayout above, so by the time
+                                    // either gesture can land the layout for offset math
+                                    // is already there; a long-press that somehow lands
+                                    // before the first layout pass, or on whitespace/
+                                    // punctuation (WordLookup.wordAt returns null), is a
+                                    // silent no-op rather than falling through to
+                                    // anything else.
+                                    .pointerInput(rawStart, block.text) {
+                                        detectTapGestures(
+                                            onTap = { showControls.value = !showControls.value },
+                                            onLongPress = { pressOffset ->
+                                                val layout = paragraphLayouts[rawStart]
+                                                val charIndex = layout?.getOffsetForPosition(pressOffset)
+                                                val word = charIndex?.let { WordLookup.wordAt(block.text, it) }
+                                                if (word != null) WordLookup.lookup(context, word)
+                                            }
+                                        )
+                                    }
                             )
                         }
+                        is ReaderBlock.Break -> ChapterBreakDivider(label = block.label, textColor = textColor)
+                        is ReaderBlock.AuthorNote -> AuthorNoteCallout(author = author, body = block.text, textColor = textColor)
+                        is ReaderBlock.News -> ChapterCalloutCard(
+                            icon = "📰",
+                            heading = "News",
+                            body = block.text,
+                            textColor = textColor
+                        )
                     }
                 }
             }
 
-            ChapterNavRow(
-                hasPrevious = onPrevious != null,
-                hasNext = onNext != null,
-                textColor = textColor,
-                onPrevious = { onPrevious?.invoke(currentAnchor()) },
-                onNext = { onNext?.invoke(currentAnchor()) },
-                // Only offered where there's actually somewhere to send the reader -
-                // the top copy of this row (above the chapter body) is left as a plain
-                // disabled button at the end of a fiction, since "About the Author" as
-                // the very first thing on the page would read oddly before they've even
-                // reached the content.
-                onAuthorClick = author?.let { { onAuthorClick() } }
-            )
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    ChapterNavRow(
+                        hasPrevious = onPrevious != null,
+                        hasNext = onNext != null,
+                        textColor = textColor,
+                        onPrevious = { onPrevious?.invoke(currentAnchor()) },
+                        onNext = { onNext?.invoke(currentAnchor()) },
+                        // Only offered where there's actually somewhere to send the
+                        // reader - the top copy of this row (above the chapter body) is
+                        // left as a plain disabled button at the end of a fiction, since
+                        // "About the Author" as the very first thing on the page would
+                        // read oddly before they've even reached the content.
+                        onAuthorClick = author?.let { { onAuthorClick() } }
+                    )
 
-            // "About the author" card - only rendered when this fiction actually has a
-            // linked author (see NovelEntity.authorId / AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md).
-            // No author.json means no card, same as today's "no metadata.json" behavior
-            // elsewhere in the scanner.
-            if (author != null) {
-                AboutAuthorCard(
-                    author = author,
-                    backgroundColor = backgroundColor,
-                    textColor = textColor,
-                    onClick = onAuthorClick
-                )
+                    // "About the author" card - only rendered when this fiction actually
+                    // has a linked author (see NovelEntity.authorId /
+                    // AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md). No author.json means no
+                    // card, same as today's "no metadata.json" behavior elsewhere in
+                    // the scanner.
+                    if (author != null) {
+                        AboutAuthorCard(
+                            author = author,
+                            backgroundColor = backgroundColor,
+                            textColor = textColor,
+                            onClick = onAuthorClick
+                        )
+                    }
+
+                    // Small trailing gap so the last line of the chapter doesn't sit
+                    // flush against the footer below it.
+                    Box(modifier = Modifier.padding(bottom = 24.dp))
+                }
             }
-
-            // Small trailing gap so the last line of the chapter doesn't sit flush
-            // against the footer below it.
-            Box(modifier = Modifier.padding(bottom = 24.dp))
         }
 
         // Footer: progress readout + Reader Preferences pill/panel. A real Column

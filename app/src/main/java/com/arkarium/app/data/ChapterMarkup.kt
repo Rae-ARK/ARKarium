@@ -278,8 +278,12 @@ fun paragraphContaining(offsets: List<ParagraphOffset>, charOffset: Int): Paragr
 // A blank-line-separated regex matches one or more blank lines, used below to split a
 // paragraphOffsets() block into the actual prose paragraphs it's often made of -
 // "[ \t]*" rather than bare "\n\n" so a line that's merely whitespace (trailing spaces
-// left on an otherwise-blank line) still counts as blank.
-private val BLANK_LINE_SPLIT = Regex("\n[ \t]*(?:\n[ \t]*)+")
+// left on an otherwise-blank line) still counts as blank. "\r?" before each "\n" so a
+// CRLF chapter file's blank lines ("...line1\r\n\r\npara2...") match too - without it,
+// the \r sitting between the two \n's broke the match, and a CRLF chapter never split
+// into paragraphs at all (every blank-line gap was swallowed into one Paragraph/Prose
+// block instead - see readerBlocks()'s own CRLF test for the symptom this caused).
+private val BLANK_LINE_SPLIT = Regex("\r?\n[ \t]*(?:\r?\n[ \t]*)+")
 
 // Rung 6 of docs/arkarium/implementation/tts-playback-controls.md (paragraph-highlight
 // variant - see that doc for why it replaced the originally-planned word-level
@@ -306,7 +310,12 @@ fun proseParagraphOffsets(raw: String, detectBreakLines: Boolean = true): List<P
 // purely whitespace between two real paragraphs, including the "no blank line at all"
 // case at the very start/end of `text` - is dropped rather than reported as an empty
 // paragraph.
-private fun splitBlankLines(text: String): List<ParagraphOffset> {
+//
+// internal rather than private: ui/ReaderBlocks.kt (readerBlocks()) splits the same
+// paragraphOffsets() blocks into the reader's own lazy per-paragraph items, and has to
+// use this exact splitter rather than a second copy of it, for the same one-splitter
+// reason proseParagraphOffsets above does.
+internal fun splitBlankLines(text: String): List<ParagraphOffset> {
     val result = mutableListOf<ParagraphOffset>()
     var cursor = 0
     fun addPiece(from: Int, to: Int) {
