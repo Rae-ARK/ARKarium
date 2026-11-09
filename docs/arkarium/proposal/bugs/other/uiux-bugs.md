@@ -1,7 +1,7 @@
 # UI/UX bugs (consolidated)
 
-> **Kind:** proposal · **Status:** open — all 8 fixed in source; most still await an on-device pass (bug 1 needs none — see its own entry) · **Verified:** 2026-11-09 @ (this patch)
-> **Origin:** owner reports (two WhatsApp sessions, 2026-11-09) + a line-by-line re-check of every file each report names, against the commit above — not a transcription of the reports as given. Where a report's claim no longer matches source (fixed since reported, or a different file than named), that's called out explicitly rather than filed as-is. #8 is a follow-on finding from a direct request to re-check Reader's own top-bar handling in portrait, not a separate owner report.
+> **Kind:** proposal · **Status:** open — all 9 fixed in source; most still await an on-device pass (bug 1 needs none — see its own entry) · **Verified:** 2026-11-09 @ (this patch)
+> **Origin:** owner reports (two WhatsApp sessions, 2026-11-09) + a line-by-line re-check of every file each report names, against the commit above — not a transcription of the reports as given. Where a report's claim no longer matches source (fixed since reported, or a different file than named), that's called out explicitly rather than filed as-is. #8 is a follow-on finding from a direct request to re-check Reader's own top-bar handling in portrait, not a separate owner report. #9 is a direct owner report (2026-11-09, third session): a vacant gap between the real status bar and the Reader's own top bar, specifically with the reader's full-screen setting off - distinct from #5, which was the same symptom on the *next* screen after leaving Reader, not inside Reader itself.
 >
 > This status line previously read "closed" while several entries below still called for an on-device pass and both `README.md` index tables already said "open" — fixed here to match this file's own entries and its listing, per the lifecycle rule against leaving a doc that contradicts its own truth (`../../README.md`).
 
@@ -545,6 +545,61 @@ case.
 
 ---
 
+## 9. Reader itself shows a gap between the status bar and its own top bar when full-screen is off — **fixed**
+
+**Where:** `ui/ReaderScreen.kt`, the `DisposableEffect(fullscreenEnabled, isLandscape)`
+that calls `applyWindowLayout` (613–692, specifically the `drawIntoCutout`
+assignment and its doc comment).
+
+**This matches what was reported:** a vacant strip between the real status
+bar and the Reader's own `TopAppBar`, present specifically with the reader's
+full-screen setting off. Unlike bug 5 above - which is the same visual
+symptom on the screen *after* leaving Reader - this is inside Reader itself,
+while reading.
+
+**The mechanism (I — consistent with source, not yet measured on-device):**
+`drawIntoCutout` (and `edgeToEdge` alongside it) used to be `fullscreenEnabled
+|| isLandscape` - portrait with the setting off was the one combination left
+on `WindowCompat.setDecorFitsSystemWindows(window, true)` (non-edge-to-edge),
+because bug 2/3's own display-cutout guidance says `DEFAULT` doesn't
+letterbox the *cutout* in portrait while the status bar is showing, so
+portrait-off looked safe to leave as-is. That reasoning covers the cutout
+inset, but non-edge-to-edge was also being relied on for a second thing: that
+`decorFitsSystemWindows(true)` makes the *status-bar* inset the Reader
+`TopAppBar` reads (it deliberately does not zero its own `windowInsets` - see
+that call site's own note) resolve to zero, on the theory that the framework
+is already reserving that space outside Compose entirely. That isn't
+consistently true across every API level/OEM skin this app's `minSdk
+24`-to-`compileSdk 34` range spans - `WindowInsetsCompat` dispatch down the
+content view isn't reliably consumed by that flag alone - so the TopAppBar's
+own inset can still report the real status-bar height even while
+non-edge-to-edge, landing on top of whatever the window itself already
+reserved: a double-counted gap, exactly the reported strip.
+
+**Fix direction:** stop relying on the window itself to also reserve the
+status-bar's space. Make Reader edge-to-edge any time it's on screen,
+independent of both the full-screen setting and orientation - the same state
+every non-reader route already gets unconditionally from `MainActivity`'s own
+effect - so the TopAppBar's own inset-based self-pad (already proven correct
+for landscape-off and full-screen's swipe-to-reveal transient bars) is the
+*only* thing ever responsible for the gap's size, with nothing at the window
+level reserving it a second time.
+
+**Status:** Fixed — `drawIntoCutout` (and `edgeToEdge` alongside it, since
+they're the same value at this call site) is now unconditional `true` rather
+than `fullscreenEnabled || isLandscape`. System-bar hide/show is unaffected -
+still keyed on `fullscreenEnabled` alone - so this does not start hiding the
+status bar in portrait; it only lets the window draw under it, the same way
+landscape-off and full-screen's transient bars already do, so Compose's own
+padding is the single source of truth for the gap in every combination.
+
+**Severity:** Medium — cosmetic (a persistent layout gap, not lost
+functionality), but visible on the screen that is the app's primary
+activity, in what is likely the *default* reading configuration (full-screen
+off), reproducible every time rather than on an edge case.
+
+---
+
 ## Summary
 
 | # | Bug | Status |
@@ -557,3 +612,4 @@ case.
 | 6 | Inconsistent back arrow on bottom-tab roots | **Fixed** — removed from Settings + Browse; Home's redundant top-bar Settings shortcut also removed per owner request, bottom bar is now the only way between tabs |
 | 7 | Widgets drawn into the landscape cutout | **Fixed** — `AppBottomBar` and `FictionBrowseScreen`'s `ModalBottomSheet`s now pad for `WindowInsets.displayCutout`, same pattern Reader already used |
 | 8 | Reader's top bar doesn't animate with `showControls`, unlike the footer/pill | **Fixed** — top bar now wrapped in `.animateContentSize()`, matching the footer's own pattern |
+| 9 | Reader itself shows a gap above its own top bar with full-screen off | **Fixed** — Reader is now edge-to-edge unconditionally; the TopAppBar's own inset is the only remaining source of the gap |
