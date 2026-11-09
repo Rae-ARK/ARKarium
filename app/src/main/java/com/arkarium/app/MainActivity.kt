@@ -212,7 +212,17 @@ class MainActivity : ComponentActivity() {
     // Set immediately before launching notificationPermission below, read back in its
     // callback - carries which novel's toggle triggered the permission prompt across
     // that async round-trip, since RequestPermission's callback only gets a Boolean.
-    private var pendingNotifyToggleNovelId: String? = null
+    // mutableStateOf, not a plain var (see onSaveInstanceState/onCreate's
+    // savedInstanceState branch below) - the system permission dialog runs in its own
+    // window/process, so this Activity is only STOPPED, not destroyed, while it's up,
+    // but that's exactly the state lmkd can reclaim a backgrounded process from. A
+    // plain var reset to null on recreation; ActivityResultRegistry itself persists
+    // the *pending request* across that (the callback still fires), but without this
+    // being saved too the callback would fire with granted=true and novelId null -
+    // the permission silently granted with nothing left to apply it to, so the toggle
+    // stays off with no error and no retry. Same class of bug pendingContinueReadingShortcut/
+    // pendingNotificationNovelId were already fixed for below.
+    private val pendingNotifyToggleNovelId = mutableStateOf<String?>(null)
     private lateinit var db: AppDatabase
     private lateinit var scanner: ScannerImpl
     private lateinit var prefsManager: PreferencesManager
@@ -245,14 +255,18 @@ class MainActivity : ComponentActivity() {
     // there are granted at install time), so this is never triggered on those versions;
     // the toggle's callback checks Build.VERSION.SDK_INT before ever calling launch().
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        val novelId = pendingNotifyToggleNovelId
-        pendingNotifyToggleNovelId = null
+        val novelId = pendingNotifyToggleNovelId.value
+        pendingNotifyToggleNovelId.value = null
         // Denied: the toggle simply stays off (setNotifyEnabled is never called, so
         // notify_new_chapters keeps whatever value it already had - false, since this
         // path only runs when the user just tried to turn it on). They can grant the
         // permission from system settings later and flip the toggle again.
         if (granted && novelId != null) {
-            lifecycleScope.launch { setNotifyEnabled(novelId, true) }
+            // AppScope.io, not lifecycleScope (see AppScope.kt's doc comment) - this
+            // callback can fire right as the Activity instance that launched the
+            // permission request is being torn down for recreation, same race
+            // saveReadingProgress/saveChapterEdits were already fixed for.
+            AppScope.io.launch { setNotifyEnabled(novelId, true) }
         }
     }
 
@@ -476,10 +490,21 @@ class MainActivity : ComponentActivity() {
     // docs/arkarium/foundational/design-notes.md) made that unnecessary - the "novelDetail/{novelId}"
     // route now resolves its novel from libraryViewModel.novels on every recomposition,
     // so patching that list here is enough on its own.
+    // Durability fix (same class of bug as reading-progress/chapter-edits - see
+    // AppScope.kt's and saveChapterEdits' own doc comments): now wrapped in
+    // NonCancellable and called from AppScope.io instead of lifecycleScope at both
+    // call sites (the direct toggle and the permission-grant callback). Before this,
+    // a cancellation landing mid-write (MainActivity recreated right as the toggle is
+    // flipped, or right as the permission-result callback fires) could drop the
+    // updateNotifyNewChapters write silently - the toggle visually flips on, nothing
+    // errors, but notify_new_chapters never actually changed on disk, and
+    // NewChapterCheckWorker keeps treating the novel as not subscribed.
     private suspend fun setNotifyEnabled(novelId: String, enabled: Boolean) {
-        db.novelDao().updateNotifyNewChapters(novelId, enabled)
-        val updated = db.novelDao().findById(novelId) ?: return
-        withContext(Dispatchers.Main) {
+        val updated = withContext(NonCancellable + Dispatchers.IO) {
+            db.novelDao().updateNotifyNewChapters(novelId, enabled)
+            db.novelDao().findById(novelId)
+        } ?: return
+        withContext(NonCancellable + Dispatchers.Main) {
             val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
             if (idx >= 0) libraryViewModel.novels[idx] = updated
         }
@@ -515,6 +540,7 @@ class MainActivity : ComponentActivity() {
         super.onSaveInstanceState(outState)
         outState.putBoolean(STATE_PENDING_CONTINUE_READING, pendingContinueReadingShortcut.value)
         outState.putString(STATE_PENDING_NOTIFICATION_NOVEL, pendingNotificationNovelId.value)
+        outState.putString(STATE_PENDING_NOTIFY_TOGGLE_NOVEL, pendingNotifyToggleNovelId.value)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -580,6 +606,7 @@ class MainActivity : ComponentActivity() {
         internal const val CRASH_KEY = "last_crash"
         private const val STATE_PENDING_CONTINUE_READING = "pending_continue_reading"
         private const val STATE_PENDING_NOTIFICATION_NOVEL = "pending_notification_novel"
+        private const val STATE_PENDING_NOTIFY_TOGGLE_NOVEL = "pending_notify_toggle_novel"
         // Extra carried by the "Continue Reading" static app shortcut's launch intent
         // (see res/xml/shortcuts.xml's <extra>) - true marks "this launch/onNewIntent
         // came from that shortcut", read back by handleShortcutIntent. Not private:
@@ -699,6 +726,8 @@ class MainActivity : ComponentActivity() {
                 savedInstanceState.getBoolean(STATE_PENDING_CONTINUE_READING, false)
             pendingNotificationNovelId.value =
                 savedInstanceState.getString(STATE_PENDING_NOTIFICATION_NOVEL)
+            pendingNotifyToggleNovelId.value =
+                savedInstanceState.getString(STATE_PENDING_NOTIFY_TOGGLE_NOVEL)
         }
 
         // Auto-scan on every cold launch, before the user has touched anything.
@@ -1326,10 +1355,12 @@ class MainActivity : ComponentActivity() {
                                                 this@MainActivity, Manifest.permission.POST_NOTIFICATIONS
                                             ) != PackageManager.PERMISSION_GRANTED
                                         ) {
-                                            pendingNotifyToggleNovelId = novel.id
+                                            pendingNotifyToggleNovelId.value = novel.id
                                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                                         } else {
-                                            lifecycleScope.launch { setNotifyEnabled(novel.id, enabled) }
+                                            // AppScope.io, not lifecycleScope - see setNotifyEnabled's
+                                            // own doc comment and AppScope.kt.
+                                            AppScope.io.launch { setNotifyEnabled(novel.id, enabled) }
                                         }
                                     }
                                 } else null,
