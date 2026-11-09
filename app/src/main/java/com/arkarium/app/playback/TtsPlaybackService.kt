@@ -66,7 +66,23 @@ internal data class TtsChunkSpan(val start: Int, val end: Int)
 internal fun splitForTtsSpans(
     text: String,
     maxChunk: Int = TTS_MAX_CHUNK_CHARS,
-    locale: java.util.Locale = java.util.Locale.getDefault()
+    locale: java.util.Locale = java.util.Locale.getDefault(),
+    // Rung 6 fix (paragraph highlight falling back to the whole chunk): offsets, in
+    // `text`'s own coordinate space, that a chunk must never straddle - start() below
+    // passes every prose-paragraph edge. Without this, the sentence-packer above fills
+    // each ~3800-char chunk from wherever it already was regardless of paragraph
+    // breaks, so one queued utterance routinely spans ten-plus paragraphs; the
+    // paragraph highlight only re-seeds (speakNextChunk) once per *chunk*, so on any
+    // engine that doesn't report onRangeStart (most don't - see currentParagraphStart's
+    // doc comment in TtsPlaybackService), it visibly sits on the first of those
+    // paragraphs for the whole time the other nine-plus are actually being read - the
+    // "stuck on one paragraph for a long stretch, then jumps" a reader sees as rung 6
+    // simply not working, not just a coarser highlight. A boundary that isn't strictly
+    // inside some already-computed piece (on a piece's own edge already, or outside the
+    // text entirely) is left alone - this only ever adds cuts, so every invariant the
+    // unbounded packer already guaranteed (exact coverage, no overlap, each piece still
+    // <= maxChunk, no chunk starts/ends on whitespace) still holds.
+    hardBoundaries: List<Int> = emptyList()
 ): List<TtsChunkSpan> {
     require(maxChunk >= 2) { "maxChunk must be at least 2 (one surrogate pair)" }
     val lead = text.indexOfFirst { !it.isWhitespace() }
@@ -103,6 +119,29 @@ internal fun splitForTtsSpans(
             sentenceEnd = iterator.next()
         }
         if (chunkStart < trimmed.length) raw.add(TtsChunkSpan(chunkStart, trimmed.length))
+    }
+
+    // Boundaries are in `text` coordinates, same as this function's own return value
+    // (`lead` added back in below) - shift them into `trimmed` coordinates to match
+    // `raw`, dropping any that land outside `trimmed` or exactly on its own edges
+    // (nothing to cut there).
+    if (hardBoundaries.isNotEmpty()) {
+        val cuts = hardBoundaries.map { it - lead }.filter { it > 0 && it < trimmed.length }.toSortedSet()
+        if (cuts.isNotEmpty()) {
+            val split = mutableListOf<TtsChunkSpan>()
+            for (piece in raw) {
+                var pieceStart = piece.start
+                for (cut in cuts) {
+                    if (cut in (pieceStart + 1) until piece.end) {
+                        split.add(TtsChunkSpan(pieceStart, cut))
+                        pieceStart = cut
+                    }
+                }
+                split.add(TtsChunkSpan(pieceStart, piece.end))
+            }
+            raw.clear()
+            raw.addAll(split)
+        }
     }
 
     return raw.mapNotNull { piece ->
@@ -306,11 +345,15 @@ class TtsPlaybackService : Service() {
     private var pendingSpans: List<TtsChunkSpan> = emptyList()
 
     // Rung 6 (paragraph-highlight variant): the prose paragraphs of the text start()
-    // was given, computed once per session - independent of pendingSpans/pendingChunks
-    // above (sentence-packed TTS chunks and prose paragraphs rarely share boundaries),
-    // and not indexed by chunk the way pendingSpans is. Set together with
-    // pendingChunks/pendingSpans in start(), cleared together with them in stop()/
-    // onChunkError().
+    // was given, computed once per session. Not indexed by chunk the way pendingSpans
+    // is - but, since start() feeds this same list's edges into splitForTtsSpans as
+    // hardBoundaries, every pendingSpans entry now falls inside exactly one of these
+    // paragraphs (or inside a markup-tagged gap between them), never straddling two -
+    // see splitForTtsSpans' own doc comment on hardBoundaries for why that match
+    // matters (it's what keeps the highlight from sitting on one paragraph for an
+    // entire multi-paragraph chunk on engines that never call onRangeStart). Set
+    // together with pendingChunks/pendingSpans in start(), cleared together with them
+    // in stop()/onChunkError().
     private var paragraphOffsetsForSession: List<ParagraphOffset> = emptyList()
     private var pendingIndex: Int = 0
         set(value) {
@@ -686,7 +729,14 @@ class TtsPlaybackService : Service() {
     // outside applicationContext (used internally for the engine and notification).
     fun start(context: Context, chapterTitle: String, text: String, sessionKey: String? = null) {
         val tts = engine ?: return
-        val spans = splitForTtsSpans(text)
+        // Rung 6 fix: computed once, up front, so its paragraph edges can be fed into
+        // the chunk split below as hard boundaries (see splitForTtsSpans' own doc
+        // comment on hardBoundaries) - the one list now serves both jobs instead of
+        // this and paragraphOffsetsForSession each calling proseParagraphOffsets(text)
+        // separately and risking the two silently drifting apart.
+        val paragraphs = proseParagraphOffsets(text)
+        val paragraphBoundaries = paragraphs.flatMap { listOf(it.rawStart, it.rawStart + it.text.length) }
+        val spans = splitForTtsSpans(text, hardBoundaries = paragraphBoundaries)
         if (spans.isEmpty()) return
         val chunks = spans.map { text.substring(it.start, it.end) }
         // F22: ask for audio focus before anything else. Granted means other audio
@@ -708,9 +758,9 @@ class TtsPlaybackService : Service() {
         ContextCompat.startForegroundService(context, Intent(context, TtsPlaybackService::class.java))
         pendingChunks = chunks
         pendingSpans = spans
-        // Rung 6: computed once per session, independent of the chunking above - see
-        // paragraphOffsetsForSession's own doc comment.
-        paragraphOffsetsForSession = proseParagraphOffsets(text)
+        // Rung 6: the same paragraphs list the chunk split above was just given as
+        // hardBoundaries - see paragraphOffsetsForSession's own doc comment.
+        paragraphOffsetsForSession = paragraphs
         pendingIndex = 0
         isPaused = false
         ignorePendingFinish = false
