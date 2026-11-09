@@ -242,8 +242,16 @@ class ChapterTtsState internal constructor() {
     // else reads it back. No-ops if no service is attached yet (shouldn't happen in
     // practice - isAvailable, which gates the play control in ReaderScreen, only ever
     // goes true once a service has attached and its engine has finished initializing).
-    fun speak(context: Context, chapterTitle: String, text: String, sessionKey: String? = null) {
-        service?.start(context, chapterTitle, text, sessionKey)
+    fun speak(
+        context: Context,
+        chapterTitle: String,
+        text: String,
+        sessionKey: String? = null,
+        // Rung 7: passed straight through to TtsPlaybackService.start() - see its own
+        // doc comment on this same parameter for where it ends up.
+        coverUri: String? = null
+    ) {
+        service?.start(context, chapterTitle, text, sessionKey, coverUri)
     }
 
     // Which chapter the attached service's current session is reading (the key passed
