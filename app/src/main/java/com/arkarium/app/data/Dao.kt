@@ -190,7 +190,21 @@ interface ArcDao {
 
 @Dao
 interface ChapterDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // Same cold-start data-loss bug as NovelDao.upsert above (see its doc comment for
+    // the full mechanism), and the bigger half of it in practice: ScannerImpl.
+    // parseChaptersInFolder calls this once per chapter *file*, unconditionally, on
+    // every rescan - so even after NovelDao.upsert stopped the novel-level cascade,
+    // this REPLACE was still independently DELETE+INSERTing every already-known
+    // chapter row on every cold start, which cascades (Entities.kt) to
+    // reading_progress.chapter_id, chapter_read_events.chapter_id, and
+    // chapter_overrides.chapter_id - wiping continue-reading position, streak/
+    // weekly-count history, and manual chapter overrides for every chapter the scan
+    // touched, not just the one currently being read.
+    //
+    // @Upsert fixes it the same way: insert if new, UPDATE in place (no DELETE, so no
+    // cascade) if the row already exists - still exactly what every caller expects
+    // from "upsert".
+    @Upsert
     suspend fun upsert(chapter: ChapterEntity)
 
     // Bug 2 follow-up: the original fix (`ORDER BY sort_tier, number, title`, no arc
