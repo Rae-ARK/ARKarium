@@ -8,6 +8,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -17,6 +19,7 @@ import android.media.session.PlaybackState
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
@@ -24,12 +27,21 @@ import androidx.core.app.NotificationCompat
 import android.support.v4.media.session.MediaSessionCompat
 import androidx.core.content.ContextCompat
 import androidx.media.app.NotificationCompat.MediaStyle
+import coil.imageLoader
+import coil.request.ImageRequest
 import com.arkarium.app.MainActivity
 import com.arkarium.app.R
 import com.arkarium.app.data.ParagraphOffset
 import com.arkarium.app.data.paragraphContaining
 import com.arkarium.app.data.proseParagraphOffsets
 import com.arkarium.app.util.Haptics
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 // Android's TextToSpeech.speak() silently truncates (or on some engines rejects
 // outright) input longer than TextToSpeech.getMaxSpeechInputLength() - around 4000
@@ -39,6 +51,16 @@ import com.arkarium.app.util.Haptics
 // Moved here unchanged from the old ChapterTtsState (ui/Tts.kt) along with the rest of
 // the chunking logic - see docs/arkarium/proposal/reader-playback.md F10.
 private const val TTS_MAX_CHUNK_CHARS = 3800
+
+// Rung 7 (read-aloud notification): Android's TextToSpeech never reports how long an
+// utterance will actually take, so the notification's elapsed-time/seek bar (see
+// updateMediaSession) can't be driven off a true audio duration the way a music
+// player's can. This rough chars-per-second-at-1.0x estimate - about 900 chars/min,
+// in the ballpark of an average spoken pace - stands in for one instead. It only has
+// to be close enough to look sane: positionMsAtChunkStart resyncs against it at every
+// chunk boundary, so the estimate's error can only ever drift within a single chunk,
+// never compound over a whole chapter.
+private const val ESTIMATED_SPEECH_CHARS_PER_SECOND = 15.0
 
 // Splits `text` into pieces no longer than `maxChunk`, breaking between sentences.
 // Sentence boundaries come from java.text.BreakIterator (ICU-backed on Android, no new
@@ -355,6 +377,40 @@ class TtsPlaybackService : Service() {
     // together with pendingChunks/pendingSpans in start(), cleared together with them
     // in stop()/onChunkError().
     private var paragraphOffsetsForSession: List<ParagraphOffset> = emptyList()
+
+    // Rung 7: nominal (rate-1.0x) duration of the whole session, from
+    // ESTIMATED_SPEECH_CHARS_PER_SECOND - see that constant's own doc comment. Feeds
+    // MediaMetadata.METADATA_KEY_DURATION so the notification's seek bar has something
+    // to show at all (Android leaves it blank with no duration set). Computed once per
+    // session in start(), 0 with none.
+    private var sessionDurationMs: Long = 0L
+
+    // Rung 7: the session's elapsed playback position as of playStartedAtElapsedRealtime,
+    // same nominal units as sessionDurationMs - i.e. NOT counting time spent paused.
+    // currentPositionMs() below adds in however long the engine's been actually speaking
+    // since. Resynced to the exact chunk boundary (positionMsAtChunkStart) whenever
+    // pendingIndex moves - a chunk advance, a skip - so the chars-per-second estimate's
+    // error can only ever drift across a single chunk, never compound over a whole
+    // chapter.
+    private var accumulatedPlayedMs: Long = 0L
+    private var playStartedAtElapsedRealtime: Long = 0L
+
+    // Rung 7: the cover start() was given, and the bitmap it resolves to once
+    // loadAlbumArt (below) finishes - null until then, and permanently if there is no
+    // cover or it fails to load, same "no image, not a broken one" shape every other
+    // cover slot in this app already falls back to. Decoded through Coil (already a
+    // dependency for every other cover in the app) rather than hand-rolling
+    // BitmapFactory/HTTP handling for the content://, file:// and remote http(s) URIs
+    // coverUri can be, depending on whether the fiction is local or synced.
+    private var currentCoverUri: String? = null
+    private var albumArtBitmap: Bitmap? = null
+    private var albumArtJob: Job? = null
+
+    // Rung 7: this service's own scope, used only for the album-art fetch above -
+    // cancelled wholesale in onDestroy() rather than tracked any other way, since
+    // nothing else this class does needs a coroutine.
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
     private var pendingIndex: Int = 0
         set(value) {
             field = value
@@ -515,17 +571,84 @@ class TtsPlaybackService : Service() {
                         PlaybackState.ACTION_PLAY_PAUSE or PlaybackState.ACTION_STOP or
                         PlaybackState.ACTION_SKIP_TO_NEXT or PlaybackState.ACTION_SKIP_TO_PREVIOUS
                 )
-                .setState(state, PlaybackState.PLAYBACK_POSITION_UNKNOWN, if (isSpeaking) 1f else 0f)
+                // Rung 7: a real position instead of PLAYBACK_POSITION_UNKNOWN - see
+                // currentPositionMs()'s own doc comment for where it comes from. Once
+                // this is set (together with METADATA_KEY_DURATION below), the system
+                // extrapolates the notification's elapsed time/seek bar forward on its
+                // own between calls here, the same way any other media app's ticking
+                // clock works - this doesn't need a timer of its own.
+                .setState(state, currentPositionMs(), if (isSpeaking) 1f else 0f)
                 .build()
         )
         session.setMetadata(
             MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_TITLE, currentChapterTitle.ifBlank { "ARKarium" })
                 .putString(MediaMetadata.METADATA_KEY_ARTIST, "Reading aloud")
+                // Rung 7: without this the seek bar shows no progress at all, even with
+                // a real position set above - see Android's own media-controls guidance.
+                .putLong(MediaMetadata.METADATA_KEY_DURATION, sessionDurationMs)
+                .apply {
+                    // Rung 7: the fiction/arc cover, once loadAlbumArt resolves it -
+                    // omitted (not put as null) while unresolved or absent, so the
+                    // system falls back to its own generic icon exactly the way every
+                    // other cover slot in this app already falls back when coverUri is
+                    // null.
+                    albumArtBitmap?.let { putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, it) }
+                }
                 .build()
         )
         session.isActive = state != PlaybackState.STATE_STOPPED
         refreshNotification()
+    }
+
+    // Rung 7: accumulatedPlayedMs plus however long the engine's been speaking since
+    // playStartedAtElapsedRealtime - i.e. no extra while paused/stopped (isSpeaking
+    // false), same as accumulatedPlayedMs's own doc comment describes. Coerced into the
+    // session's own duration so a chunk that ran long (or the chars-per-second estimate
+    // simply being off) never reports past 100%.
+    private fun currentPositionMs(): Long {
+        val sinceResumed = if (isSpeaking) SystemClock.elapsedRealtime() - playStartedAtElapsedRealtime else 0L
+        return (accumulatedPlayedMs + sinceResumed).coerceIn(0L, sessionDurationMs)
+    }
+
+    // Rung 7: the nominal position of chunk `index`'s own start - every char read in the
+    // chunks before it, at ESTIMATED_SPEECH_CHARS_PER_SECOND. What accumulatedPlayedMs is
+    // reset to on every chunk advance (onUtteranceFinished) and skip (jumpTo), rather
+    // than only ever being derived from wall-clock time - see accumulatedPlayedMs's own
+    // doc comment for why.
+    private fun positionMsAtChunkStart(index: Int): Long {
+        val charsBefore = pendingSpans.take(index).sumOf { it.end - it.start }
+        return (charsBefore / ESTIMATED_SPEECH_CHARS_PER_SECOND * 1000).toLong().coerceIn(0L, sessionDurationMs)
+    }
+
+    // Rung 7: resolves `uri` (content://, file://, or a remote http(s) URL - whichever
+    // the caller's own cover resolution, same as every other cover in the app, landed
+    // on) into albumArtBitmap through Coil, then re-pushes the session/notification so
+    // the art appears as soon as it's ready rather than only on the next state change.
+    // Cancels whatever the previous session's own fetch was first: this session's
+    // start() always calls this exactly once, but a stale previous fetch finishing
+    // after a new session has already started must not stomp this one's bitmap (or
+    // lack of one) with the old cover - the currentCoverUri check below is the same
+    // guard, belt-and-braces. allowHardware(false): MediaMetadata.putBitmap needs a
+    // software bitmap, and a hardware one decoded here would simply fail to attach.
+    private fun loadAlbumArt(uri: String?) {
+        albumArtJob?.cancel()
+        albumArtBitmap = null
+        if (uri == null) return
+        albumArtJob = serviceScope.launch {
+            val bitmap = runCatching {
+                val request = ImageRequest.Builder(applicationContext)
+                    .data(uri)
+                    .size(256, 256)
+                    .allowHardware(false)
+                    .build()
+                (applicationContext.imageLoader.execute(request).drawable as? BitmapDrawable)?.bitmap
+            }.getOrNull()
+            if (isActive && currentCoverUri == uri) {
+                albumArtBitmap = bitmap
+                updateMediaSession()
+            }
+        }
     }
 
     // Re-posts the foreground notification so its play/pause button follows
@@ -544,6 +667,15 @@ class TtsPlaybackService : Service() {
         pausedForTransientFocusLoss = false
         unregisterNoisyReceiver()
         abandonAudioFocus()
+        // Rung 7: shared by stop() and onChunkError() - the two places a session
+        // actually ends, as opposed to pause() - so neither has to repeat it. A dead
+        // session reports a dead clock, not wherever the last chunk happened to leave
+        // the estimate.
+        sessionDurationMs = 0L
+        accumulatedPlayedMs = 0L
+        currentCoverUri = null
+        albumArtJob?.cancel()
+        albumArtBitmap = null
         updateMediaSession()
     }
 
@@ -649,6 +781,9 @@ class TtsPlaybackService : Service() {
         engine?.stop()
         engine?.shutdown()
         engine = null
+        // Rung 7: stops the album-art fetch dead rather than letting it finish into a
+        // service instance nothing will ever read updateMediaSession's result from again.
+        serviceScope.cancel()
         super.onDestroy()
     }
 
@@ -727,7 +862,12 @@ class TtsPlaybackService : Service() {
     // the Context this needs for ContextCompat.startForegroundService - the service
     // itself only takes it as a parameter here rather than holding a Context of its own
     // outside applicationContext (used internally for the engine and notification).
-    fun start(context: Context, chapterTitle: String, text: String, sessionKey: String? = null) {
+    // Rung 7: coverUri is the arc-cover-then-fiction-cover-then-null resolution the
+    // caller already does for the reader's own cover thumbnail (see ReaderScreen's
+    // coverUri parameter) - passed through unchanged so the read-aloud notification
+    // shows the same art, via loadAlbumArt below, instead of the system's generic
+    // fallback icon it always showed before this rung.
+    fun start(context: Context, chapterTitle: String, text: String, sessionKey: String? = null, coverUri: String? = null) {
         val tts = engine ?: return
         // Rung 6 fix: computed once, up front, so its paragraph edges can be fed into
         // the chunk split below as hard boundaries (see splitForTtsSpans' own doc
@@ -761,6 +901,15 @@ class TtsPlaybackService : Service() {
         // Rung 6: the same paragraphs list the chunk split above was just given as
         // hardBoundaries - see paragraphOffsetsForSession's own doc comment.
         paragraphOffsetsForSession = paragraphs
+        // Rung 7: fresh session, fresh estimate and fresh clock - see
+        // sessionDurationMs/accumulatedPlayedMs's own doc comments.
+        sessionDurationMs = (spans.sumOf { it.end - it.start } / ESTIMATED_SPEECH_CHARS_PER_SECOND * 1000)
+            .toLong()
+            .coerceAtLeast(1L)
+        accumulatedPlayedMs = 0L
+        playStartedAtElapsedRealtime = SystemClock.elapsedRealtime()
+        currentCoverUri = coverUri
+        loadAlbumArt(coverUri)
         pendingIndex = 0
         isPaused = false
         ignorePendingFinish = false
@@ -824,6 +973,12 @@ class TtsPlaybackService : Service() {
         if (!isSpeaking) return
         ignorePendingFinish = true
         engine?.stop()
+        // Rung 7: freeze currentPositionMs() where it is - computed while isSpeaking is
+        // still true, since currentPositionMs() only adds in time-since-resumed while
+        // speaking - so it stays put at exactly this position for however long the
+        // pause lasts, rather than the notification's own position/speed ticking
+        // through the paused interval as if nothing had stopped.
+        accumulatedPlayedMs = currentPositionMs()
         isSpeaking = false
         isPaused = true
         unregisterNoisyReceiver()
@@ -849,6 +1004,10 @@ class TtsPlaybackService : Service() {
             listener?.onPausedChanged(false)
             return
         }
+        // Rung 7: fresh anchor so currentPositionMs()'s time-since-resumed starts
+        // counting from 0 again, right on top of whatever accumulatedPlayedMs pause()
+        // froze it at - not from whenever pause() happened to be called.
+        playStartedAtElapsedRealtime = SystemClock.elapsedRealtime()
         isSpeaking = true
         registerNoisyReceiver()
         updateMediaSession()
@@ -882,10 +1041,17 @@ class TtsPlaybackService : Service() {
     private fun jumpTo(index: Int) {
         if (index == pendingIndex) return
         pendingIndex = index
+        // Rung 7: resync to the chunk actually being jumped to, rather than leaving the
+        // notification's position wherever time-based tracking had it sitting for the
+        // chunk this just left - see positionMsAtChunkStart/accumulatedPlayedMs's own
+        // doc comments.
+        accumulatedPlayedMs = positionMsAtChunkStart(index)
+        playStartedAtElapsedRealtime = SystemClock.elapsedRealtime()
         if (isSpeaking) {
             engine?.stop()
             speakNextChunk(TextToSpeech.QUEUE_FLUSH)
         }
+        updateMediaSession()
     }
 
     // Queues exactly one chunk - the one at pendingIndex - rather than the whole
@@ -946,8 +1112,16 @@ class TtsPlaybackService : Service() {
         }
         if (utteranceId != null && utteranceId != lastQueuedUtteranceId) return
         pendingIndex++
+        // Rung 7: resync against the chunk boundary this chunk advance just crossed,
+        // same as jumpTo does for a skip - see positionMsAtChunkStart/accumulatedPlayedMs's
+        // own doc comments for why this, not just letting wall-clock tracking run on
+        // uncorrected, is what keeps the estimate's drift from compounding chunk to
+        // chunk across a whole chapter.
+        accumulatedPlayedMs = positionMsAtChunkStart(pendingIndex)
+        playStartedAtElapsedRealtime = SystemClock.elapsedRealtime()
         if (pendingIndex in pendingChunks.indices) {
             speakNextChunk(TextToSpeech.QUEUE_ADD)
+            updateMediaSession()
         } else {
             isSpeaking = false
             listener?.onSpeakingChanged(false)
@@ -1048,6 +1222,13 @@ class TtsPlaybackService : Service() {
             .setCategory(NotificationCompat.CATEGORY_TRANSPORT)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
+            // Rung 7: the collapsed notification shade's own large-icon slot - separate
+            // from, and in addition to, the session's own METADATA_KEY_ALBUM_ART
+            // (updateMediaSession) that the lock-screen/quick-settings media widget in
+            // the screenshot this rung fixes actually reads from. Left unset (not set to
+            // null) while albumArtBitmap hasn't resolved yet, so the shade falls back to
+            // smallIcon exactly as it already did before this rung.
+            .apply { albumArtBitmap?.let { setLargeIcon(it) } }
             .setContentIntent(
                 PendingIntent.getActivity(
                     this,

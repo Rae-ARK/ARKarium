@@ -1097,7 +1097,7 @@ fun ReaderScreen(
                                     tts.isSpeaking -> Unit
                                     else -> {
                                         onRequestNotificationPermission()
-                                        tts.speak(context, chapter.title, content, chapter.id)
+                                        tts.speak(context, chapter.title, content, chapter.id, coverUri)
                                     }
                                 }
                                 showControls.value = false
@@ -1687,7 +1687,7 @@ fun ReaderScreen(
                     tts.isSpeaking -> tts.pause()
                     else -> {
                         onRequestNotificationPermission()
-                        tts.speak(context, chapter.title, content, chapter.id)
+                        tts.speak(context, chapter.title, content, chapter.id, coverUri)
                     }
                 }
             },
