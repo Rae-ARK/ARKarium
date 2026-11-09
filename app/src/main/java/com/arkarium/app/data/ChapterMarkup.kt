@@ -262,3 +262,63 @@ fun paragraphOffsets(raw: String, detectBreakLines: Boolean = true): List<Paragr
 // chapter has no paragraphs at all (an empty or all-markup body).
 fun paragraphForCharOffset(offsets: List<ParagraphOffset>, charOffset: Int): ParagraphOffset? =
     offsets.lastOrNull { it.rawStart <= charOffset } ?: offsets.firstOrNull()
+
+// The paragraph that actually contains `charOffset` - rawStart <= charOffset <
+// rawStart + text.length - or null when none does (most commonly: the offset falls
+// inside a markup-tagged block, which the offsets this is given deliberately don't
+// cover - see paragraphOffsets'/proseParagraphOffsets' own doc comments). Unlike
+// paragraphForCharOffset above, this never falls back to "the nearest paragraph
+// anyway": a null here is a real, meaningful "no paragraph covers this exact
+// position", which is what the TTS paragraph highlight (rung 6 of
+// tts-playback-controls.md) needs in order to fall back to its own chunk-level
+// highlight (rung 5) instead of wrongly shading some unrelated paragraph.
+fun paragraphContaining(offsets: List<ParagraphOffset>, charOffset: Int): ParagraphOffset? =
+    offsets.firstOrNull { charOffset >= it.rawStart && charOffset < it.rawStart + it.text.length }
+
+// A blank-line-separated regex matches one or more blank lines, used below to split a
+// paragraphOffsets() block into the actual prose paragraphs it's often made of -
+// "[ \t]*" rather than bare "\n\n" so a line that's merely whitespace (trailing spaces
+// left on an otherwise-blank line) still counts as blank.
+private val BLANK_LINE_SPLIT = Regex("\n[ \t]*(?:\n[ \t]*)+")
+
+// Rung 6 of docs/arkarium/implementation/tts-playback-controls.md (paragraph-highlight
+// variant - see that doc for why it replaced the originally-planned word-level
+// enhancement): paragraphOffsets() above finds one block per markup-delimited stretch
+// of plain text, which the reader draws as a single Text - usually the whole chapter
+// when an author uses no tags or break lines at all (see ReaderScreen's own comment on
+// that). That block is too coarse a unit for a "currently reading" highlight, so this
+// further splits each block on blank lines - the ordinary prose paragraph break,
+// distinct from both the markup tags paragraphOffsets already separates on and the
+// `isBreakLine` "***"-style marker splitOnBreakLines separates on - into one
+// ParagraphOffset per actual prose paragraph. A lone newline inside a paragraph
+// (soft-wrapped prose, not a paragraph break) is left alone. Offsets stay in the same
+// `raw` coordinate space paragraphOffsets() already returns, so this is a drop-in
+// finer-grained replacement wherever a ParagraphOffset list is consumed -
+// paragraphContaining above doesn't care which function produced its input.
+fun proseParagraphOffsets(raw: String, detectBreakLines: Boolean = true): List<ParagraphOffset> =
+    paragraphOffsets(raw, detectBreakLines).flatMap { block ->
+        splitBlankLines(block.text).map { ParagraphOffset(block.rawStart + it.rawStart, it.text) }
+    }
+
+// Splits `text` on one-or-more blank lines into trimmed pieces, each still carrying its
+// own offset within `text` (not the caller's coordinate space - proseParagraphOffsets
+// above adds the block's own rawStart back in). A piece that's blank after trimming -
+// purely whitespace between two real paragraphs, including the "no blank line at all"
+// case at the very start/end of `text` - is dropped rather than reported as an empty
+// paragraph.
+private fun splitBlankLines(text: String): List<ParagraphOffset> {
+    val result = mutableListOf<ParagraphOffset>()
+    var cursor = 0
+    fun addPiece(from: Int, to: Int) {
+        val start = (from until to).firstOrNull { !text[it].isWhitespace() } ?: return
+        var end = to
+        while (end > start && text[end - 1].isWhitespace()) end--
+        result.add(ParagraphOffset(start, text.substring(start, end)))
+    }
+    for (match in BLANK_LINE_SPLIT.findAll(text)) {
+        addPiece(cursor, match.range.first)
+        cursor = match.range.last + 1
+    }
+    addPiece(cursor, text.length)
+    return result
+}

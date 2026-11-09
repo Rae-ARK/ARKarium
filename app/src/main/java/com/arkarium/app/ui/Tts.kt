@@ -76,6 +76,20 @@ class ChapterTtsState internal constructor() {
     var currentChunkEnd by mutableIntStateOf(-1)
         internal set
 
+    // Rung 6 (paragraph-highlight variant, docs/arkarium/implementation/
+    // tts-playback-controls.md): mirrors TtsPlaybackService.currentParagraphStart/End
+    // the same way currentChunkStart/End above mirror chunkSpan() - the [start, end)
+    // range, in the same chapter-body coordinates, of the prose paragraph being read
+    // right now. -1/-1 with no session, or whenever the current position isn't inside
+    // any paragraph (see the service property's own doc comment); ReaderScreen treats
+    // that the same way it already treats "no chunk" - falling back to
+    // currentChunkStart/End's coarser highlight instead of drawing nothing.
+    var currentParagraphStart by mutableIntStateOf(-1)
+        internal set
+
+    var currentParagraphEnd by mutableIntStateOf(-1)
+        internal set
+
     // The voice picker's state: mirrors
     // TtsPlaybackService.availableVoices/currentVoiceName the same way the properties
     // above mirror its speaking/available/paused state - pulled fresh in attach()
@@ -159,6 +173,14 @@ class ChapterTtsState internal constructor() {
             this@ChapterTtsState.currentChunkStart = span?.start ?: -1
             this@ChapterTtsState.currentChunkEnd = span?.end ?: -1
         }
+
+        // Rung 6 (paragraph-highlight variant): straight mirror, same shape as
+        // onChunkProgressChanged above - the service already resolved start/end (or
+        // -1/-1), nothing left to look up here.
+        override fun onParagraphProgressChanged(start: Int, end: Int) {
+            this@ChapterTtsState.currentParagraphStart = start
+            this@ChapterTtsState.currentParagraphEnd = end
+        }
     }
 
     // Called from rememberChapterTts's ServiceConnection once bound (including after a
@@ -179,6 +201,11 @@ class ChapterTtsState internal constructor() {
         val span = svc.chunkSpan(svc.currentChunkIndex)
         currentChunkStart = span?.start ?: -1
         currentChunkEnd = span?.end ?: -1
+        // Rung 6 (paragraph-highlight variant): same re-sync as currentChunkStart/End
+        // above, for whatever the service had already narrowed the highlight to before
+        // this attach (rotation, returning from settings/tts, reopening the chapter).
+        currentParagraphStart = svc.currentParagraphStart
+        currentParagraphEnd = svc.currentParagraphEnd
         svc.autoContinueEnabled = autoContinueEnabled
     }
 

@@ -26,6 +26,9 @@ import androidx.core.content.ContextCompat
 import androidx.media.app.NotificationCompat.MediaStyle
 import com.arkarium.app.MainActivity
 import com.arkarium.app.R
+import com.arkarium.app.data.ParagraphOffset
+import com.arkarium.app.data.paragraphContaining
+import com.arkarium.app.data.proseParagraphOffsets
 import com.arkarium.app.util.Haptics
 
 // Android's TextToSpeech.speak() silently truncates (or on some engines rejects
@@ -183,6 +186,14 @@ class TtsPlaybackService : Service() {
         // Chunk granularity, not a page number - see that doc's "Rung 3" section for
         // why a chunk isn't a stable reader-facing unit yet.
         fun onChunkProgressChanged(index: Int, total: Int)
+
+        // Rung 6 (paragraph-highlight variant, docs/arkarium/implementation/
+        // tts-playback-controls.md): pushed whenever currentParagraphStart/End changes
+        // - a fresh chunk starting (seeded to the paragraph its own start falls in),
+        // onRangeStart narrowing further within that chunk (API 26+ engines only), or
+        // the session ending (-1/-1, same "nothing to show" shape onChunkProgressChanged
+        // already uses for its own index/total).
+        fun onParagraphProgressChanged(start: Int, end: Int)
     }
 
     private val binder = LocalBinder()
@@ -215,6 +226,26 @@ class TtsPlaybackService : Service() {
     // with (ReaderScreen passes the chapter body), or null for an index outside the
     // session - which includes "no session", so a stopped service reports no highlight.
     internal fun chunkSpan(index: Int): TtsChunkSpan? = pendingSpans.getOrNull(index)
+
+    // Rung 6 (paragraph-highlight variant): the prose paragraph currently being read,
+    // in the same [start, end) chapter-body coordinate space chunkSpan() above uses -
+    // see proseParagraphOffsets' doc comment for what counts as a paragraph here.
+    // Seeded to the paragraph containing the current chunk's own start the moment a
+    // chunk starts speaking (speakNextChunk below), then narrowed by onRangeStart as
+    // the engine reports progress within it; engines that never report a range (or any
+    // device below API 26, where onRangeStart doesn't exist at all) simply leave this
+    // at the chunk-start seed for the whole chunk, which is still strictly narrower
+    // than rung 5's whole-chunk highlight whenever the chunk spans more than one
+    // paragraph. -1/-1 with no session, or when the current reading position falls
+    // inside a markup-tagged block (an <author>/<news> callout, a break line) that
+    // proseParagraphOffsets doesn't cover - ChapterTtsState/ReaderScreen fall back to
+    // the whole-chunk highlight (currentChunkStart/End) whenever this is -1, so a
+    // reader covered by rung 5 before this rung still sees *a* highlight, just a
+    // coarser one, rather than losing it entirely.
+    var currentParagraphStart = -1
+        private set
+    var currentParagraphEnd = -1
+        private set
 
     // The engine's voice list (design-notes.md's "TTS settings split"). Populated once from
     // engine?.voices inside onInit below, alongside isAvailable - empty until the
@@ -273,6 +304,14 @@ class TtsPlaybackService : Service() {
     // index. Always the same size as pendingChunks (both set together, both cleared
     // together).
     private var pendingSpans: List<TtsChunkSpan> = emptyList()
+
+    // Rung 6 (paragraph-highlight variant): the prose paragraphs of the text start()
+    // was given, computed once per session - independent of pendingSpans/pendingChunks
+    // above (sentence-packed TTS chunks and prose paragraphs rarely share boundaries),
+    // and not indexed by chunk the way pendingSpans is. Set together with
+    // pendingChunks/pendingSpans in start(), cleared together with them in stop()/
+    // onChunkError().
+    private var paragraphOffsetsForSession: List<ParagraphOffset> = emptyList()
     private var pendingIndex: Int = 0
         set(value) {
             field = value
@@ -505,6 +544,23 @@ class TtsPlaybackService : Service() {
             override fun onError(utteranceId: String?, errorCode: Int) {
                 onChunkError(utteranceId, errorCode)
             }
+
+            // Rung 6 (paragraph-highlight variant): only called on API 26+, and even
+            // there only by engines that actually report synthesis ranges - on anything
+            // else this override simply never runs, and the paragraph highlight stays
+            // at speakNextChunk's chunk-start seed for the whole chunk (see
+            // currentParagraphStart's own doc comment). Same stale-callback guard
+            // onUtteranceFinished/onChunkError use: a late range for a chunk that's
+            // since been interrupted (pause(), a skip, a fresh start()) is ignored
+            // rather than narrowing the highlight to the wrong text. `start`/`end` are
+            // offsets within the utterance text itself (pendingChunks[pendingIndex]),
+            // so chunkSpan's own start is added back in to land in chapter-body
+            // coordinates, the same space paragraphOffsetsForSession is in.
+            override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+                if (utteranceId == null || utteranceId != lastQueuedUtteranceId) return
+                val chunkStart = pendingSpans.getOrNull(pendingIndex)?.start ?: return
+                updateCurrentParagraph(chunkStart + start)
+            }
         })
     }
 
@@ -652,6 +708,9 @@ class TtsPlaybackService : Service() {
         ContextCompat.startForegroundService(context, Intent(context, TtsPlaybackService::class.java))
         pendingChunks = chunks
         pendingSpans = spans
+        // Rung 6: computed once per session, independent of the chunking above - see
+        // paragraphOffsetsForSession's own doc comment.
+        paragraphOffsetsForSession = proseParagraphOffsets(text)
         pendingIndex = 0
         isPaused = false
         ignorePendingFinish = false
@@ -680,6 +739,7 @@ class TtsPlaybackService : Service() {
         ignorePendingFinish = false
         pendingChunks = emptyList()
         pendingSpans = emptyList()
+        clearCurrentParagraph()
         pendingIndex = 0
         lastQueuedUtteranceId = null
         sessionKey = null
@@ -790,6 +850,35 @@ class TtsPlaybackService : Service() {
         lastQueuedUtteranceId = utteranceId
         tts.setSpeechRate(speechRate)
         tts.speak(chunk, queueMode, null, utteranceId)
+        // Rung 6: seed the paragraph highlight to wherever this chunk itself starts,
+        // immediately - not left at whatever the previous chunk narrowed it to, and not
+        // left blank until (if ever) onRangeStart first fires for this new utterance.
+        pendingSpans.getOrNull(pendingIndex)?.let { updateCurrentParagraph(it.start) }
+    }
+
+    // Rung 6: moves currentParagraphStart/End to the paragraph containing
+    // `absoluteOffset` (chapter-body coordinates, same space as chunkSpan()), or to
+    // -1/-1 if none does - see currentParagraphStart's own doc comment for both of
+    // those. No-ops, including no listener push, when the position hasn't actually
+    // changed paragraph - onRangeStart can fire many times per paragraph (once per
+    // word, on an engine that reports that granularity) and there is nothing new to
+    // tell the UI until the reading crosses into a different one.
+    private fun updateCurrentParagraph(absoluteOffset: Int) {
+        val span = paragraphContaining(paragraphOffsetsForSession, absoluteOffset)
+        val start = span?.rawStart ?: -1
+        val end = if (span != null) span.rawStart + span.text.length else -1
+        if (start == currentParagraphStart && end == currentParagraphEnd) return
+        currentParagraphStart = start
+        currentParagraphEnd = end
+        listener?.onParagraphProgressChanged(start, end)
+    }
+
+    // Rung 6: the no-session shape of updateCurrentParagraph above - called alongside
+    // every place pendingSpans is cleared (stop(), onChunkError()) so a highlight never
+    // outlives the session it belonged to.
+    private fun clearCurrentParagraph() {
+        paragraphOffsetsForSession = emptyList()
+        updateCurrentParagraph(-1)
     }
 
     // Ignores callbacks that don't match the chunk most recently queued - a late
@@ -847,6 +936,7 @@ class TtsPlaybackService : Service() {
         isPaused = false
         pendingChunks = emptyList()
         pendingSpans = emptyList()
+        clearCurrentParagraph()
         pendingIndex = 0
         lastQueuedUtteranceId = null
         sessionKey = null

@@ -834,22 +834,31 @@ fun ReaderScreen(
         }
     }
 
-    // Rung 5 (tts-playback-controls.md): follow the narration. Whenever the chunk being
-    // read changes, scroll so its first line is near the top of the viewport (see
-    // ttsAutoScrollTarget for when that's skipped). Chunk-level on purpose - it never
-    // fights a reader who scrolls away mid-chunk; the next chunk brings them back.
-    // Held back until reconcileTtsSession has run, so a stale session for another chapter
-    // (about to be stopped above) can't scroll this one. paragraphContentTop.size is a key
-    // so a session re-entered after a rotation retries once the text blocks have reported
+    // Rung 6 (paragraph-highlight variant, tts-playback-controls.md): follow the
+    // narration. Whenever the range being highlighted changes - a chunk boundary, or
+    // now also a paragraph boundary crossed mid-chunk, via the same ttsHighlightRange
+    // the highlight itself uses - scroll so its first line is near the top of the
+    // viewport (see ttsAutoScrollTarget for when that's skipped). Still never fights a
+    // reader who scrolls away mid-paragraph; the next paragraph (or chunk, with no
+    // narrower paragraph available) brings them back. Held back until
+    // reconcileTtsSession has run, so a stale session for another chapter (about to be
+    // stopped above) can't scroll this one. paragraphContentTop.size is a key so a
+    // session re-entered after a rotation retries once the text blocks have reported
     // where they landed, instead of giving up on the first, too-early run.
     val ttsFollowing = ttsSessionActive && ttsSessionReconciled
-    LaunchedEffect(tts.currentChunkStart, ttsFollowing, paragraphContentTop.size) {
-        if (!ttsFollowing || tts.currentChunkStart < 0) return@LaunchedEffect
-        val block = ttsBlockForChunkStart(paragraphOffsetList, tts.currentChunkStart)
+    val (ttsScrollTargetStart, _) = ttsHighlightRange(
+        paragraphStart = tts.currentParagraphStart,
+        paragraphEnd = tts.currentParagraphEnd,
+        chunkStart = tts.currentChunkStart,
+        chunkEnd = tts.currentChunkEnd
+    )
+    LaunchedEffect(ttsScrollTargetStart, ttsFollowing, paragraphContentTop.size) {
+        if (!ttsFollowing || ttsScrollTargetStart < 0) return@LaunchedEffect
+        val block = ttsBlockForChunkStart(paragraphOffsetList, ttsScrollTargetStart)
             ?: return@LaunchedEffect
         val blockTop = paragraphContentTop[block.rawStart] ?: return@LaunchedEffect
         val layout = paragraphLayouts[block.rawStart]
-        val localStart = tts.currentChunkStart - block.rawStart
+        val localStart = ttsScrollTargetStart - block.rawStart
         val lineTop = layout?.let {
             val offset = localStart.coerceIn(0, it.layoutInput.text.length)
             it.getLineTop(it.getLineForOffset(offset))
@@ -1202,15 +1211,24 @@ fun ReaderScreen(
                                 val rawStart = paragraphOffsetList.getOrNull(paragraphCursor)?.rawStart
                                 paragraphCursor++
                                 if (segment.text.isNotBlank()) {
-                                    // Rung 5: the chunk being read aloud, shaded in place.
-                                    // Plain String (exactly the old rendering) unless this
-                                    // block actually contains part of the current chunk.
+                                    // Rung 6 (paragraph-highlight variant): the paragraph
+                                    // being read aloud, shaded in place - or rung 5's
+                                    // whole chunk when there's no narrower paragraph range
+                                    // to use (see ttsHighlightRange). Plain String (exactly
+                                    // the old rendering) unless this block actually
+                                    // contains part of that range.
                                     val highlight = if (ttsFollowing && rawStart != null) {
+                                        val (rangeStart, rangeEnd) = ttsHighlightRange(
+                                            paragraphStart = tts.currentParagraphStart,
+                                            paragraphEnd = tts.currentParagraphEnd,
+                                            chunkStart = tts.currentChunkStart,
+                                            chunkEnd = tts.currentChunkEnd
+                                        )
                                         ttsHighlightWithin(
                                             blockStart = rawStart,
                                             blockLength = segment.text.length,
-                                            chunkStart = tts.currentChunkStart,
-                                            chunkEnd = tts.currentChunkEnd
+                                            chunkStart = rangeStart,
+                                            chunkEnd = rangeEnd
                                         )
                                     } else null
                                     val shownText = remember(segment.text, highlight, textColor) {
