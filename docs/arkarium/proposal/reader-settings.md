@@ -1,6 +1,6 @@
 # Reader settings page
 
-> **Kind:** proposal · **Status:** suggested-order items 1-5 built, 6-10 still design only · **Verified:** 2026-11-08 @ 8e0a937
+> **Kind:** proposal · **Status:** suggested-order items 1-5 built, 6 promoted to [`../implementation/multi-document-reader.md`](../implementation/multi-document-reader.md), 7-10 still design only · **Verified:** 2026-11-09 @ 0bfd6e5
 > **Origin:** a screenshot of a reference reader app's settings (2026-11-07) showing six reader switches, plus three items the owner raised separately on 2026-11-08 (multi-document's TTS collision, column count, volume). Related: [`peer-app-survey.md`](peer-app-survey.md) lists "per-title reader settings" among features seen in other apps.
 
 **2026-11-08 update:** the owner approved building the "cheap" batch now -
@@ -11,9 +11,12 @@ defaults plus the `settings/reader` page, the font family row,
 in the pill (see `design-notes.md`'s "Reader settings split" entry for the
 shape that landed - the brightness slider in particular is opt-in via a
 switch on `settings/reader`, which this proposal's own Brightness section
-below did not call for). Items 6-10 (multi-document, day/night button,
-volume slider, column count, bookmarks) are unchanged from this proposal -
-still design only, nothing built.
+below did not call for). Item 6 (multi-document) was re-checked against the current code on 2026-11-09 and
+had three load-bearing assumptions corrected - see
+[`../implementation/multi-document-reader.md`](../implementation/multi-document-reader.md)
+for what changed and its rung ladder. Items 7-10 (day/night button, volume
+slider, column count, bookmarks) are unchanged from this proposal - still design
+only, nothing built.
 
 This sorts the six switches from the screenshot, plus the three items added
 on 2026-11-08, into what ARKarium could adopt, what needs something else
