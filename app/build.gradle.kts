@@ -184,6 +184,21 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3")
 
+    // LibraryViewModel (and MetadataViewModel) take concrete AppDatabase/ScannerImpl
+    // rather than an interface - see design-notes.md, "ViewModels take interfaces
+    // only where a seam exists". A function on one of those ViewModels can still be
+    // unit-tested if it never actually calls into db/scanner (LibraryViewModelTest's
+    // reportScanSetupError, rung 4.2 of test-coverage.md), but constructing the
+    // ViewModel at all still needs *some* instance of each - and ScannerImpl's own
+    // constructor needs a real android.content.Context, which this module has no way
+    // to hand-build without Robolectric (deliberately not adopted, see design-notes.md
+    // Testing strategy). Mockito's mock(...) sidesteps that: it generates a throwaway
+    // instance of the class without running its constructor or any of its methods, no
+    // Context required. This is a mocking library in name only here - no test stubs a
+    // return value or verifies a call *happened*; every test that uses it instead
+    // calls verifyNoInteractions to assert db/scanner were never touched at all.
+    testImplementation("org.mockito:mockito-core:5.11.0")
+
     // Instrumented (device/emulator) tests - src/androidTest. Only the Room migration
     // test lives there today; it needs a real SQLite, which the JVM tests above don't have.
     androidTestImplementation("androidx.room:room-testing:2.6.1")
