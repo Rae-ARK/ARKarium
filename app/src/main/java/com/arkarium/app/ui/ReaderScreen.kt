@@ -969,42 +969,64 @@ fun ReaderScreen(
         // reserves the status bar's space outside Compose entirely, and this
         // inset - like the Column's cutout one - resolves to zero on its
         // own, so there's nothing to zero out here even in that case.
-        if (showControls.value) {
-            TopAppBar(
-                title = { Text(chapter.title, maxLines = 1) },
-                navigationIcon = {
-                    IconButton(onClick = { onBack(currentAnchor()) }) {
-                        Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                // Only shown once the engine's finished initializing successfully - see
-                // ChapterTtsState.isAvailable's doc comment. Pressing it starts reading
-                // aloud and drops into immersive mode, where the read-aloud controls
-                // pill (TtsControlsBar) takes over the bottom edge from the Reader
-                // Preferences pill. If a session already exists it isn't restarted from
-                // the top: a paused one resumes, a playing one is left alone, and either
-                // way the reader just goes back to its controls. The top bar only exists
-                // outside immersive mode, so this is the only way to *start* read-aloud;
-                // the pill stops, pauses and skips it from there.
-                actions = {
-                    if (tts.isAvailable) {
-                        IconButton(onClick = {
-                            when {
-                                tts.isPaused -> tts.resume()
-                                tts.isSpeaking -> Unit
-                                else -> tts.speak(context, chapter.title, content, chapter.id)
-                            }
-                            showControls.value = false
-                        }) {
-                            Icon(
-                                Icons.Filled.VolumeUp,
-                                contentDescription = "Read aloud"
-                            )
+        //
+        // Jank fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md #8): this used to be a bare
+        // `if (showControls.value) { TopAppBar(...) }` with no animation at all, while the
+        // footer Column below - the screen's other `showControls`-gated widget - already wraps
+        // itself in `.animateContentSize()` specifically so its own appear/disappear doesn't
+        // "jump instantly" (see that Column's own comment). Tapping to toggle chrome therefore
+        // drove two different motions off the same state change in the same frame: the footer
+        // smoothly animating its height while the scrollable body's *top* edge snapped up or
+        // down instantly the moment the TopAppBar itself was added to or removed from
+        // composition - worst in portrait specifically, since portrait is exactly where the top
+        // bar sits flush under the status bar/cutout with nothing else above it to mask a
+        // one-frame jump (landscape's cutout is a side strip the top bar barely touches).
+        // Wrapping the same way the footer already does - a Column that stays in composition
+        // with `.animateContentSize()` on it, conditionally composing TopAppBar inside - gives
+        // both edges of the chrome the identical default animation spec, so they move in step
+        // instead of one popping and the other easing.
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize()
+        ) {
+            if (showControls.value) {
+                TopAppBar(
+                    title = { Text(chapter.title, maxLines = 1) },
+                    navigationIcon = {
+                        IconButton(onClick = { onBack(currentAnchor()) }) {
+                            Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
                         }
-                    }
-                },
-                modifier = Modifier.background(backgroundColor)
-            )
+                    },
+                    // Only shown once the engine's finished initializing successfully - see
+                    // ChapterTtsState.isAvailable's doc comment. Pressing it starts reading
+                    // aloud and drops into immersive mode, where the read-aloud controls
+                    // pill (TtsControlsBar) takes over the bottom edge from the Reader
+                    // Preferences pill. If a session already exists it isn't restarted from
+                    // the top: a paused one resumes, a playing one is left alone, and either
+                    // way the reader just goes back to its controls. The top bar only exists
+                    // outside immersive mode, so this is the only way to *start* read-aloud;
+                    // the pill stops, pauses and skips it from there.
+                    actions = {
+                        if (tts.isAvailable) {
+                            IconButton(onClick = {
+                                when {
+                                    tts.isPaused -> tts.resume()
+                                    tts.isSpeaking -> Unit
+                                    else -> tts.speak(context, chapter.title, content, chapter.id)
+                                }
+                                showControls.value = false
+                            }) {
+                                Icon(
+                                    Icons.Filled.VolumeUp,
+                                    contentDescription = "Read aloud"
+                                )
+                            }
+                        }
+                    },
+                    modifier = Modifier.background(backgroundColor)
+                )
+            }
         }
 
         Column(
