@@ -252,11 +252,14 @@ class MainActivity : ComponentActivity() {
     // libraryViewModel), same pattern as the other three.
     private lateinit var syncViewModel: SyncViewModel
 
-    // Only ever launched from a "Notify me when new chapters are available" toggle
-    // being switched on (see NovelDetailScreen's onToggleNotify wiring below) - API <
-    // 33 has no such runtime permission to request in the first place (notifications
-    // there are granted at install time), so this is never triggered on those versions;
-    // the toggle's callback checks Build.VERSION.SDK_INT before ever calling launch().
+    // Originally launched only from a "Notify me when new chapters are available"
+    // toggle being switched on (see NovelDetailScreen's onToggleNotify wiring below);
+    // now also launched, with no pendingNotifyToggleNovelId payload, by
+    // requestNotificationPermissionIfNeeded() below (see its own doc comment - the
+    // rung 4 TTS-notification fix). API < 33 has no such runtime permission to request
+    // in the first place (notifications there are granted at install time), so this is
+    // never triggered on those versions; every caller checks Build.VERSION.SDK_INT
+    // before ever calling launch().
     private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val novelId = pendingNotifyToggleNovelId.value
         pendingNotifyToggleNovelId.value = null
@@ -270,6 +273,35 @@ class MainActivity : ComponentActivity() {
             // permission request is being torn down for recreation, same race
             // saveReadingProgress/saveChapterEdits were already fixed for.
             AppScope.io.launch { setNotifyEnabled(novelId, true) }
+        }
+    }
+
+    // Rung 4 fix (docs/arkarium/implementation/tts-playback-controls.md): wired to
+    // ReaderScreen's onRequestNotificationPermission, called right alongside
+    // tts.speak() whenever read-aloud actually starts a new session. Without this, the
+    // only runtime request for POST_NOTIFICATIONS was the "Notify new chapters" toggle
+    // above - a reader who never touched that toggle would start TtsPlaybackService's
+    // foreground service just fine (no crash, no exception: startForeground() itself
+    // doesn't require the permission), but on API 33+ NotificationManager silently
+    // drops every notification without it, so the media-style transport notification
+    // (previous/play-pause/next/stop) simply never appeared. In-app playback and its
+    // own TtsControlsBar pill (rungs 1-3) were unaffected, which is why this only
+    // surfaced as "the notification-bar controls specifically don't work".
+    //
+    // Deliberately does not set pendingNotifyToggleNovelId: this path has no per-novel
+    // follow-up action to take once the permission is granted (unlike the toggle) -
+    // TtsPlaybackService already calls startForeground()/notify() on its own schedule,
+    // and the system will simply start showing those notifications from then on. Safe
+    // to call every time read-aloud starts, already-granted or not: checkSelfPermission
+    // short-circuits before ever touching the launcher, and the launcher itself is a
+    // no-op while a request from it is already in flight.
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                this, Manifest.permission.POST_NOTIFICATIONS
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -1723,6 +1755,14 @@ class MainActivity : ComponentActivity() {
                                     // The "Reader Preferences" pill: one place for reader
                                     // settings. Forward nav so Back returns to this reader.
                                     onOpenReaderSettings = { navController.navigate("settings/reader") },
+                                    // Rung 4 fix (docs/arkarium/implementation/tts-playback-controls.md):
+                                    // the only existing POST_NOTIFICATIONS request was wired to the
+                                    // "Notify new chapters" toggle, so a reader who starts read-aloud
+                                    // without ever touching that toggle was never asked - on API 33+ that
+                                    // silently suppresses TtsPlaybackService's foreground notification
+                                    // entirely, transport buttons included, with no crash and no error to
+                                    // point at it. requestNotificationPermissionIfNeeded() below.
+                                    onRequestNotificationPermission = { requestNotificationPermissionIfNeeded() },
                                     // Continue-Reading-loses-progress fix (see ReaderScreen's
                                     // own doc comment on this parameter): same save as
                                     // onBack/onPrevious/onNext above, just without any
