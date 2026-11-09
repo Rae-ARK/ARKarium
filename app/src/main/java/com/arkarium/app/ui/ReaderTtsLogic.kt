@@ -80,6 +80,8 @@ data class TtsHighlight(val start: Int, val endExclusive: Int)
 // The part of chunk [chunkStart, chunkEnd) that falls inside the text block starting at
 // `blockStart` in the chapter body and `blockLength` characters long, as offsets local to
 // that block; null when the chunk doesn't touch it (or there's no chunk: start < 0).
+// Despite the parameter names, this is just a generic "clip [start, end) to this
+// block" - ttsHighlightRange below reuses it unchanged for a paragraph range too.
 fun ttsHighlightWithin(
     blockStart: Int,
     blockLength: Int,
@@ -91,6 +93,22 @@ fun ttsHighlightWithin(
     val to = minOf(chunkEnd, blockStart + blockLength) - blockStart
     return if (to > from) TtsHighlight(from, to) else null
 }
+
+// Rung 6 (paragraph-highlight variant, docs/arkarium/implementation/
+// tts-playback-controls.md): which [start, end) range the "currently reading"
+// highlight should actually shade - the narrower paragraph range whenever there is one
+// (paragraphStart >= 0), falling back to rung 5's whole-chunk range otherwise, which
+// covers both "no session" (both ranges are -1, so this is too) and "mid-session but
+// the current position isn't inside any paragraph" (an <author>/<news> callout, a
+// break line - see TtsPlaybackService.currentParagraphStart's own doc comment). A
+// reader never sees *less* highlight than rung 5 already gave them, only a more
+// precise one when it's available.
+fun ttsHighlightRange(
+    paragraphStart: Int,
+    paragraphEnd: Int,
+    chunkStart: Int,
+    chunkEnd: Int
+): Pair<Int, Int> = if (paragraphStart >= 0) paragraphStart to paragraphEnd else chunkStart to chunkEnd
 
 // The text block the chunk's first character is in - where auto-scroll should aim - or
 // null when it isn't inside any (it starts in a tag the reader draws as a callout or
