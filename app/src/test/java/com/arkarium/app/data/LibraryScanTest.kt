@@ -28,7 +28,9 @@ class LibraryScanTest {
         syncSourceUrl: String? = null,
         syncSourceVersion: Int? = null,
         lastSyncedAt: Long? = null,
-        syncStatus: String = SyncStatus.ACTIVE.name
+        syncStatus: String = SyncStatus.ACTIVE.name,
+        notifyNewChapters: Boolean = false,
+        syncFolderName: String? = null
     ) = NovelEntity(
         id = id,
         title = title,
@@ -46,7 +48,9 @@ class LibraryScanTest {
         syncSourceUrl = syncSourceUrl,
         syncSourceVersion = syncSourceVersion,
         lastSyncedAt = lastSyncedAt,
-        syncStatus = syncStatus
+        syncStatus = syncStatus,
+        notifyNewChapters = notifyNewChapters,
+        syncFolderName = syncFolderName
     )
 
     @Test
@@ -169,5 +173,49 @@ class LibraryScanTest {
 
         assertEquals("https://relay.example/manifest.json", result.syncSourceUrl)
         assertEquals(3, result.syncSourceVersion)
+    }
+
+    // Settings-wipe bug: ScannerImpl never sets notifyNewChapters, so `scanned`
+    // always has it at the NovelEntity default (false) - if the merge didn't
+    // explicitly carry the existing row's value forward, a user turning the
+    // toggle on would see it silently flip back off on the very next rescan
+    // (i.e. the next cold launch, since startScan always runs one).
+    @Test
+    fun `notify-new-chapters toggle survives a rescan even though the scanner never sets it`() {
+        val scanned = novel(notifyNewChapters = false)
+        val existing = novel(notifyNewChapters = true)
+
+        val result = mergeNovelForRescan(scanned, existing)
+
+        assertEquals(true, result.notifyNewChapters)
+    }
+
+    // Same bug, for the column SyncManager relies on as its primary folder lookup
+    // (see syncFolderName's doc comment on NovelEntity) - ScannerImpl never sets
+    // it either, so without carrying it forward here, the very next rescan after
+    // a sync backfilled it would null it back out, forcing every later sync to
+    // fall back to a slug guess that can miss a folder whose on-disk name
+    // doesn't match the slug.
+    @Test
+    fun `sync folder name survives a rescan even though the scanner never sets it`() {
+        val scanned = novel(syncFolderName = null)
+        val existing = novel(syncFolderName = "Summoned By Mistake")
+
+        val result = mergeNovelForRescan(scanned, existing)
+
+        assertEquals("Summoned By Mistake", result.syncFolderName)
+    }
+
+    // The fill-in direction (same shape as syncSourceUrl above) matters here too,
+    // in case a future ScannerImpl change ever does start setting syncFolderName
+    // on `scanned` itself - it must never clobber a folder name already recorded.
+    @Test
+    fun `an already-recorded sync folder name is never replaced by what a rescan finds`() {
+        val scanned = novel(syncFolderName = "summoned-by-mistake-slug")
+        val existing = novel(syncFolderName = "Summoned By Mistake")
+
+        val result = mergeNovelForRescan(scanned, existing)
+
+        assertEquals("Summoned By Mistake", result.syncFolderName)
     }
 }
