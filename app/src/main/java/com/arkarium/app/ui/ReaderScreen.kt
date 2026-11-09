@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -1044,6 +1045,32 @@ fun ReaderScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .animateContentSize()
+                // Immersive-with-full-screen-off gap bug (reported: "full-screen toggle off,
+                // content draws behind the status bar" - worst in landscape, where the
+                // Column's own `displayCutout` pad above lands on a side edge instead of the
+                // top, so it never incidentally covers for this the way it occasionally does
+                // in portrait on a notched device). `applyWindowLayout` above now makes Reader
+                // edge-to-edge unconditionally (fix 3 in its own doc comment), so with chrome
+                // showing, the TopAppBar's own un-zeroed `windowInsets` (see its own note
+                // below) is the sole thing reserving space for a real, visible status bar -
+                // that comment already states as much. What it didn't cover: tapping to hide
+                // chrome (`showControls.value = false`, ARKarium's own immersive mode) removes
+                // the TopAppBar from composition - and with it, the only remaining consumer of
+                // that inset - while the full-screen *setting* being off means the real system
+                // status bar never actually hides (see the `DisposableEffect` above: hide/show
+                // is keyed on `fullscreenEnabled` alone, independent of `showControls`). So
+                // content was left drawing straight under a status bar that was still on
+                // screen. Reserving the same inset here exactly in that gap - chrome hidden,
+                // status bar still showing - restores what the TopAppBar would have padded by;
+                // gated so it only applies in that one state, this never stacks with the
+                // TopAppBar's own pad once chrome (and the TopAppBar) comes back.
+                .then(
+                    if (!showControls.value && !fullscreenEnabled) {
+                        Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                    } else {
+                        Modifier
+                    }
+                )
         ) {
             if (showControls.value) {
                 TopAppBar(
