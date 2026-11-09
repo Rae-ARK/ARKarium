@@ -4,10 +4,34 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Upsert
 
 @Dao
 interface NovelDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // Cold-start data-loss bug: this used to be @Insert(onConflict = REPLACE).
+    // OnConflictStrategy.REPLACE isn't a real UPDATE - on a primary-key conflict
+    // SQLite performs a DELETE of the existing row followed by an INSERT of the new
+    // one (see https://sqlite.org/lang_conflict.html). A DELETE, even one immediately
+    // followed by a same-keyed INSERT, fires every ON DELETE CASCADE foreign key that
+    // points at that row. arcs/chapters/chapter_overrides/reading_progress/
+    // scan_fingerprints (Entities.kt) all cascade off novels.id, and
+    // MainActivity.onCreate runs a full library rescan on every cold launch
+    // (LibraryViewModel.startScan -> ScannerImpl.onDiscovered -> db.novelDao().upsert)
+    // unconditionally, for every novel folder found, whether or not anything about it
+    // actually changed. So every cold start was deleting and recreating every known
+    // novel row, cascading away that novel's reading_progress (continue-reading
+    // position) and chapter_read_events (streak/weekly-count) before the scan ever
+    // got a chance to read them back - this is also what made
+    // ChapterDao.upsert below independently finish the job for any row the novel-level
+    // cascade hadn't already caught, chapter by chapter.
+    //
+    // @Upsert (Room 2.5+) is a real upsert: it attempts an INSERT, and only performs
+    // an UPDATE of the existing row's columns on a primary-key conflict - no DELETE is
+    // issued, so no ON DELETE CASCADE child row is ever touched by an ordinary
+    // "nothing changed" rescan. Functionally this is still exactly what every caller
+    // below already expects from a method named "upsert": insert if new, overwrite
+    // fields if existing.
+    @Upsert
     suspend fun upsert(novel: NovelEntity)
 
     @Query("SELECT * FROM novels ORDER BY title")
