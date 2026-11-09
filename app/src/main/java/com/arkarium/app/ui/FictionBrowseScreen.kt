@@ -14,6 +14,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -21,7 +25,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Sort
@@ -31,7 +34,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -75,8 +77,7 @@ fun FictionBrowseScreen(
     // too - keying on initialQuery here is defensive documentation of that requirement,
     // not a fix for an observed bug.
     initialQuery: String = "",
-    onNovelSelected: (NovelEntity) -> Unit = {},
-    onBack: () -> Unit = {}
+    onNovelSelected: (NovelEntity) -> Unit = {}
 ) {
     val searchQuery = remember(initialQuery) { mutableStateOf(initialQuery) }
     val selectedSort = remember { mutableStateOf(SortBy.RECENTLY_UPDATED) }
@@ -113,14 +114,15 @@ fun FictionBrowseScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Top app bar
+        // Bug 6 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): Browse is one of
+        // the four bottom-tab roots (AppDestination.BROWSE in AppBottomBar.kt) - reached
+        // by tapping its tab, never pushed onto the back stack the way a drill-down
+        // screen is. A software back arrow here left over from before the bottom-bar
+        // rework merged these into tabs was inconsistent with Home/Notice Board, the
+        // other two tab roots, which correctly show none.
         TopAppBar(
             windowInsets = WindowInsets(0, 0, 0, 0),
-            title = { Text("Browse Novels") },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                }
-            }
+            title = { Text("Browse Novels") }
         )
 
         // Filter and sort controls
@@ -190,9 +192,16 @@ fun FictionBrowseScreen(
             onDismissRequest = { showSortSheet.value = false },
             sheetState = sortSheetState
         ) {
+            // Bug 7 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): ModalBottomSheet
+            // renders in its own window layer, entirely outside the Scaffold Surface's
+            // padded bounds - same gap as AppBottomBar's NavigationBar (see that fix),
+            // for whenever this sheet is opened in landscape. windowInsetsPadding
+            // (horizontal only, same reasoning as AppBottomBar) keeps its content clear
+            // of a side-edge cutout.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                     .padding(16.dp)
             ) {
                 Text(
@@ -230,9 +239,11 @@ fun FictionBrowseScreen(
             onDismissRequest = { showFilterSheet.value = false },
             sheetState = filterSheetState
         ) {
+            // Bug 7 fix - same reasoning as the sort sheet above.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
                     .padding(16.dp)
             ) {
                 Text(

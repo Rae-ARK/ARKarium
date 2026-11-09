@@ -1,6 +1,6 @@
 # UI/UX bugs (consolidated)
 
-> **Kind:** proposal · **Status:** open — 6 of 7 confirmed open by source read, 1 fixed · **Verified:** 2026-11-09 @ ecf4228
+> **Kind:** proposal · **Status:** closed — all 7 confirmed/addressed, all fixed · **Verified:** 2026-11-09 @ ecf4228
 > **Origin:** owner reports (two WhatsApp sessions, 2026-11-09) + a line-by-line re-check of every file each report names, against the commit above — not a transcription of the reports as given. Where a report's claim no longer matches source (fixed since reported, or a different file than named), that's called out explicitly rather than filed as-is.
 
 **Tags used below:** **V** — verified directly by reading the cited lines in this
@@ -37,7 +37,7 @@ record of being checked rather than silently dropped.
 
 ---
 
-## 2. Persisted SAF folder permission is never released — **open**
+## 2. Persisted SAF folder permission is never released — **fixed**
 
 **Where:** `MainActivity.kt`, `pickFolder` (lines 258–281).
 
@@ -73,9 +73,15 @@ on it. Needs the old value read *before* `setLibraryUri` overwrites it —
 **Severity:** Low-frequency, high-severity-when-hit — an unrecoverable crash
 with a cause invisible from the UI. Fix is small and self-contained.
 
+**Status:** Fixed — `MainActivity.kt`'s `pickFolder` now reads the previous
+`prefsManager.libraryUri` before `setLibraryUri` overwrites it and releases
+it (if non-null and different from the new pick) via
+`releasePersistableUriPermission`, guarded against a `SecurityException` if
+the grant was already gone.
+
 ---
 
-## 3. Stale-novel reconciliation cascade-deletes reading history on a partial scan — **open**
+## 3. Stale-novel reconciliation cascade-deletes reading history on a partial scan — **fixed**
 
 **Where:** `viewmodel/LibraryViewModel.kt`, `startScan`'s `onScanCompleted`
 callback (lines 160–196).
@@ -137,9 +143,21 @@ since a longer `scanRoot()` pass widens the shortcut-launch race window.
 **Severity:** Data loss (reading history, streak), triggered by ordinary use
 rather than an edge case. Highest-severity item in this file.
 
+**Status:** Fixed — went with the "require missing across two consecutive
+scans" direction rather than the MISSING_LOCALLY-equivalent one, since the
+latter would need a new non-destructive UI resolution flow for purely-local
+novels that doesn't exist today (unlike synced novels, which already have
+`SyncResolutionDialog`'s "Remove from library"). `LibraryViewModel` now
+tracks a `missingLocalOnce` set of local novel ids missing from the most
+recently completed scan; a local novel is only cascade-deleted once it's
+in that set *and* still missing on the next scan. Anything rediscovered
+clears its flag. Kept in-memory (not persisted) deliberately: a process
+restart losing this set only costs one extra "benefit of the doubt" scan,
+never makes deletion happen sooner or on less evidence than before.
+
 ---
 
-## 4. "Fetch info" results can apply to a novel that's no longer on screen — **open**
+## 4. "Fetch info" results can apply to a novel that's no longer on screen — **fixed**
 
 **Where:** `viewmodel/MetadataViewModel.kt` (`fetchMetadataFor`, lines
 49–63) and `MainActivity.kt` (the dialog `when` block, lines 2002–2042).
@@ -183,9 +201,18 @@ result for a novel no longer in view instead of applying it blind.
 wrong novel, no crash or data loss, but no indication to the user that it
 happened.
 
+**Status:** Fixed — went with fix direction (b). `MainActivity.kt` now
+derives `currentNovelDetailId` from the active back-stack entry whenever the
+current route is `novelDetail/{novelId}`, and the `Results`/`Error` dialog
+branches only render (and `Results`' candidate selection only applies) when
+`state.novel.id == currentNovelDetailId`; otherwise the state is silently
+reset to `Idle` instead of popping up over whatever's now on screen.
+`Loading` is unaffected (no apply action to misattribute, so it's always
+safe to show).
+
 ---
 
-## 5. Leaving the Reader races the outer Scaffold's inset switch, leaving a gap above the next screen's top bar — **open, newly found**
+## 5. Leaving the Reader races the outer Scaffold's inset switch, leaving a gap above the next screen's top bar — **fixed**
 
 **Where:** `ReaderScreen.kt`, `applyWindowLayout` (304–317) and the
 `DisposableEffect(fullscreenEnabled, isLandscape)` whose `onDispose` resets
@@ -286,6 +313,14 @@ on what the audit shows is most of the app's non-reader surface, and
 directly reported by the owner as present with or without the reader's own
 full-screen setting.
 
+**Status:** Fixed — took the "`onDispose` must stay, but stop touching
+`decorFitsSystemWindows`" option. `ReaderScreen.kt`'s `onDispose` no longer
+calls `applyWindowLayout(window, edgeToEdge = false, drawIntoCutout = false)`;
+it only calls `controller?.show(WindowInsetsCompat.Type.systemBars())` to
+guarantee the system bars reappear immediately. `MainActivity`'s
+`LaunchedEffect(currentRoute)` is now the single owner of the window's
+edge-to-edge/cutout state for every route, removing the race.
+
 ---
 
 ## 6. Bottom-tab roots inconsistently show a back arrow — correcting the report's attribution
@@ -330,13 +365,18 @@ correct baseline, not an oversight. `NoticeBoardScreen` already matches that
 baseline too (confirmed above). Settings and Browse are the two that don't
 match it yet.
 
-**Fix:** remove the leftover `navigationIcon { IconButton(onClick = onBack) {...} }`
-block from `SettingsScreen.kt` (191–198) and `FictionBrowseScreen.kt`
-(119–122), drop the now-unused `onBack` parameter from both composables, and
-drop the matching `onBack = { navController.popBackStack() }` wiring from
-their two `MainActivity.kt` call sites (1163–1165, 1711–1713) — bringing
-both in line with what `HomeScreen`/`NoticeBoardScreen` already do
-correctly, rather than adding anything new anywhere.
+**Fix:** removed the leftover `navigationIcon { IconButton(onClick = onBack) {...} }`
+block from `SettingsScreen.kt` and `FictionBrowseScreen.kt`, dropped the
+now-unused `onBack` parameter from both composables, and dropped the
+matching `onBack = { navController.popBackStack() }` wiring from their two
+`MainActivity.kt` call sites — bringing both in line with what
+`HomeScreen`/`NoticeBoardScreen` already did correctly. Also removed, per
+owner request, `HomeScreen`'s own redundant top-bar Settings icon
+(`onSettingsClick`) and its `MainActivity.kt` wiring — the bottom bar is now
+the single way to reach every one of the four tab roots, Settings included,
+matching the same "one way to switch tabs" paradigm this bug is about.
+
+**Status:** Fixed.
 
 **Severity:** Low — not broken (popping back from a tab root still lands
 somewhere sane), but inconsistent with the tab-bar paradigm the other two
@@ -346,7 +386,7 @@ of "seems odd" the report called out.
 
 ---
 
-## 7. Landscape cutout: screens other than Reader draw real widgets into the cutout area, not just colour-matched background — **open, root cause identified by contrast with Reader**
+## 7. Landscape cutout: screens other than Reader draw real widgets into the cutout area, not just colour-matched background — **fixed**
 
 **Where:** `MainActivity.kt`, the "landscape-tablet.md's cutout fix" comment
 and `LaunchedEffect(currentRoute)` (964–983, 989–1006); the one place this
@@ -427,6 +467,13 @@ cosmetic; if a `NavigationBarItem`'s tap target or a bottom-sheet control
 ends up physically under the notch/camera housing, that's an unreachable
 control, not just a visual regression.
 
+**Status:** Fixed — applied `windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))`
+(horizontal only, since both are bottom-anchored, not full-screen) to
+`AppBottomBar`'s `NavigationBar` and to the content `Column` of both of
+`FictionBrowseScreen`'s `ModalBottomSheet`s (sort and filter). Still worth
+the on-device landscape pass the original note called for to confirm the
+notch overlap is actually gone.
+
 ---
 
 ## Summary
@@ -434,9 +481,9 @@ control, not just a visual regression.
 | # | Bug | Status |
 |---|---|---|
 | 1 | WebView never destroyed leaving About Me | **Fixed** — confirmed in source, no action |
-| 2 | SAF folder grant never released on re-pick | Open — confirmed, fix direction given |
-| 3 | Partial-scan reconcile cascade-deletes reading history | Open — confirmed, highest severity, needs owner input before fixing |
-| 4 | "Fetch info" result can land on the wrong novel | Open — confirmed, fix direction given |
-| 5 | Reader-exit inset race leaves a gap above the next top bar | Open — newly found, root cause identified, exposure audited across all 15 non-reader screens |
-| 6 | Inconsistent back arrow on bottom-tab roots | Open — misattributed to Notice Board in the report; actually Settings + Browse. Home confirmed correct as-is (no change needed there) |
-| 7 | Widgets drawn into the landscape cutout | Open — root cause pinned by contrast with Reader (the only call to `windowInsetsPadding(WindowInsets.displayCutout)` in the app); `AppBottomBar` and `FictionBrowseScreen`'s `ModalBottomSheet`s are missing it |
+| 2 | SAF folder grant never released on re-pick | **Fixed** — old grant released before the new one overwrites it |
+| 3 | Partial-scan reconcile cascade-deletes reading history | **Fixed** — now requires two consecutive missed scans before cascade-deleting a local novel |
+| 4 | "Fetch info" result can land on the wrong novel | **Fixed** — dialog now checks the result's novel against the active route, silently drops stale results |
+| 5 | Reader-exit inset race leaves a gap above the next top bar | **Fixed** — Reader's `onDispose` no longer fights `MainActivity`'s route-level effect for window-state ownership |
+| 6 | Inconsistent back arrow on bottom-tab roots | **Fixed** — removed from Settings + Browse; Home's redundant top-bar Settings shortcut also removed per owner request, bottom bar is now the only way between tabs |
+| 7 | Widgets drawn into the landscape cutout | **Fixed** — `AppBottomBar` and `FictionBrowseScreen`'s `ModalBottomSheet`s now pad for `WindowInsets.displayCutout`, same pattern Reader already used |

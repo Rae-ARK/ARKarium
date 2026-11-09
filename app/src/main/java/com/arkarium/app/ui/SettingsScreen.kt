@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Gavel
@@ -28,7 +27,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -184,18 +182,19 @@ fun SettingsScreen(
     onReaderClick: () -> Unit,
     onPrivacyPolicy: () -> Unit,
     onTermsAndConditions: () -> Unit,
-    onAboutMe: () -> Unit,
-    onBack: () -> Unit
+    onAboutMe: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
+        // Bug 6 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): Settings is one of
+        // the four bottom-tab roots (AppDestination.SETTINGS in AppBottomBar.kt) -
+        // reached by tapping its tab (popUpTo("home"){saveState=true}), never pushed
+        // onto the back stack the way a drill-down screen is. A software back arrow here
+        // left over from before the bottom-bar rework merged these into tabs was
+        // inconsistent with Home/Notice Board, the other two tab roots, which correctly
+        // show none.
         TopAppBar(
             windowInsets = WindowInsets(0, 0, 0, 0),
-            title = { Text("Settings") },
-            navigationIcon = {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Filled.ArrowBack, contentDescription = "Back")
-                }
-            }
+            title = { Text("Settings") }
         )
 
         Column(modifier = Modifier.padding(16.dp)) {

@@ -658,9 +658,22 @@ fun ReaderScreen(
         }
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
-            if (window != null) {
-                applyWindowLayout(window, edgeToEdge = false, drawIntoCutout = false)
-            }
+            // Bug 5 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): this used to also call
+            // applyWindowLayout(window, edgeToEdge = false, drawIntoCutout = false) here,
+            // racing MainActivity's own LaunchedEffect(currentRoute) - which re-applies
+            // edgeToEdge = true, drawIntoCutout = true the instant currentRoute leaves
+            // reader/* - for ownership of the window's edge-to-edge state. onDispose runs
+            // synchronously as part of leaving composition; LaunchedEffect's coroutine
+            // runs after, on its own schedule. For one or more frames the outer Scaffold
+            // had already switched to contentWindowInsets = safeDrawing (padding content
+            // down by the status-bar height) while the window was still non-edge-to-edge
+            // from this call (the system had already pushed the whole content view down
+            // by the status-bar height once) - both paddings landing in the same frame is
+            // exactly the reported gap between the real status bar and the next screen's
+            // TopAppBar. MainActivity's effect already has the correct unconditional
+            // branch for every non-reader route, so it's left as the single owner of that
+            // state; this onDispose only needs to guarantee the system bars are shown
+            // again immediately; controller?.show above already does that.
         }
     }
 

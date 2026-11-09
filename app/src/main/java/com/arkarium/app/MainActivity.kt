@@ -115,6 +115,7 @@ import com.arkarium.app.viewmodel.SyncViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -259,6 +260,26 @@ class MainActivity : ComponentActivity() {
         uri?.let { selectedUri ->
             contentResolver.takePersistableUriPermission(selectedUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             lifecycleScope.launch {
+                // Release the previously-persisted grant (if any) before overwriting it
+                // below. Without this, Android's per-app cap on persisted URI grants
+                // (OEM-dependent, commonly low hundreds) fills up with every re-pick of
+                // "Use custom folder" ever accumulating a permanent, never-released grant -
+                // eventually takePersistableUriPermission throws a SecurityException with
+                // no visible cause. Must read the old value before setLibraryUri overwrites
+                // it two lines below, and only release if it's actually a different URI
+                // (re-picking the same folder shouldn't drop the grant we just took above).
+                val oldUri = prefsManager.libraryUri.first()
+                if (oldUri != null && oldUri != selectedUri.toString()) {
+                    try {
+                        contentResolver.releasePersistableUriPermission(
+                            Uri.parse(oldUri),
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    } catch (_: SecurityException) {
+                        // Grant was already gone (e.g. released elsewhere, or never
+                        // actually held) - nothing to clean up.
+                    }
+                }
                 // Picking a folder here only ever happens once "Use custom folder" is on
                 // (see SettingsScreen) - persisting it true here too is just defensive:
                 // it keeps this the single source of truth for "which folder did the user
@@ -960,6 +981,17 @@ class MainActivity : ComponentActivity() {
                 // file doesn't have it.
                 val currentBackStackEntry = navController.currentBackStackEntryAsState()
                 val currentRoute = currentBackStackEntry.value?.destination?.route
+                // Bug 4 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): metadataSearchState
+                // is a single app-wide ViewModel field, not scoped to whichever
+                // "novelDetail/{novelId}" route was on screen when fetchMetadataFor was
+                // called - without this, a "Fetch info" result that resolves after the user
+                // has already navigated to a different novel (or away entirely) pops up
+                // over whatever's currently on screen and, if acted on, applies the fetched
+                // metadata to the wrong novel with no indication anything happened. Null
+                // when the current route isn't novelDetail/{novelId} at all.
+                val currentNovelDetailId = if (currentRoute == "novelDetail/{novelId}") {
+                    currentBackStackEntry.value?.arguments?.getString("novelId")
+                } else null
 
                 // landscape-tablet.md's cutout fix: every route except Reader stays
                 // non-edge-to-edge today, so in landscape the display cutout is
@@ -1113,9 +1145,9 @@ class MainActivity : ComponentActivity() {
                             onBrowseClick = {
                                 navController.navigate("fictionBrowse")
                             },
-                            onSettingsClick = {
-                                navController.navigate("settings")
-                            },
+                            // onSettingsClick's wiring removed - Settings' own top-bar
+                            // shortcut icon is gone (see HomeScreen's actions comment);
+                            // the bottom bar is the only way there now, same as Browse.
                             onSearch = { query ->
                                 if (query.isNotEmpty()) {
                                     navController.navigate("fictionBrowse?initialQuery=${Uri.encode(query)}")
@@ -1159,9 +1191,6 @@ class MainActivity : ComponentActivity() {
                                     libraryViewModel.loadNovelDetails(novel)
                                     navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
                                 }
-                            },
-                            onBack = {
-                                navController.popBackStack()
                             }
                         )
                     }
@@ -1707,10 +1736,7 @@ class MainActivity : ComponentActivity() {
                             onReaderClick = { navController.navigate("settings/reader") },
                             onPrivacyPolicy = { navController.navigate("privacy_policy") },
                             onTermsAndConditions = { navController.navigate("terms") },
-                            onAboutMe = { navController.navigate("about_me") },
-                            onBack = {
-                                navController.popBackStack()
-                            }
+                            onAboutMe = { navController.navigate("about_me") }
                         )
                     }
                 }
@@ -2001,6 +2027,9 @@ class MainActivity : ComponentActivity() {
 
                 when (val state = metadataViewModel.metadataSearchState.value) {
                     is MetadataSearchState.Loading -> {
+                        // Loading has no novel.id to compare against the active route yet
+                        // (the search just started), and no apply action to misattribute -
+                        // safe to always show, same as before this fix.
                         MetadataSearchDialog(
                             novelTitle = state.novel.title,
                             isLoading = true,
@@ -2011,32 +2040,53 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     is MetadataSearchState.Results -> {
-                        MetadataSearchDialog(
-                            novelTitle = state.novel.title,
-                            isLoading = false,
-                            errorMessage = null,
-                            candidates = state.candidates,
-                            // The currently-open "novelDetail/{novelId}" route (if this is
-                            // the novel it's showing) picks up the new info on its own,
-                            // via the libraryViewModel.novels patch applyMetadata already
-                            // does - Stage 3.3 (see docs/arkarium/foundational/design-notes.md) dropped
-                            // the onApplied callback this call site used to pass to also
-                            // patch currentScreen for the same reason.
-                            onCandidateSelected = { candidate ->
-                                metadataViewModel.applyMetadata(state.novel, candidate)
-                            },
-                            onDismiss = { metadataViewModel.metadataSearchState.value = MetadataSearchState.Idle }
-                        )
+                        // Bug 4 fix: only render - and only allow applying - a Results
+                        // dialog for the novel that's actually on screen right now. If the
+                        // user navigated to a different novel (or away entirely) before
+                        // this resolved, silently drop it instead of popping it up over
+                        // whatever they're looking at now; they can just hit "Fetch info"
+                        // again from that novel's own page if they want it.
+                        if (state.novel.id == currentNovelDetailId) {
+                            MetadataSearchDialog(
+                                novelTitle = state.novel.title,
+                                isLoading = false,
+                                errorMessage = null,
+                                candidates = state.candidates,
+                                // The currently-open "novelDetail/{novelId}" route (if this is
+                                // the novel it's showing) picks up the new info on its own,
+                                // via the libraryViewModel.novels patch applyMetadata already
+                                // does - Stage 3.3 (see docs/arkarium/foundational/design-notes.md) dropped
+                                // the onApplied callback this call site used to pass to also
+                                // patch currentScreen for the same reason.
+                                onCandidateSelected = { candidate ->
+                                    metadataViewModel.applyMetadata(state.novel, candidate)
+                                },
+                                onDismiss = { metadataViewModel.metadataSearchState.value = MetadataSearchState.Idle }
+                            )
+                        } else {
+                            LaunchedEffect(state.novel.id) {
+                                metadataViewModel.metadataSearchState.value = MetadataSearchState.Idle
+                            }
+                        }
                     }
                     is MetadataSearchState.Error -> {
-                        MetadataSearchDialog(
-                            novelTitle = state.novel.title,
-                            isLoading = false,
-                            errorMessage = state.message,
-                            candidates = emptyList(),
-                            onCandidateSelected = {},
-                            onDismiss = { metadataViewModel.metadataSearchState.value = MetadataSearchState.Idle }
-                        )
+                        // Bug 4 fix: same reasoning as Results above - a stale "couldn't
+                        // reach metadata source" dialog shouldn't surface long after the
+                        // user has moved on to a different novel.
+                        if (state.novel.id == currentNovelDetailId) {
+                            MetadataSearchDialog(
+                                novelTitle = state.novel.title,
+                                isLoading = false,
+                                errorMessage = state.message,
+                                candidates = emptyList(),
+                                onCandidateSelected = {},
+                                onDismiss = { metadataViewModel.metadataSearchState.value = MetadataSearchState.Idle }
+                            )
+                        } else {
+                            LaunchedEffect(state.novel.id) {
+                                metadataViewModel.metadataSearchState.value = MetadataSearchState.Idle
+                            }
+                        }
                     }
                     is MetadataSearchState.Idle -> {}
                 }

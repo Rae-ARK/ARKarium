@@ -15,6 +15,11 @@ package com.arkarium.app.navigation
 // between visits instead of restarting, and switching tabs never piles up duplicate
 // back-stack entries.
 
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Home
@@ -26,6 +31,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 
 // One tab = one route to navigate to (via AppBottomBar.navigate below) plus however the
@@ -66,7 +72,17 @@ fun AppBottomBar(
     currentRoute: String?,
     onTabSelected: (AppDestination) -> Unit
 ) {
-    NavigationBar {
+    // Bug 7 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): NavigationBar is passed
+    // to Scaffold's bottomBar slot (MainActivity.kt), which lays it out as a full-width
+    // sibling of the padded content area - Scaffold's innerPadding never touches it, and
+    // nothing here compensated for the display cutout on its own. In landscape, with the
+    // cutout on a side edge, that left tab icons/labels able to sit under it. Horizontal
+    // is enough since this bar is bottom-anchored, not full-screen - same pattern
+    // ReaderScreen's root Column already proves works for its own content, the one place
+    // in the app this was handled correctly before this fix.
+    NavigationBar(
+        modifier = Modifier.windowInsetsPadding(WindowInsets.displayCutout.only(WindowInsetsSides.Horizontal))
+    ) {
         AppDestination.entries.forEach { destination ->
             val selected = destination.matchesRoute(currentRoute)
             NavigationBarItem(
