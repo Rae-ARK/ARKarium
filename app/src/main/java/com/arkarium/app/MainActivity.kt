@@ -570,6 +570,10 @@ class MainActivity : ComponentActivity() {
     private fun renderCrashScreen(title: String, details: String) {
         setContent {
             MaterialTheme {
+                // Surface, not a bare Column: the window background is solid black
+                // (themes.xml) and a bare Column leaves LocalContentColor at black, so
+                // the report was black text on a black window - an apparent "black screen".
+                Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 androidx.compose.foundation.layout.Column(
                     modifier = Modifier
                         .fillMaxSize()
@@ -589,6 +593,7 @@ class MainActivity : ComponentActivity() {
                             Text(details, style = MaterialTheme.typography.bodySmall)
                         }
                     }
+                }
                 }
             }
         }
@@ -908,7 +913,11 @@ class MainActivity : ComponentActivity() {
                 // startScan has populated `novels` at all, so this needs to re-run as
                 // novels.size grows too, not just once when the pending id itself is
                 // first set.
-                LaunchedEffect(pendingNotificationNovelId.value, libraryViewModel.novels.size) {
+                LaunchedEffect(pendingNotificationNovelId.value, libraryViewModel.novels.size, showSplash.value) {
+                    // NavHost isn't composed while the splash is up (the splash branch below
+                    // returns before it), so navController has no graph yet and navigate()
+                    // throws. Wait; showSplash is a key, so this re-runs once it flips false.
+                    if (showSplash.value) return@LaunchedEffect
                     val novelId = pendingNotificationNovelId.value ?: return@LaunchedEffect
                     val target = libraryViewModel.novels.firstOrNull { it.id == novelId } ?: return@LaunchedEffect
                     // Stage 3.3 (see docs/arkarium/foundational/design-notes.md): NovelDetail is now
@@ -955,8 +964,14 @@ class MainActivity : ComponentActivity() {
                 // success, or no reading history at all (recentNovelIds empty, which
                 // more scanning can never change) - and leave it set, retrying on the
                 // next `novels.size` change, for "novel not found (yet)".
-                LaunchedEffect(pendingContinueReadingShortcut.value, libraryViewModel.novels.size) {
+                LaunchedEffect(pendingContinueReadingShortcut.value, libraryViewModel.novels.size, showSplash.value) {
                     if (!pendingContinueReadingShortcut.value) return@LaunchedEffect
+                    // Same reason as the notification effect above: navigating before
+                    // NavHost has set the graph (i.e. during the splash) throws, and
+                    // nothing catches an exception thrown inside a LaunchedEffect. This is
+                    // what crashed the second launch once reading_progress survived a
+                    // rescan (@Upsert) - the effect used to bail out earlier with no history.
+                    if (showSplash.value) return@LaunchedEffect
                     // Still waiting on startScan to populate `novels` - leave the flag
                     // set so this re-runs once libraryViewModel.novels.size changes,
                     // instead of giving up on a race it can still win.
