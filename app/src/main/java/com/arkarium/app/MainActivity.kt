@@ -337,32 +337,48 @@ class MainActivity : ComponentActivity() {
     // persists per-chapter overrides only where something actually changed. If an edit
     // matches the scanned default again, any stale override for that chapter is removed
     // instead of being kept around with stale values.
+    //
+    // Durability fix (same class of bug as reading-progress - see AppScope.kt's doc
+    // comment): this used to run with no NonCancellable guard, called from
+    // ChapterEditorScreen's rememberCoroutineScope (see that file's own doc comment on
+    // its Save button). That scope is cancelled the instant the composable tearing it
+    // down is disposed - which includes this very Activity being recreated (rotation,
+    // multi-window resize, a memory-pressure reclaim) mid-save. `edited.forEachIndexed`
+    // issues one DAO call per chapter; a cancellation landing between two of those calls
+    // used to leave only some chapters' overrides written - title changes, reordering
+    // and arc-start flags for the rest of the list silently dropped, with no error and
+    // no retry, since the coroutine that would have called onBack() never got there
+    // either. Wrapping the whole read-then-write sequence in NonCancellable means a
+    // cancellation request can no longer interrupt it once it's started - mirroring
+    // saveReadingProgress's own NonCancellable wrap for the identical reason.
     private suspend fun saveChapterEdits(novel: NovelEntity, edited: List<ChapterEntity>, arcStartIds: Set<String>) {
-        val raw = db.chapterDao().forNovel(novel.id) // natural scan order, no overrides
-        val rawById = raw.associateBy { it.id }
-        val rawIndexById = raw.withIndex().associate { (i, c) -> c.id to i }
+        withContext(NonCancellable + Dispatchers.IO) {
+            val raw = db.chapterDao().forNovel(novel.id) // natural scan order, no overrides
+            val rawById = raw.associateBy { it.id }
+            val rawIndexById = raw.withIndex().associate { (i, c) -> c.id to i }
 
-        edited.forEachIndexed { index, chapter ->
-            val original = rawById[chapter.id] ?: return@forEachIndexed
-            val titleOverride = if (chapter.title != original.title) chapter.title else null
-            val positionOverride = if (index != rawIndexById[chapter.id]) index else null
-            val isArcStart = chapter.id in arcStartIds
+            edited.forEachIndexed { index, chapter ->
+                val original = rawById[chapter.id] ?: return@forEachIndexed
+                val titleOverride = if (chapter.title != original.title) chapter.title else null
+                val positionOverride = if (index != rawIndexById[chapter.id]) index else null
+                val isArcStart = chapter.id in arcStartIds
 
-            if (titleOverride != null || positionOverride != null || isArcStart) {
-                db.chapterOverrideDao().upsert(
-                    ChapterOverrideEntity(
-                        id = UUID.nameUUIDFromBytes("override:${chapter.id}".toByteArray()).toString(),
-                        chapterId = chapter.id,
-                        titleOverride = titleOverride,
-                        positionOverride = positionOverride,
-                        isArcStart = isArcStart
+                if (titleOverride != null || positionOverride != null || isArcStart) {
+                    db.chapterOverrideDao().upsert(
+                        ChapterOverrideEntity(
+                            id = UUID.nameUUIDFromBytes("override:${chapter.id}".toByteArray()).toString(),
+                            chapterId = chapter.id,
+                            titleOverride = titleOverride,
+                            positionOverride = positionOverride,
+                            isArcStart = isArcStart
+                        )
                     )
-                )
-            } else {
-                db.chapterOverrideDao().delete(chapter.id)
+                } else {
+                    db.chapterOverrideDao().delete(chapter.id)
+                }
             }
+            libraryViewModel.loadNovelDetails(novel)
         }
-        libraryViewModel.loadNovelDetails(novel)
     }
 
     // Rung 14 (F9, docs/arkarium/proposal/reader-playback.md): took a plain Float
