@@ -1,6 +1,6 @@
 # Engineering review: findings and proposed work
 
-> **Kind:** proposal · **Status:** **partially decided** — F1, F6, F7, F8, F10, F11, F18, F20, F22, F23 fixed in code; F9 done in code at paragraph granularity (narrower than this doc's own direction, on-device verification still open); D2, D3, D4, D5, D6 decided (see each); D1 (the per-finding accept/defer/reject table below) still open · **Verified:** 2026-11-08 @ (this patch)
+> **Kind:** proposal · **Status:** **partially decided** — F1, F6, F7, F8, F10, F11, F18, F20, F22, F23 fixed in code; F9 done in code at paragraph granularity (narrower than this doc's own direction, on-device verification still open); D2, D3, D4, D5, D6 decided (see each); D1 (the per-finding accept/defer/reject table below) still open · **Verified:** 2026-11-10 @ (this patch)
 > **Origin:** notes from a separate review session (code read plus web research), not an authoritative audit.
 > **Checked since:** each finding was re-read against the code on 2026-11-07. External guidance (library, platform, vendor behavior) was **not** re-checked except where a finding below says otherwise. The detail docs this file links to did not exist when this table was first written; they were filled in and F3 was corrected (see C3/C4) on the same date. A follow-up pass the same day added F22/F23 and recorded D2–D6; see each linked detail doc for what was re-verified for those.
 
@@ -90,7 +90,7 @@ Hash-verified sync, invariants S1–S9, incremental fingerprinting, the docs che
 3. Start the measurement track: Compose compiler reports and a Macrobenchmark (F12, F14), so later performance work is data-driven.
 4. F5: SAF directory listing, after measuring on a real custom-folder library.
 5. F4: signing, before building the relay chain.
-6. F10 is fixed (service-based playback, 823c914). F9 + the TTS controls issue in [`uiux.md`](uiux.md) remain one coordinated change, now buildable on top of that service. F22 (audio focus/becoming-noisy/`MediaSession`) builds on the same service and can land independently of F9.
+6. F10 is fixed (service-based playback, 823c914). F9 + the TTS controls issue (originally `uiux.md`, since deleted - promoted into [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md)) remain one coordinated change, now buildable on top of that service. F22 (audio focus/becoming-noisy/`MediaSession`) builds on the same service and can land independently of F9.
 7. F13, F15–F17, F19: polish, in whatever order the D4 and D6 decisions (now recorded above) allow.
 8. F23 is fixed (backlog rung 2): an `IllegalStateException` catch and a friendlier message in `AppDatabase.create()`, landed after F1's fix (5426a3d), which it builds on directly.
 

@@ -3,10 +3,11 @@
 > **Kind:** implementation (ladder) · **Status:** rungs 1-6 done in code (5, 6 awaiting an on-device check) · **Verified:** 2026-11-10
 > **Truth lives in:** `playback/TtsPlaybackService.kt`, `playback/TtsNotificationActions.kt`, `ui/Tts.kt`, `ui/ReaderScreen.kt`, `ui/ReaderTtsLogic.kt`, `ui/WaterRipple.kt`
 
-Promoted from [`../proposal/uiux.md`](../proposal/uiux.md)'s "Read-aloud has no
-playback controls and no 'currently reading' highlight" entry, now deleted from
-that file - see this doc's history (or `git log -p` on that line) for the
-original writeup. Builds on `TtsPlaybackService`
+Promoted from `proposal/uiux.md`'s "Read-aloud has no playback controls and no
+'currently reading' highlight" entry - that file has since been deleted
+entirely, its other items promoted or fixed elsewhere (see
+`engineering-backlog.md` rung 4 and `engineering-review.md`'s F9 note); `git
+log -p` on this doc's own history has the original writeup. Builds on `TtsPlaybackService`
 ([`reader-playback.md`](../proposal/reader-playback.md) F10), which already keeps a
 read-aloud session alive across rotation and chapter navigation - this ladder
 is the "controls surface" that doc's "Still open" section flagged as not built

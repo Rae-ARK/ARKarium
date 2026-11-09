@@ -7,7 +7,7 @@ Each doc is one ladder: a table of rungs, each `done`, `current`, `next`,
 
 | Ladder | Status | Current rung |
 |---|---|---|
-| [`tts-playback-controls.md`](tts-playback-controls.md) | rungs 1-2a done | 3: chunk-level progress indicator |
+| [`tts-playback-controls.md`](tts-playback-controls.md) | rungs 1-6 done in code | none — all 6 coded; 4, 5, 6 still need an on-device pass before exit |
 | [`test-coverage.md`](test-coverage.md) | not started | 4.1 (next): `MetadataViewModelTest` |
 | [`engineering-backlog.md`](engineering-backlog.md) | 12 of 18 rungs done (1–11, 14) | 12 (next, own ladder when started): F3 novel identity |
 | [`multi-document-reader.md`](multi-document-reader.md) | rung 0 done | 1: loud (not silent) TTS listener collision |

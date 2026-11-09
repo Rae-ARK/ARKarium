@@ -1,10 +1,12 @@
 # Engineering backlog: merged roadmap
 
-> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12, 13, 15–18 queued · **Verified:** 2026-11-08 @ (this patch)
+> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12, 13, 15–18 queued · **Verified:** 2026-11-10 @ (this patch)
 > **Origin:** a follow-up review pass over the open findings in
 > [`../proposal/engineering-review.md`](../proposal/engineering-review.md) and its
 > detail docs, the two open entries in [`../proposal/bugs/`](../proposal/bugs/README.md),
-> [`../proposal/uiux.md`](../proposal/uiux.md), and [`../proposal/ideas.md`](../proposal/ideas.md).
+> `proposal/uiux.md` (since deleted - see rung 4 and
+> [`tts-playback-controls.md`](tts-playback-controls.md) for where its items
+> landed), and [`../proposal/ideas.md`](../proposal/ideas.md).
 > `engineering-review.md`'s own "Suggested order" treats severity and effort
 > separately; this ladder merges every open item (including the UI-only and
 > newest-critical ones it doesn't cover) into one list, ranked by effort first
@@ -23,7 +25,7 @@ and point this row at that instead.
 | 1 | Scan reconcile cascade-deletes a novel's history on an ordinary scan (steps 1–2: mark seen before I/O that can fail; don't reconcile-as-stale on an empty listing while the DB isn't) | Tiny | **done** | [Rung 1 — what changed](#rung-1--what-changed), below (origin bug report deleted per [`../proposal/bugs/README.md`](../proposal/bugs/README.md)'s rule) |
 | 2 | F23 — Room downgrade throws uncaught, only "recovery" is clearing app data | Tiny | **done** | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 3 | F8 — two separate `AppDatabase` instances (`MainActivity` + the worker) | Tiny | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F8 |
-| 4 | Arc cover enlarger is undiscoverable (one-time ripple + tip) | Tiny | **done** | [`../proposal/uiux.md`](../proposal/uiux.md) |
+| 4 | Arc cover enlarger is undiscoverable (one-time ripple + tip) | Tiny | **done** | `ui/NovelDetailScreen.kt`'s `ArcTabCard` (`showDiscoveryRipple`/`onDiscoveryInteracted`); origin was `proposal/uiux.md`, since deleted |
 | 5 | F18 — WebView follows any link (`shouldOverrideUrlLoading`; JS/DOM storage intentionally stay on) | Small | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F18 |
 | 6 | F11 — TTS chunking can cut mid-emoji, ignores CJK punctuation (`BreakIterator`) | Small | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F11 |
 | 7 | F7 remainder — unreadable chapter has no retry, just an error string (sealed result type + retry button) | Small | **done** | [`../proposal/engineering-review.md`](../proposal/engineering-review.md) F7 |
