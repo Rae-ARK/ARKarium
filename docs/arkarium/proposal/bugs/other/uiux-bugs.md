@@ -1,7 +1,9 @@
 # UI/UX bugs (consolidated)
 
-> **Kind:** proposal · **Status:** closed — all 7 confirmed/addressed, all fixed · **Verified:** 2026-11-09 @ ecf4228
-> **Origin:** owner reports (two WhatsApp sessions, 2026-11-09) + a line-by-line re-check of every file each report names, against the commit above — not a transcription of the reports as given. Where a report's claim no longer matches source (fixed since reported, or a different file than named), that's called out explicitly rather than filed as-is.
+> **Kind:** proposal · **Status:** open — all 8 fixed in source; most still await an on-device pass (bug 1 needs none — see its own entry) · **Verified:** 2026-11-09 @ (this patch)
+> **Origin:** owner reports (two WhatsApp sessions, 2026-11-09) + a line-by-line re-check of every file each report names, against the commit above — not a transcription of the reports as given. Where a report's claim no longer matches source (fixed since reported, or a different file than named), that's called out explicitly rather than filed as-is. #8 is a follow-on finding from a direct request to re-check Reader's own top-bar handling in portrait, not a separate owner report.
+>
+> This status line previously read "closed" while several entries below still called for an on-device pass and both `README.md` index tables already said "open" — fixed here to match this file's own entries and its listing, per the lifecycle rule against leaving a doc that contradicts its own truth (`../../README.md`).
 
 **Tags used below:** **V** — verified directly by reading the cited lines in this
 commit. **I** — inferred from the surrounding code; the mechanism is
@@ -476,6 +478,73 @@ notch overlap is actually gone.
 
 ---
 
+## 8. Reader's top bar pops in/out instantly in portrait while every other `showControls` widget on the same screen animates — **fixed**
+
+**Where:** `ui/ReaderScreen.kt` — the top-bar call site (originally 972–1008,
+now wrapped at 988–1030) versus the footer `Column`'s own
+`.animateContentSize()` (1277–1287, see that Column's own comment) and the
+bottom pill's `RippleReveal`/`AnimatedVisibility` swap (`WaterRipple.kt`,
+`RippleReveal`, used at both `ReaderScreen.kt` bottom-pill call sites).
+
+**You asked me to check how Reader draws its widgets, since the top bar was
+reported as not handling portrait correctly and something in there was
+causing jank — this is what source shows.** `showControls` gates three
+separate widgets on this screen: the `TopAppBar`, the footer (progress
+readout + Reader Preferences pill), and indirectly the bottom pill swap.
+Two of the three were already animated — the footer explicitly wraps itself
+in `.animateContentSize()` so its own height change doesn't "jump
+instantly" (its own comment's words), and the pill swap goes through
+`RippleReveal`, which is `AnimatedVisibility` under the hood. The top bar
+was the one exception: a bare `if (showControls.value) { TopAppBar(...) }`
+with nothing animating its appearance or removal from composition at all.
+
+**Confirmed (V):** `ui/ReaderScreen.kt` had exactly one `if (showControls.value)`
+block with no `AnimatedVisibility`/`animateContentSize` anywhere around it —
+the `TopAppBar` call. Every other `showControls`-gated widget on the same
+screen already used one of the two animated patterns above.
+
+**The mechanism (I — consistent with source, not yet measured on-device):**
+tapping the reading area to toggle chrome flips `showControls` once, but
+that single state change drove two different motions in the same frame: the
+footer smoothly animating its height via its own `animateContentSize`
+spring, while the scrollable body's `weight(1f)` `Column` — sandwiched
+between the top bar and the footer — had its *top* edge jump instantly the
+moment the `TopAppBar` was added to or removed from composition, since
+nothing animated that addition/removal. Portrait is where this is most
+visible: the top bar sits flush under the status bar/cutout with nothing
+above it to mask a one-frame snap, and it's the first thing a reader's eye
+tracks when tapping to reveal or hide chrome. (Landscape has the same
+missing animation, but the cutout there is a side strip the top bar barely
+touches, so the jump is less perceptible — this is a portrait-dominant
+symptom of an orientation-independent cause, not a portrait-only bug.)
+
+**Fix direction:** apply the same pattern the footer already proves works
+in this exact screen — wrap the top bar's conditional in a `Column` that
+stays in composition with `.animateContentSize()` on it, rather than
+reaching for a third, different animation API (`AnimatedVisibility` directly
+on the `TopAppBar`) that wouldn't share the footer's animation spec and
+could still visibly desync from it.
+
+**Status:** Fixed — the `if (showControls.value) { TopAppBar(...) }` block
+is now `Column(modifier = Modifier.fillMaxWidth().animateContentSize()) { if (showControls.value) { TopAppBar(...) } }`,
+matching the footer's own technique and default animation spec so both
+edges of the chrome move in step instead of one popping and the other
+easing. No new imports needed — `animateContentSize` was already imported
+for the footer.
+
+**Still worth an on-device pass:** confirming the two edges now read as a
+single synchronized motion rather than merely "both animated but still
+slightly offset," and checking the same transition in landscape now that
+it's animated there too.
+
+**Severity:** Low-to-medium — cosmetic (a one-frame layout snap, not lost
+functionality or an unreachable control), but on the screen that is the
+app's primary activity, triggered by the single most common gesture in it
+(tap to toggle chrome), and reproducible every time rather than on an edge
+case.
+
+---
+
 ## Summary
 
 | # | Bug | Status |
@@ -487,3 +556,4 @@ notch overlap is actually gone.
 | 5 | Reader-exit inset race leaves a gap above the next top bar | **Fixed** — Reader's `onDispose` no longer fights `MainActivity`'s route-level effect for window-state ownership |
 | 6 | Inconsistent back arrow on bottom-tab roots | **Fixed** — removed from Settings + Browse; Home's redundant top-bar Settings shortcut also removed per owner request, bottom bar is now the only way between tabs |
 | 7 | Widgets drawn into the landscape cutout | **Fixed** — `AppBottomBar` and `FictionBrowseScreen`'s `ModalBottomSheet`s now pad for `WindowInsets.displayCutout`, same pattern Reader already used |
+| 8 | Reader's top bar doesn't animate with `showControls`, unlike the footer/pill | **Fixed** — top bar now wrapped in `.animateContentSize()`, matching the footer's own pattern |

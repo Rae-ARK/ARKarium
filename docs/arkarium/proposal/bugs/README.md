@@ -1,6 +1,6 @@
 # Bug reports
 
-> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-08 @ (this patch)
+> **Kind:** proposal · **Status:** open reports only · **Verified:** 2026-11-09 @ (this patch)
 
 Open, unfixed bugs, one file per bug. A fixed bug's file is deleted; if the
 cause taught a rule, it goes in
@@ -28,7 +28,7 @@ Historic ARKster-era bug history is frozen in
 | [`other/continue-reading-position-lost.md`](other/continue-reading-position-lost.md) | other — fix applied, awaiting on-device confirmation |
 | [`other/continue-reading-completion-fraction.md`](other/continue-reading-completion-fraction.md) | other — fix applied, awaiting on-device confirmation |
 | [`other/scrolling-bug.md`](other/scrolling-bug.md) | other — reader scrolling reported not smooth with controls visible; unconfirmed, no device measurements yet |
-| [`uiux-bugs.md`](uiux-bugs.md) | open — 6 of 7 confirmed by source re-check (1 already fixed); cutout-widget cause pinned by contrast with Reader's own working handling |
+| [`uiux-bugs.md`](uiux-bugs.md) | open — 6 of 7 confirmed by source re-check (1 already fixed) plus a new #8; cutout-widget cause pinned by contrast with Reader's own working handling; #8 (top-bar animation) found the same way, by contrast with the footer's own working handling |
 
 The three previously tracked here are all fixed and their files deleted per
 the rule above:
