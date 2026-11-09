@@ -23,11 +23,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.arkarium.app.data.AppScope
 import com.arkarium.app.data.ChapterEntity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -39,7 +41,6 @@ fun ChapterEditorScreen(
 ) {
     val editedChapters = remember { mutableStateOf(chapters) }
     val arcStartIds = remember { mutableStateOf(initialArcStartIds) }
-    val coroutineScope = rememberCoroutineScope()
 
     fun updateTitle(chapter: ChapterEntity, newTitle: String) {
         editedChapters.value = editedChapters.value.map {
@@ -133,9 +134,23 @@ fun ChapterEditorScreen(
 
         Button(
             onClick = {
-                coroutineScope.launch {
+                // AppScope.io, not rememberCoroutineScope (the actual remaining cause -
+                // see AppScope.kt's own doc comment, and MainActivity.saveChapterEdits'
+                // own comment on this call site): rememberCoroutineScope's scope is
+                // cancelled the moment this composable is torn down, which includes the
+                // Activity itself being recreated (rotation, multi-window resize, a
+                // memory-pressure reclaim) while the save loop is still mid-flight, not
+                // just a normal onBack() navigation. AppScope.io survives that
+                // recreation, and saveChapterEdits' own NonCancellable wrap (see its doc
+                // comment) means a cancellation can no longer cut the write off partway
+                // even so. onBack() still only runs after the save has actually landed,
+                // hopping to Main first since NavController (reached via onBack) isn't
+                // thread-safe.
+                AppScope.io.launch {
                     onSave(editedChapters.value, arcStartIds.value)
-                    onBack()
+                    withContext(Dispatchers.Main) {
+                        onBack()
+                    }
                 }
             },
             modifier = Modifier
