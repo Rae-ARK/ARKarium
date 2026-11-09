@@ -83,6 +83,21 @@ fun mergeNovelForRescan(
         syncSourceUrl = existing.syncSourceUrl ?: scanned.syncSourceUrl,
         syncSourceVersion = existing.syncSourceVersion,
         lastSyncedAt = existing.lastSyncedAt,
-        syncStatus = existing.syncStatus
+        syncStatus = existing.syncStatus,
+        // Settings-wipe bug: neither of these was listed here before, so the
+        // result silently kept `scanned`'s value for them - and ScannerImpl.
+        // buildNovelEntity never sets either one, so `scanned` always has them at
+        // their NovelEntity default (notifyNewChapters = false, syncFolderName =
+        // null). NovelDao.upsert writes every column of the merged row, and
+        // startScan runs this merge unconditionally on every cold launch, so the
+        // very next scan after a user flips "Notify me when new chapters are
+        // available" on, or after a sync's first successful downloadInitial
+        // backfills a folder name, was quietly writing it straight back to
+        // false/null - the toggle appeared to un-set itself, and a synced novel's
+        // folder lookup (SyncManager.sync, NewChapterCheckWorker - see
+        // syncFolderName's doc comment above) fell back to a slug guess that can
+        // miss a folder whose on-disk name doesn't match the slug.
+        notifyNewChapters = existing.notifyNewChapters,
+        syncFolderName = existing.syncFolderName ?: scanned.syncFolderName
     )
 }

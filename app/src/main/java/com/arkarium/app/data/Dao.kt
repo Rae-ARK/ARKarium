@@ -175,7 +175,22 @@ interface AuthorDao {
 
 @Dao
 interface ArcDao {
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    // Same family of bug as NovelDao.upsert/ChapterDao.upsert above. arcs is the
+    // parent of chapters.arc_id (Entities.kt, onDelete = SET_NULL), and
+    // ScannerImpl.scanNovelFolder upserts every already-known arc unconditionally
+    // on every rescan, before it gets to (re)upserting that arc's chapters in a
+    // separate pass right after. With REPLACE, every such upsert on an existing
+    // arc issued a DELETE+INSERT of that arc row, which fired the SET_NULL action
+    // on every one of its chapters immediately - so for the whole rest of that
+    // scan pass, those chapters sat in the DB with arc_id = NULL, only getting
+    // their real arc_id back once the later chapter-upsert pass reached them. If
+    // the scan was ever interrupted (process killed, an exception, a permission
+    // revoke mid-scan) between the two passes, those chapters were left
+    // permanently detached from their arc - falling back to the novel's
+    // root/"All Chapters" grouping instead of their actual arc. @Upsert never
+    // deletes the row on conflict, so it never fires the SET_NULL in the first
+    // place.
+    @Upsert
     suspend fun upsert(arc: ArcEntity)
 
     @Query("SELECT * FROM arcs WHERE novel_id = :novelId ORDER BY position")
