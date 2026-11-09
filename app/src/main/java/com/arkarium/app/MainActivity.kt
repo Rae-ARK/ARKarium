@@ -192,17 +192,14 @@ class MainActivity : ComponentActivity() {
     // Activity recreation (any config change, not just rotation), replaying the
     // splash and its audio every time. rememberSaveable survives recreation the same
     // way the rest of the Activity's saved instance state does.
-    // Set either when the "Continue Reading" dynamic app shortcut (long-press the
-    // launcher icon - see ArkariumApp.publishContinueReadingShortcut) is tapped, or on
-    // any other genuinely cold start that isn't a notification tap (see onCreate's
-    // savedInstanceState == null branch) - the latter is what makes a relaunch after
-    // the user swipes the app out of Recents resume where they left off instead of
-    // landing on Home, same as the shortcut does. Mirrors pendingNotificationNovelId
-    // immediately below: resolution is deferred to renderMainContent's LaunchedEffect
-    // rather than done here, because this can arrive as the cold-start intent before
-    // startScan (kicked off later in onCreate) has populated `novels`, and because
-    // which novel to resume isn't known yet either - neither trigger carries a novel
-    // id, both mean "whichever novel reading_progress says was read most recently".
+    // Set when the "Continue Reading" dynamic app shortcut (long-press the launcher
+    // icon - see ArkariumApp.publishContinueReadingShortcut) is tapped. Mirrors
+    // pendingNotificationNovelId immediately below: resolution is deferred to
+    // renderMainContent's LaunchedEffect rather than done here, because this can
+    // arrive as the cold-start intent before startScan (kicked off later in onCreate)
+    // has populated `novels`, and because which novel to resume isn't known yet
+    // either - unlike a notification tap, the shortcut doesn't carry a novel id, it
+    // means "whichever novel reading_progress says was read most recently".
     private val pendingContinueReadingShortcut = mutableStateOf(false)
 
     // Set when a "new chapter" notification is tapped (see onNewIntent/handleNotificationIntent
@@ -761,31 +758,6 @@ class MainActivity : ComponentActivity() {
             // start from the "Continue Reading" dynamic shortcut instead of a
             // notification tap - see pendingContinueReadingShortcut's own doc comment.
             handleShortcutIntent(intent)
-
-            // A PLAIN cold start - launcher icon tap, carrying neither extra above -
-            // used to land on Home with no memory of where the user was, even though
-            // their reading_progress row was sitting in the DB the whole time (writes
-            // to it are hardened against exactly this - see setReadingProgress's
-            // ON_PAUSE + NonCancellable comment). That's expected, not a bug, when the
-            // Activity was merely backgrounded (savedInstanceState would be non-null
-            // then, and the restore branch below already repaints the exact screen).
-            // But it's also what happens after the user swipes the app out of Recents
-            // (a true task removal - Android's contract there is "no state Bundle,
-            // ever", same as a fresh install) and then taps the icon again: nothing
-            // distinguishes that tap from any other cold start, so without this it
-            // silently dropped back to Home instead of resuming.
-            //
-            // Treat it exactly like a "Continue Reading" shortcut tap, reusing that
-            // same resolution path (LaunchedEffect(pendingContinueReadingShortcut...)
-            // below) rather than duplicating its scan-race handling and
-            // recentNovelIds/forNovel lookups here. Skipped when a notification tap
-            // already claimed this cold start, so the two don't race to navigate
-            // the NavHost to two different destinations at once; falls through to
-            // Home with no-op when there's no reading history yet (fresh install),
-            // same as the shortcut's own empty-history branch.
-            if (pendingNotificationNovelId.value == null && !pendingContinueReadingShortcut.value) {
-                pendingContinueReadingShortcut.value = true
-            }
         } else {
             pendingContinueReadingShortcut.value =
                 savedInstanceState.getBoolean(STATE_PENDING_CONTINUE_READING, false)
