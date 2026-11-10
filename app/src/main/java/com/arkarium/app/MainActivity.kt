@@ -39,6 +39,7 @@ import androidx.core.view.WindowCompat
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -377,6 +378,29 @@ class MainActivity : ComponentActivity() {
         authorPageAuthor.value = db.authorDao().findById(authorId)
         authorPageNovels.clear()
         authorPageNovels.addAll(db.novelDao().byAuthor(authorId))
+    }
+
+    // Shared "last read chapter -> reader, else NovelDetail" sequencing, used by
+    // both the Continue Reading shortcut (pendingContinueReadingShortcut's
+    // LaunchedEffect) and HomeScreen's onContinueReading. These used to each
+    // implement this independently and had drifted apart - onContinueReading
+    // fell back to NovelDetail when there was no resolvable chapter, the
+    // shortcut's effect silently did nothing instead (and kept retrying). One
+    // shared implementation means a future fix to this sequencing can't land in
+    // only one of the two call sites again.
+    //
+    // loadNovelDetails() is always called before navigating, same as every
+    // other path into the reader - see onContinueReading's old inline comment
+    // on why that matters for Previous/Next chapter.
+    private suspend fun navigateToLastReadChapterOrDetail(novel: NovelEntity, navController: NavHostController) {
+        val lastProgress = db.readingProgressDao().forNovel(novel.id)
+        val chapter = lastProgress?.let { db.chapterDao().findById(it.chapterId) }
+        libraryViewModel.loadNovelDetails(novel)
+        if (chapter != null) {
+            navController.navigate("reader/${novel.id}/${chapter.id}") { launchSingleTop = true }
+        } else {
+            navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
+        }
     }
 
     // Diffs the editor's edited chapter list against the raw scanned chapters and
@@ -993,14 +1017,9 @@ class MainActivity : ComponentActivity() {
                     // let the next novels.size change retry instead of giving up here.
                     val novel = libraryViewModel.novels.firstOrNull { it.id == lastNovelId }
                         ?: return@LaunchedEffect
-                    val lastProgress = db.readingProgressDao().forNovel(novel.id)
-                    val chapter = lastProgress?.let { db.chapterDao().findById(it.chapterId) }
-                        ?: return@LaunchedEffect
-                    // Same loadNovelDetails-before-navigating-into-the-reader
-                    // sequencing as onContinueReading below, and for the same
-                    // reason - see its own comment on this.
-                    libraryViewModel.loadNovelDetails(novel)
-                    navController.navigate("reader/${novel.id}/${chapter.id}") { launchSingleTop = true }
+                    // Shared with HomeScreen's onContinueReading - see
+                    // navigateToLastReadChapterOrDetail's own doc comment.
+                    navigateToLastReadChapterOrDetail(novel, navController)
                     pendingContinueReadingShortcut.value = false
                 }
 
@@ -1204,34 +1223,15 @@ class MainActivity : ComponentActivity() {
                             },
                             onContinueReading = { novel ->
                                 lifecycleScope.launch {
-                                    val lastProgress = db.readingProgressDao().forNovel(novel.id)
-                                    if (lastProgress != null) {
-                                        val chapter = db.chapterDao().findById(lastProgress.chapterId)
-                                        if (chapter != null) {
-                                            // "Continue Reading" used to jump straight into
-                                            // Screen.Reader without ever calling
-                                            // loadNovelDetails(), unlike every other path into
-                                            // the reader - so `chapters`/`arcs` could still hold
-                                            // a *different* novel's data (or be empty) here.
-                                            // That was harmless before Stage 3, since ReaderScreen
-                                            // didn't read them; now Previous/Next need the
-                                            // correctly-scoped chapter list to compute neighbors.
-                                            libraryViewModel.loadNovelDetails(novel)
-                                            // Stage 3.4 (see docs/arkarium/foundational/design-notes.md):
-                                            // Reader is now its own "reader/{novelId}/
-                                            // {chapterId}" route - readerAuthor resolution and
-                                            // the chapter body fetch both move into that
-                                            // composable's own LaunchedEffects, keyed off the
-                                            // route arguments, instead of happening here at
-                                            // every entry point.
-                                            navController.navigate("reader/${novel.id}/${chapter.id}") {
-                                                launchSingleTop = true
-                                            }
-                                        }
-                                    } else {
-                                        libraryViewModel.loadNovelDetails(novel)
-                                        navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
-                                    }
+                                    // Stage 3.4 (see docs/arkarium/foundational/design-notes.md):
+                                    // Reader is its own "reader/{novelId}/{chapterId}" route -
+                                    // readerAuthor resolution and the chapter body fetch both
+                                    // happen in that composable's own LaunchedEffects, keyed
+                                    // off the route arguments, instead of here. See
+                                    // navigateToLastReadChapterOrDetail's own doc comment for
+                                    // the loadNovelDetails()-before-navigating sequencing and
+                                    // why this is shared with the Continue Reading shortcut.
+                                    navigateToLastReadChapterOrDetail(novel, navController)
                                 }
                             },
                             onBrowseClick = {
