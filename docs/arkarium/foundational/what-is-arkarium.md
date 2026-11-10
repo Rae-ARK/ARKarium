@@ -38,8 +38,12 @@ infrastructure boring.
 
 ARKster (Android) and ARKium (desktop) are earlier, **GPLv3** readers by the
 same author. ARKarium reuses ideas and some logic from ARKster (chapter
-sort-tier convention, author pages, rescan safety); those origins are kept as
-frozen reference in [`../../reference/arkster/`](../../reference/arkster/README.md).
+sort-tier convention, author pages, rescan safety). A frozen copy of
+ARKster's docs used to be kept here as reference; it was removed
+(2026-11-10) once it went stale — ARKster has since moved on and closed most
+of what it described. These origins are now just history: if a bug in this
+inherited logic resurfaces, it's ARKarium's own to diagnose and fix against
+this repo's code, not against ARKster's (possibly outdated) account of it.
 ARKarium itself is proprietary. If code from a GPL project is ever carried
 over, audit copyright ownership and dependency licenses first.
 

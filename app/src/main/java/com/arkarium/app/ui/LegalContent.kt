@@ -45,7 +45,8 @@ data class LegalSection(
 // not just a local file browser. ARKarium makes network requests in the normal
 // course of being used, not only as an edge-case opt-in - see "Content sync"
 // below. That's a real difference from ARKster/ARKium (offline-only local
-// readers this project grew out of; see docs/reference/arkster/), and this file
+// readers this project grew out of; see "Relationship to sibling projects" in
+// docs/arkarium/foundational/what-is-arkarium.md), and this file
 // must not describe ARKarium as if it still only reads files you already have
 // lying around on disk. Keep this file in sync if the app's actual network/data
 // behavior changes (a new network call, a new local data store, etc.).

@@ -48,7 +48,9 @@ chapter break, no tag needed (`isBreakLine`); the `reader_break_lines` switch on
 Reader settings page (on by default) turns that off, and the tags keep working
 either way.
 Chapter order uses a filename sort-tier convention (`~` bonus, `!` closing),
-inherited from ARKster: see `reference/arkster/bugs.md` (Bug 2).
+inherited from ARKster. (ARKster's own bug history that documented this
+origin was a frozen copy here; it's been removed now that ARKster has moved
+on — this convention is ARKarium's own to maintain going forward.)
 
 ## Library scan
 
@@ -65,7 +67,9 @@ app-private storage; `resolveLibraryRoot`). It is incremental and diff-based:
 - `novelId` is `UUID.nameUUIDFromBytes(root.uri + ":" + folder.uri)`, so
   nothing needs to persist a `DocumentFile` across restarts.
 - `scanSingleNovel` scans one folder (used by sync).
-- Rescan safety history (the "novels disappear" bug) is in `reference/arkster/bugs.md` (Bug 4).
+- Rescan safety (never wiping a novel's history on an ordinary scan) traces
+  back to a bug ARKster hit first; see `../proposal/bugs/README.md` for how
+  ARKarium tracks and fixes recurrences of this class of bug in its own code.
 
 ## Sync
 

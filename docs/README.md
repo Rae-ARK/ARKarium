@@ -5,7 +5,7 @@ Two parts, on purpose, so it is never ambiguous which project a doc describes.
 | Folder | What it is |
 |---|---|
 | [`arkarium/`](arkarium/README.md) | **This app.** Organised by lifecycle: `proposal` (future) → `implementation` (present) → `foundational` (permanent). Start at [`arkarium/foundational/what-is-arkarium.md`](arkarium/foundational/what-is-arkarium.md). |
-| [`reference/`](reference/README.md) | Frozen docs from other projects (currently ARKster). Not specs for this app. |
+| [`reference/`](reference/README.md) | Frozen docs from other projects. Currently empty — see its `README.md` for why. Not specs for this app. |
 
 ## No-drift rule
 
@@ -36,9 +36,12 @@ Docs rot silently; this section is the guard. Whoever changes the code owns the 
 
 ## Reference material
 
-[`reference/arkster/`](reference/arkster/README.md) holds copies of docs from the
-predecessor project [ARKster](https://github.com/Rae-ARK/ARKster) (GPLv3). They
-are frozen prior art: not maintained here, not edited in place. Source comments
-cite `bugs.md` and `AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md` because the logic they
-describe came from ARKster. Anything that becomes relevant to ARKarium is
-re-specified as a new doc in `arkarium/`.
+`reference/` previously held a frozen copy of docs from the predecessor
+project [ARKster](https://github.com/Rae-ARK/ARKster) (GPLv3), pulled in so
+source comments citing `bugs.md` and `AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md`
+pointed at something. That copy went stale — ARKster has since moved on and
+closed most of what it described — and was removed (2026-11-10). Logic
+ARKarium inherited from ARKster (chapter sort tiers, rescan safety, author
+pages) is ARKarium's own to maintain going forward; if a bug in that logic
+resurfaces here, it's diagnosed and fixed against this repo's own code, not
+against ARKster's history. See `reference/README.md`.
