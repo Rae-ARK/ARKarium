@@ -2,6 +2,7 @@ package com.arkarium.app.ui
 
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -59,37 +60,12 @@ fun WebViewScreen(
 
         AndroidView(
             modifier = Modifier.fillMaxSize(),
-            factory = { context ->
-                WebView(context).apply {
-                    // JavaScript is required for most real-world sites (including
-                    // the author page this screen links to) to render as intended.
-                    settings.javaScriptEnabled = true
-                    settings.domStorageEnabled = true
-                    webViewClient = object : WebViewClientCompat() {
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView,
-                            request: WebResourceRequest
-                        ): Boolean {
-                            val target = request.url
-                            if (isSameSite(url, target.toString())) return false
-                            // Only hand off web links; never launch arbitrary schemes
-                            // (intent:, file:, javascript:, ...) from page content.
-                            if (target.scheme == "http" || target.scheme == "https" || target.scheme == "mailto") {
-                                try {
-                                    view.context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                } catch (e: ActivityNotFoundException) {
-                                    // No app can open it - nothing to do, and still not
-                                    // something to load in here.
-                                }
-                            }
-                            return true
-                        }
-                    }
-                    loadUrl(url)
-                }
-            },
+            // AndroidView requires factory to be a lambda, but its body is plain
+            // WebView configuration, not Compose content - extracted to
+            // buildConfiguredWebView below so it's a reusable, independently
+            // testable unit instead of an anonymous WebViewClientCompat subclass
+            // buried in a trailing lambda.
+            factory = { context -> buildConfiguredWebView(context, url) },
             // WebView leak: this factory's WebView was never released - leaving
             // composition (Back, or the Activity recreating on rotation, since nothing in
             // the manifest opts this Activity out of that) just detached it from the view
@@ -112,6 +88,43 @@ fun WebViewScreen(
                 webView.destroy()
             }
         )
+    }
+}
+
+// Builds and configures the WebView shown by WebViewScreen above - JavaScript
+// and DOM storage on (required for most real-world sites, including the
+// author page this screen links to), plus the same-site link policy (F18,
+// engineering-review.md) that keeps navigation inside this WebView only while
+// it's on the site `url` was opened to show; anything else is handed to the
+// system via ACTION_VIEW instead. Pulled out of AndroidView's factory lambda
+// since this is plain WebView configuration, not Compose content.
+private fun buildConfiguredWebView(context: Context, url: String): WebView {
+    return WebView(context).apply {
+        settings.javaScriptEnabled = true
+        settings.domStorageEnabled = true
+        webViewClient = object : WebViewClientCompat() {
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
+                val target = request.url
+                if (isSameSite(url, target.toString())) return false
+                // Only hand off web links; never launch arbitrary schemes
+                // (intent:, file:, javascript:, ...) from page content.
+                if (target.scheme == "http" || target.scheme == "https" || target.scheme == "mailto") {
+                    try {
+                        view.context.startActivity(
+                            Intent(Intent.ACTION_VIEW, target).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    } catch (e: ActivityNotFoundException) {
+                        // No app can open it - nothing to do, and still not
+                        // something to load in here.
+                    }
+                }
+                return true
+            }
+        }
+        loadUrl(url)
     }
 }
 
