@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.ArcEntity
+import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.ReadingStats
