@@ -2119,7 +2119,8 @@ class MainActivity : ComponentActivity() {
                         LegalDocumentScreen(
                             title = "Privacy Policy",
                             sections = LegalContent.privacyPolicy,
-                            onBack = { navController.popBackStack() }
+                            onBack = { navController.popBackStack() },
+                            quickFacts = LegalContent.privacyQuickFacts
                         )
                     }
                 }
@@ -2129,7 +2130,8 @@ class MainActivity : ComponentActivity() {
                         LegalDocumentScreen(
                             title = "Terms & Conditions",
                             sections = LegalContent.termsAndConditions,
-                            onBack = { navController.popBackStack() }
+                            onBack = { navController.popBackStack() },
+                            quickFacts = LegalContent.termsQuickFacts
                         )
                     }
                 }
