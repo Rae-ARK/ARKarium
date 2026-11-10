@@ -13,6 +13,7 @@ local.properties
 # see .github/workflows/release.yml. If you keep a local copy for manual
 # `assembleRelease` builds, it belongs outside the repo or ignored here.
 *.keystore
+*.keystore.b64
 *.jks
 !debug.keystore
 arkarium-release.keystore.b64

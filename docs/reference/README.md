@@ -2,6 +2,7 @@
 
 Frozen material from other projects. Not ARKarium specs; never edited in place.
 
-| Folder | From |
-|---|---|
-| [`arkster/`](arkster/README.md) | ARKster, the earlier GPLv3 Android reader. Prior art for rescan safety, chapter sort tiers, author pages, and EPUB. |
+(Empty. The `arkster/` snapshot was removed — ARKster has since fixed/closed
+those issues independently; if they recur here, they're ARKarium's own to
+diagnose and fix, not ARKster's inherited copy. See `git log` for the prior
+contents if needed.)
