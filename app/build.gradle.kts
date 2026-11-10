@@ -53,7 +53,7 @@ android {
     ).all { !it.isNullOrBlank() }
 
     signingConfigs {
-        create("debug") {
+        getByName("debug") {
             storeFile = file("$rootDir/debug.keystore")
             storePassword = "android"
             keyAlias = "androiddebugkey"
