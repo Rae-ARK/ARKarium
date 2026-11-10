@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Keep in sync with ic_launcher.xml, including the deliberate absence of a
-     <monochrome> layer -- see that file's comment for why, and for the Android
+     <monochrome> layer — see that file's comment for why, and for the Android
      16 QPR2 caveat (auto-themed icons can't be opted out of from this file). -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
