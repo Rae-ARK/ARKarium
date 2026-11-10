@@ -53,6 +53,12 @@ android {
     ).all { !it.isNullOrBlank() }
 
     signingConfigs {
+        create("debug") {
+            storeFile = file("$rootDir/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (hasReleaseSigning) {
             create("release") {
                 storeFile = file(releaseStoreFile!!)
@@ -64,6 +70,9 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         getByName("release") {
             if (hasReleaseSigning) {
                 signingConfig = signingConfigs.getByName("release")
@@ -76,25 +85,6 @@ android {
             isMinifyEnabled = false
             isShrinkResources = false
         }
-    }
-
-    signingConfigs {
-        create("debug") {
-            storeFile = file("$rootDir/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
-        }
-        if (hasReleaseSigning) {
-            create("release") { /* unchanged */ }
-        }
-    }
-
-    buildTypes {
-        getByName("debug") {
-            signingConfig = signingConfigs.getByName("debug")
-        }
-        getByName("release") { /* unchanged */ }
     }
 
 
