@@ -2,6 +2,18 @@
 <!-- API 26+ adaptive icon. Pre-26 devices (minSdk 24) fall back to the flat PNGs in
      the density-specific mipmap-* folders instead, since adaptive-icon isn't
      available there. -->
+<!-- No <monochrome> layer, by design: this icon must not collide with ARKster's
+     on a themed home screen, so we don't want it pulled into the system accent
+     tint. Be aware this only controls pre-Android 16 QPR2 behavior -- from QPR2
+     onward, if the user has "Themed icons" on, the OS synthesizes a monochrome
+     render from the foreground layer above regardless of whether we supply one,
+     via a color-filter algorithm applied to the existing icon. There is no
+     manifest flag or resource to opt out of that; Google's Play Developer
+     Distribution Agreement (sec. 5.3, enforced from 2025-10-15) requires apps to
+     allow user re-theming outright. Adding our own <monochrome> here wouldn't
+     prevent theming on those devices either -- it would just mean our silhouette
+     gets used as the tint source instead of the OS's auto-derived one. Don't
+     "fix" this by adding a monochrome layer without revisiting that tradeoff. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
     <background android:drawable="@color/ic_launcher_background" />
     <foreground android:drawable="@mipmap/ic_launcher_foreground" />
