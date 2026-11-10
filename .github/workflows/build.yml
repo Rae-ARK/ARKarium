@@ -79,9 +79,18 @@ jobs:
     # runs (and still reports) when the step above failed; `fail-on-error: true` is
     # what makes this check itself show a cross when any test failed, rather than
     # just listing results on an otherwise-green check.
+    #
+    # Guarded to same-repo runs only: dorny/test-reporter needs checks: write on
+    # GITHUB_TOKEN to create that check run, but GitHub strips write permissions from
+    # GITHUB_TOKEN on a pull_request run whose head is a fork, regardless of this
+    # file's own permissions: block - so without this guard the step doesn't skip,
+    # it fails, on every external contributor's PR, for a token-permission reason
+    # that has nothing to do with whether their tests actually pass. A fork PR's
+    # results are still visible via test-output.log and build/test-results/ in the
+    # failure-only log upload below.
     - name: Publish Test Report
       uses: dorny/test-reporter@v1
-      if: always()
+      if: always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository)
       with:
         name: Unit Test Results
         path: '**/build/test-results/**/*.xml'
