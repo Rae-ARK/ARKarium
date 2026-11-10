@@ -132,8 +132,9 @@ fun HomeScreen(
                     // The real app icon art (assets/app-icon-source.png - see
                     // LogoPoints.kt's doc comment for how it relates to
                     // ic_splash_logo.png) rather than the splash screen's bare
-                    // tinted monogram: this is a full-color square image (black
-                    // card + white "A+R" mark), loaded from assets the same way
+                    // gradient monogram: this is a full-color square image
+                    // (black card + white "A+R" mark), loaded from assets the
+                    // same way
                     // every other image in this screen is (AsyncImage/Coil), and
                     // clipped to a squircle so a hard-edged square doesn't sit
                     // awkwardly inline with the rest of the top bar's rounded
