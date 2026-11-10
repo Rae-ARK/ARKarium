@@ -40,8 +40,13 @@ import kotlinx.coroutines.delay
 // ---------------------------------------------------------------------------
 // Timeline. Four phases, driven by a single 0f..1f Animatable (see `playtime`
 // below) so nothing here can drift out of sync with itself:
-//   1. RECONSTRUCT: lines sweep in from scattered points around the screen
-//      and converge into the "A+R" mark, point by point (see LogoPoints).
+//   1. RECONSTRUCT: bold lines whoosh in from edges of the screen - same
+//      shape as the EA logo ident that opened Need for Speed: Most Wanted
+//      (2005): a line travels in from off-screen, then locks into place as a
+//      segment of the mark's own outline and STAYS there (see
+//      drawLineReconstruction) - no fading arrival dot, the line itself is
+//      the result. Consecutive vertices (see LogoPoints) land in path order,
+//      so the mark reads as being traced by a pen rather than dotted in.
 //   2. CROSSFADE: the line drawing dissolves into the real ic_splash_logo.png
 //      + wordmark, exactly like the previous static splash - so any
 //      imperfection in the reconstructed silhouette is covered by the crisp
@@ -235,9 +240,12 @@ fun SplashScreen(
     }
 }
 
-// Draws every converging line + its arrival point for the current
-// reconstruction progress. `canvasAlpha` is the phase-2 crossfade multiplier
-// (see caller) applied on top of each point's own arrival-based alpha.
+// Draws every converging line for the current reconstruction progress -
+// EA-2005-ident style: each vertex is a bold line whooshing in from its own
+// edge of the screen, and once it lands it stays as a segment of the mark's
+// own outline (see the doc comment above) rather than collapsing to an
+// arrival dot. `canvasAlpha` is the phase-2 crossfade multiplier (see
+// caller) applied on top of everything drawn here.
 private fun DrawScope.drawLineReconstruction(
     points: List<PointAnim>,
     reconstructProgress: Float,
@@ -266,41 +274,57 @@ private fun DrawScope.drawLineReconstruction(
     val left = (w - logoW) / 2f
     val top = (h - logoH) / 2f
 
+    // Tracks the previous POINT's own target (not its still-animating
+    // current position) so a landed-landed pair draws the fixed outline
+    // segment between them, never a segment to a point still mid-flight.
+    // Reset to null whenever a point hasn't started yet (local <= 0f), so a
+    // gap in the path never gets bridged by a stray line jumping across it.
+    var prevTargetPx: Offset? = null
+
     for (p in points) {
         val local = ((reconstructProgress - p.startFraction) / POINT_TRAVEL_FRACTION).coerceIn(0f, 1f)
-        if (local <= 0f) continue // hasn't started moving yet - nothing to draw
+        if (local <= 0f) {
+            prevTargetPx = null
+            continue // hasn't started moving yet - nothing to draw
+        }
 
-        val eased = EaseOutCubic.transform(local)
-        val origin = originPx(p.origin, w, h)
-        val target = Offset(left + p.target.x * logoW, top + p.target.y * logoH)
-        val current = Offset(
-            origin.x + (target.x - origin.x) * eased,
-            origin.y + (target.y - origin.y) * eased
-        )
+        val targetPx = Offset(left + p.target.x * logoW, top + p.target.y * logoH)
 
-        // The traveling line itself: brightest while in flight, fading as it
-        // settles so the final silhouette reads as a field of soft points
-        // rather than a tangle of leftover streaks.
-        val lineAlpha = (1f - eased) * 0.55f * canvasAlpha
-        if (lineAlpha > 0.01f) {
+        if (local < 1f) {
+            // Still in flight: the incoming whoosh line, brightening as it
+            // closes the distance - same "lines whoosh in... forming the
+            // logo" shape as the EA ident, so the approach itself reads as
+            // deliberate momentum rather than something dissolving into
+            // place.
+            val eased = EaseOutCubic.transform(local)
+            val origin = originPx(p.origin, w, h)
+            val current = Offset(
+                origin.x + (targetPx.x - origin.x) * eased,
+                origin.y + (targetPx.y - origin.y) * eased
+            )
+            val lineAlpha = (0.35f + 0.65f * eased) * canvasAlpha
             drawLine(
                 color = SplashForeground.copy(alpha = lineAlpha),
                 start = origin,
                 end = current,
-                strokeWidth = 1.6f,
+                strokeWidth = 1.8f,
+                cap = StrokeCap.Round
+            )
+        } else if (prevTargetPx != null) {
+            // Landed: this vertex locks onto the mark's own outline. Once
+            // two consecutive points (see LogoPoints' own path ordering)
+            // have both landed, the segment between them becomes a
+            // permanent stroke - the line IS the result, nothing shrinks
+            // down to a dot.
+            drawLine(
+                color = SplashForeground.copy(alpha = canvasAlpha),
+                start = prevTargetPx,
+                end = targetPx,
+                strokeWidth = 2.2f,
                 cap = StrokeCap.Round
             )
         }
 
-        // The arrival point: fades in as the line completes its travel, so
-        // the mark's silhouette gradually accumulates out of settled dots.
-        val dotAlpha = eased * canvasAlpha
-        if (dotAlpha > 0.01f) {
-            drawCircle(
-                color = SplashForeground.copy(alpha = dotAlpha),
-                radius = 2.4f,
-                center = current
-            )
-        }
+        prevTargetPx = targetPx
     }
 }
