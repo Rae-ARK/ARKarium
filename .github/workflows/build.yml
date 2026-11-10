@@ -9,6 +9,13 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # checks: write is what lets the "Publish Test Report" step below create its own
+    # check run (the red X on a failing test, separate from the job's own pass/fail) -
+    # contents: read is the default this would otherwise fall back to, kept explicit
+    # now that the job declares a permissions block at all.
+    permissions:
+      contents: read
+      checks: write
     # Without this, the default `run:` shell here is `bash -e {0}` - NOT
     # `-o pipefail` - so any `foo | tee bar.log` step (see "Build with
     # Gradle" below) reports success based on `tee`'s exit code, not
@@ -53,6 +60,34 @@ jobs:
       # still fails correctly if the build fails.
       run: ./gradlew assembleDebug --stacktrace 2>&1 | tee build-output.log
 
+    # Separate step/task/log from assembleDebug above, deliberately `if: always()` -
+    # same reasoning as the build step's own pipefail comment: a real
+    # testDebugUnitTest failure needs to still show up (and still fail the job) even
+    # when assembleDebug already failed for an unrelated reason, instead of being
+    # silently skipped because an earlier step failed. JVM unit tests only
+    # (testDebugUnitTest), not androidTest - this runner has no device/emulator, same
+    # limitation docs/arkarium/implementation/engineering-backlog.md's rung 9 already
+    # notes for MigrationTest.
+    - name: Run unit tests
+      if: always()
+      run: ./gradlew testDebugUnitTest --stacktrace 2>&1 | tee test-output.log
+
+    # Turns each JUnit XML result into its own GitHub check run with a pass/fail icon
+    # per test (a red X on the specific failing test, not just the job's overall
+    # cross) - without this, a test failure is only visible by opening
+    # test-output.log or the uploaded HTML report below. `if: always()` so this still
+    # runs (and still reports) when the step above failed; `fail-on-error: true` is
+    # what makes this check itself show a cross when any test failed, rather than
+    # just listing results on an otherwise-green check.
+    - name: Publish Test Report
+      uses: dorny/test-reporter@v1
+      if: always()
+      with:
+        name: Unit Test Results
+        path: '**/build/test-results/**/*.xml'
+        reporter: java-junit
+        fail-on-error: true
+
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
@@ -67,5 +102,7 @@ jobs:
         name: build-logs
         path: |
           build-output.log
+          test-output.log
           **/build/reports/
           **/build/outputs/logs/
+          **/build/test-results/
