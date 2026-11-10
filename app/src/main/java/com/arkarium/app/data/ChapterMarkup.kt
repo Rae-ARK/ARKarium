@@ -32,7 +32,17 @@ sealed class ChapterSegment {
     data class News(val text: String) : ChapterSegment()
 }
 
-private class TagSpec(val build: (String) -> ChapterSegment, val open: Regex, val close: Regex)
+// isBreak: this tag produces the same ChapterBreak segment the "***"-style break line
+// does (see the doc comment above - "Both forms produce the same ChapterBreak segment
+// with an empty label"), so it gets the same surrounding-whitespace trim as a break
+// line, gated on the same `detectBreakLines` flag. AuthorNote/News tags aren't a break
+// form of anything, so their surrounding whitespace is always left alone.
+private class TagSpec(
+    val build: (String) -> ChapterSegment,
+    val open: Regex,
+    val close: Regex,
+    val isBreak: Boolean = false
+)
 
 // "chapter break" requires at least one whitespace char between the two words, so
 // "<chapterbreak>" (not a tag this scheme recognizes) is left alone rather than
@@ -41,7 +51,8 @@ private val TAG_SPECS = listOf(
     TagSpec(
         { ChapterSegment.ChapterBreak(it) },
         Regex("(?i)<\\s*chapter\\s+break\\s*>"),
-        Regex("(?i)<\\s*/\\s*chapter\\s+break\\s*>")
+        Regex("(?i)<\\s*/\\s*chapter\\s+break\\s*>"),
+        isBreak = true
     ),
     TagSpec(
         { ChapterSegment.AuthorNote(it) },
@@ -167,13 +178,20 @@ fun parseChapterSegments(raw: String, detectBreakLines: Boolean = true): List<Ch
             continue
         }
 
-        plain.append(raw, cursor, openMatch.range.first)
+        var plainEnd = openMatch.range.first
+        if (detectBreakLines && spec.isBreak) {
+            while (plainEnd > cursor && raw[plainEnd - 1].isWhitespace()) plainEnd--
+        }
+        plain.append(raw, cursor, plainEnd)
         flushPlain()
 
         val inner = raw.substring(openMatch.range.last + 1, closeMatch.range.first).trim()
         segments.add(spec.build(inner))
 
         cursor = closeMatch.range.last + 1
+        if (detectBreakLines && spec.isBreak) {
+            while (cursor < raw.length && raw[cursor].isWhitespace()) cursor++
+        }
     }
 
     flushPlain()
@@ -245,10 +263,17 @@ fun paragraphOffsets(raw: String, detectBreakLines: Boolean = true): List<Paragr
             continue
         }
 
-        append(cursor, openMatch.range.first)
+        var plainEnd = openMatch.range.first
+        if (detectBreakLines && spec.isBreak) {
+            while (plainEnd > cursor && raw[plainEnd - 1].isWhitespace()) plainEnd--
+        }
+        append(cursor, plainEnd)
         flushPlain()
 
         cursor = closeMatch.range.last + 1
+        if (detectBreakLines && spec.isBreak) {
+            while (cursor < raw.length && raw[cursor].isWhitespace()) cursor++
+        }
     }
 
     flushPlain()

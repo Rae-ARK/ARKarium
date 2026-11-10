@@ -1,6 +1,7 @@
 # UI-layer reorganisation: MainActivity, ReaderScreen, TtsPlaybackService
 
-> **Kind:** implementation · **Status:** queued, rung A1 next · **Verified:** 2026-11-10 @ 8cb0978
+> **Kind:** implementation · **Status:** A1 done, rung A2 next · **Verified:** 2026-11-10 @ 8cb0978
+> **A1 result:** `MainActivity.kt` 2387 -> 2165 lines (-222); new `navigation/AppDialogHost.kt`, 265 lines. Behavior-preserving - same five dialogs, same state reads, same callbacks, just called from one composable instead of written out inline.
 > **Origin:** a review pass prompted by `MainActivity.kt` crossing its
 > pre-[`design-notes.md`](../foundational/design-notes.md#mainactivity-refactor-outcome-done)
 > size again (2387 lines vs. 1706 before that refactor, 1428 after it), run
@@ -47,7 +48,7 @@ argument, or a callback's behavior.
 
 | Rung | Item | Lines moved | Status | Target file |
 |---|---|---|---|---|
-| A1 | Dialog host: the 5 trailing `when` blocks (`metadataSearchState`, `addFictionState`, `syncAllState`, `syncCheckState`, `syncResolutionState`) | ~220 | **next** | `navigation/AppDialogHost.kt` (one `AppDialogHost(...)` composable, called once after `Scaffold`) |
+| A1 | Dialog host: the 5 trailing `when` blocks (`metadataSearchState`, `addFictionState`, `syncAllState`, `syncCheckState`, `syncResolutionState`) | ~220 | done | `navigation/AppDialogHost.kt` (one `AppDialogHost(...)` composable, called once after `Scaffold`) |
 | A2 | Settings + legal routes: `settings`, `noticeBoard`, `settings/theme`, `settings/library`, `settings/splash`, `settings/reader`, `settings/tts`, `settings/tts/voice`, `privacy_policy`, `terms`, `about_me` (11 routes) | ~320 | queued | `navigation/SettingsRoutes.kt` |
 | A3 | `home` + `fictionBrowse` | ~100 | queued | `navigation/LibraryRoutes.kt` |
 | A4 | `novelDetail` + `chapterEditor` | ~145 | queued | `navigation/NovelRoutes.kt` |
