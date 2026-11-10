@@ -180,4 +180,41 @@ class ChapterMarkupOffsetsTest {
         assertTrue(proseParagraphOffsets("<chapter break></chapter break>").isEmpty())
         assertTrue(proseParagraphOffsets("").isEmpty())
     }
+
+    // --- CRLF handling (BLANK_LINE_SPLIT's "\r?" - see its own doc comment) -----
+
+    @Test
+    fun proseParagraphOffsets_splitsOnCrlfBlankLines() {
+        // Before BLANK_LINE_SPLIT accounted for "\r", the lone \r sitting between the
+        // two \n's of a CRLF blank line ("...line1\r\n\r\npara2...") broke the match
+        // entirely, so a CRLF chapter file never split into separate paragraphs at
+        // all - this whole raw string came back as one block. Matches the plain-\n
+        // case in proseParagraphOffsets_splitsABlockOnBlankLines above, just with
+        // every newline in the source as \r\n instead of \n.
+        val raw = "First paragraph.\r\n\r\nSecond paragraph."
+        val block = paragraphOffsets(raw)
+        assertEquals(1, block.size)
+
+        val offsets = proseParagraphOffsets(raw)
+        assertEquals(listOf("First paragraph.", "Second paragraph."), offsets.map { it.text })
+        offsets.forEach { (start, text) -> assertEquals(text, raw.substring(start, start + text.length)) }
+    }
+
+    @Test
+    fun proseParagraphOffsets_crlfWithTrailingWhitespaceOnTheBlankLine() {
+        // The CRLF equivalent of toleratesWhitespaceOnlyBlankLines above: a blank
+        // line that's "\r\n   \t \r\n" (trailing spaces before the second \r\n)
+        // still counts as blank and still splits.
+        val raw = "First.\r\n   \t \r\nSecond."
+        assertEquals(listOf("First.", "Second."), proseParagraphOffsets(raw).map { it.text })
+    }
+
+    @Test
+    fun proseParagraphOffsets_crlfSoftWrapWithinAParagraphIsNotASplit() {
+        // A lone \r\n (no blank line) is still just a soft-wrapped line within one
+        // paragraph, same as a lone \n is for LF text.
+        val raw = "Line one\r\nstill the same paragraph.\r\n\r\nA new paragraph."
+        val offsets = proseParagraphOffsets(raw)
+        assertEquals(listOf("Line one\r\nstill the same paragraph.", "A new paragraph."), offsets.map { it.text })
+    }
 }
