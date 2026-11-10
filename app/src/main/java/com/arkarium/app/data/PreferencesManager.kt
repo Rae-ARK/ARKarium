@@ -239,21 +239,31 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         prefs[LIBRARY_URI_KEY]
     }
 
+    // Defaults to SYSTEM_DEFAULT (follow the device's day/night setting) on a fresh
+    // install/unset key, rather than hard-coding Light. "LIGHT" and "DARK" are only
+    // reached once the user has actually chosen one explicitly and it got persisted
+    // verbatim by setTheme(); an unset or unrecognized stored value - including the
+    // empty-prefs fallback from safePrefs' IOException guard above - now resolves the
+    // same way as an explicit System Default choice would, via resolveTheme() in
+    // AppTheme.kt.
     override val theme: Flow<Theme> = safePrefs.map { prefs ->
         when (prefs[THEME_KEY]) {
+            "LIGHT" -> Theme.LIGHT
             "DARK" -> Theme.DARK
             "WARM_PAPER" -> Theme.WARM_PAPER
             "SYSTEM_DEFAULT" -> Theme.SYSTEM_DEFAULT
-            else -> Theme.LIGHT
+            else -> Theme.SYSTEM_DEFAULT
         }
     }
 
-    // Defaults to LIGHT, same as the top-level `theme` flow's own default - a user who
-    // picks System Default without ever touching this sub-choice gets plain Light
-    // during the day, not Warm Paper by surprise. WARM_PAPER is the only other
-    // meaningful value; anything else stored here (including DARK, which isn't a
-    // valid daytime choice) also falls back to LIGHT rather than propagating a bad
-    // value into colorSchemeFor.
+    // Defaults to LIGHT - the daytime look System Default falls back to when the user
+    // hasn't separately chosen Warm Paper for daytime. This is independent of the
+    // `theme` flow above now defaulting to SYSTEM_DEFAULT itself: a fresh install
+    // follows the system's day/night state, and during the day it shows plain Light
+    // until the user opts into Warm Paper for daytime via this sub-choice. WARM_PAPER
+    // is the only other meaningful value; anything else stored here (including DARK,
+    // which isn't a valid daytime choice) also falls back to LIGHT rather than
+    // propagating a bad value into colorSchemeFor.
     override val systemDefaultLightVariant: Flow<Theme> = safePrefs.map { prefs ->
         when (prefs[SYSTEM_DEFAULT_LIGHT_VARIANT_KEY]) {
             "WARM_PAPER" -> Theme.WARM_PAPER
