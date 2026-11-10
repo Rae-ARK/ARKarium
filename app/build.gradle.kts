@@ -78,6 +78,26 @@ android {
         }
     }
 
+    signingConfigs {
+        create("debug") {
+            storeFile = file("$rootDir/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+        if (hasReleaseSigning) {
+            create("release") { /* unchanged */ }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        getByName("release") { /* unchanged */ }
+    }
+
+
     // MigrationTestHelper reads the exported schema JSON from the androidTest APK's
     // assets, so ship app/schemas there.
     sourceSets {
