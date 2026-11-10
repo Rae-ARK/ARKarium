@@ -35,8 +35,11 @@ class SettingsViewModel(private val prefs: SettingsPreferences) : ViewModel() {
     // but shouldn't keep DataStore's underlying Flow alive forever once nothing is
     // actually observing it. 5 seconds is the value the AOSP/Android docs use as their
     // own worked example for exactly this "survive a configuration change" case.
+    // Seeded with SYSTEM_DEFAULT, matching PreferencesManager.theme's own unset-key
+    // default, so the brief window before DataStore's first real emission renders the
+    // same theme the persisted default resolves to instead of a hard-coded Light flash.
     val currentTheme: StateFlow<Theme> = prefs.theme
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Theme.LIGHT)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Theme.SYSTEM_DEFAULT)
 
     val currentSystemDefaultLightVariant: StateFlow<Theme> = prefs.systemDefaultLightVariant
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Theme.LIGHT)
