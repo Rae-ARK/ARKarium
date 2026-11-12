@@ -72,7 +72,7 @@ fun AppBottomBar(
     currentRoute: String?,
     onTabSelected: (AppDestination) -> Unit
 ) {
-    // Bug 7 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): NavigationBar is passed
+    // Bug 7 fix (docs/proposal/bugs/other/uiux-bugs.md): NavigationBar is passed
     // to Scaffold's bottomBar slot (MainActivity.kt), which lays it out as a full-width
     // sibling of the padded content area - Scaffold's innerPadding never touches it, and
     // nothing here compensated for the display cutout on its own. In landscape, with the

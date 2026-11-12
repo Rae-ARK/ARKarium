@@ -4,7 +4,7 @@ name: Room schema
 # build and commits any NEW file back to the branch, so nobody has to run
 # `./gradlew assembleDebug` by hand and remember to `git add` the result. MigrationTest
 # (src/androidTest) replays upgrades from these files; see
-# docs/arkarium/implementation/engineering-backlog.md, rungs 9 and 14.
+# docs/implementation/engineering-backlog.md, rungs 9 and 14.
 #
 # Three safety rules, all enforced below:
 #   1. Only NEW schema files are ever committed. A released version's JSON is history;

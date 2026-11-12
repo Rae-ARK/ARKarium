@@ -88,7 +88,7 @@ fun HomeScreen(
     // AddFictionByNameDialog). Lives on the top bar next to Settings. The SAF
     // folder-picker entry point this used to sit next to (and EmptyLibraryPrompt's
     // own "set up your own folder" shortcut to it) is gone - see "Settled
-    // decisions" in docs/arkarium/foundational/design-notes.md - so this is Home's
+    // decisions" in docs/foundational/design-notes.md - so this is Home's
     // one top-bar action now, not a replacement for a removed one.
     onAddFictionClick: () -> Unit = {},
     // Primary action on the empty-library first-run screen: syncs every fiction
@@ -145,7 +145,7 @@ fun HomeScreen(
             },
             actions = {
                 // Settings' own icon button used to live here too - removed per the same
-                // reasoning as Bug 6's back-arrow cleanup (docs/arkarium/proposal/bugs/other/
+                // reasoning as Bug 6's back-arrow cleanup (docs/proposal/bugs/other/
                 // uiux-bugs.md): the bottom bar (AppBottomBar.kt) is the single, consistent
                 // way to reach every bottom-tab root, Settings included, so a second,
                 // redundant shortcut to it up here was just one more way to do the same
@@ -359,12 +359,12 @@ fun EmptyLibraryPrompt(
             // The secondary "or set up your own folder in Settings" button that used to
             // sit here pointed at the SAF folder picker, which the SAF-removal
             // decision (see "Settled decisions" in
-            // docs/arkarium/foundational/design-notes.md) removed - the library now
+            // docs/foundational/design-notes.md) removed - the library now
             // always lives at the one fixed Android/media/com.arkarium.app/ location, so
             // there is no folder left to set up. Deleted rather than reworded, since
             // Sync All above and the top bar's "Add fiction" action already cover
             // first-run entry points without it (see
-            // docs/arkarium/proposal/bugs/README.md's fixed-and-deleted list).
+            // docs/proposal/bugs/README.md's fixed-and-deleted list).
         }
     }
 }

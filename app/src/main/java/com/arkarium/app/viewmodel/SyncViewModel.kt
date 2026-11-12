@@ -36,7 +36,7 @@ import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
-// Stage 2.5 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the fourth and last of the
+// Stage 2.5 of Phase 2 (docs/foundational/design-notes.md) - the fourth and last of the
 // plan's feature-scoped ViewModels pulled out of MainActivity. Owns syncAllState,
 // syncCheckState, and syncResolutionState (the three dialog-driving sealed states this
 // stage is scoped to) plus the sync/resolution logic that drives them against
@@ -95,7 +95,7 @@ class SyncViewModel(
     val syncResolutionState = mutableStateOf<SyncResolutionState>(SyncResolutionState.Idle)
 
     // Moved verbatim from MainActivity (Stage 2.5). Scoped counterpart to
-    // LibraryViewModel.startScan (see docs/arkarium/foundational/architecture.md, Sync invariants S8): runs the exact
+    // LibraryViewModel.startScan (see docs/foundational/architecture.md, Sync invariants S8): runs the exact
     // same discover -> merge -> upsert -> scanChaptersForNovel sequence startScan's
     // onDiscovered callback runs per-novel, but for exactly one already-known folder,
     // via ScannerImpl.scanSingleNovel instead of a full scanRoot() pass. Used by
@@ -164,7 +164,7 @@ class SyncViewModel(
 
     // Moved from MainActivity (Stage 2.5) - see the class doc comment above for why
     // this stage, not Stage 2.4, is where it ends up. Kicks off "Add fiction" end to
-    // end (see docs/arkarium/foundational/architecture.md, Sync: entry points, and the later move to
+    // end (see docs/foundational/architecture.md, Sync: entry points, and the later move to
     // single-origin name lookup): resolves the typed name to a slug via FictionLut,
     // builds the one relay's URL for it, downloads every file the relay's
     // manifest.json lists into a fresh folder under the active library root, then runs
@@ -224,7 +224,7 @@ class SyncViewModel(
     // download/persist steps as addFictionByName above - this is just that same flow
     // fanned out with one shared progress dialog instead of one dialog per fiction.
     //
-    // Differences from the original version (see docs/arkarium/foundational/architecture.md, Sync invariants S8 and #2):
+    // Differences from the original version (see docs/foundational/architecture.md, Sync invariants S8 and #2):
     //
     // - Each fiction now calls scanSingleSyncedNovel (scoped to just the one
     //   just-downloaded folder) instead of a full startScan() pass. The old version's
@@ -341,7 +341,7 @@ class SyncViewModel(
             val novelId = UUID.nameUUIDFromBytes(
                 (libraryRoot.uri.toString() + ":" + folder.uri.toString()).toByteArray()
             ).toString()
-            // Scoped scan of just this fiction's folder (see docs/arkarium/foundational/architecture.md,
+            // Scoped scan of just this fiction's folder (see docs/foundational/architecture.md,
             // Sync invariants S8) - shows up in the library as soon as it's done, same as
             // before, without re-scanning every other already-synced novel.
             scanSingleSyncedNovel(libraryRoot, folder) { message ->
@@ -385,23 +385,23 @@ class SyncViewModel(
     // NovelDetail was the one just updated, via an `onUpdated` callback (the same
     // report-the-result-via-a-plain-lambda shape MetadataViewModel.applyMetadata's
     // `onApplied` used for the identical reason) - Stage 3.3 (see
-    // docs/arkarium/foundational/design-notes.md) removed that parameter: NovelDetail is now a
+    // docs/foundational/design-notes.md) removed that parameter: NovelDetail is now a
     // "novelDetail/{novelId}" route that resolves its own NovelEntity from
     // libraryViewModel.novels on every recomposition, so the `novels` patch below is
     // enough on its own, with nothing left needing a callback into currentScreen.
     //
-    // Re-syncs an already-added fiction against its relay (see docs/arkarium/foundational/architecture.md, Sync, Stage
+    // Re-syncs an already-added fiction against its relay (see docs/foundational/architecture.md, Sync, Stage
     // 3). SyncManager.sync's SyncOutcome.files is documented as the complete new file
     // set, not a delta (see SyncManager.kt) - so on a real change this replaces
     // SyncedFileEntity wholesale rather than patching it, and only re-runs startScan
     // when something actually changed, so an "already up to date" check stays a single
-    // manifest fetch instead of paying for a full rescan every time (docs/arkarium/foundational/architecture.md, Sync invariants
+    // manifest fetch instead of paying for a full rescan every time (docs/foundational/architecture.md, Sync invariants
     // S5).
     // `allowRecreateMissingFolder` is only ever true when the user has explicitly
     // confirmed it via the sync-resolution dialog (see resolveMissingFolderBySyncing
     // below) - an automatic/background-triggered call always leaves it false, so a
     // missing local folder surfaces as a NeedsResolution prompt instead of a silent
-    // redownload (see docs/arkarium/foundational/architecture.md, Sync invariants S6 and SyncManager.sync's own doc comment).
+    // redownload (see docs/foundational/architecture.md, Sync invariants S6 and SyncManager.sync's own doc comment).
     fun checkForUpdates(
         novel: NovelEntity,
         libraryRoot: DocumentFile,
@@ -457,7 +457,7 @@ class SyncViewModel(
                     if (outcome.changed) "Updated to the latest version." else "Already up to date."
                 )
             } catch (e: MissingLocalFolderException) {
-                // See docs/arkarium/foundational/architecture.md, Sync invariants S6: don't silently redownload and don't silently
+                // See docs/foundational/architecture.md, Sync invariants S6: don't silently redownload and don't silently
                 // drop the novel either - ask the user via syncResolutionState.
                 db.novelDao().updateSyncStatus(novel.id, SyncStatus.MISSING_LOCALLY.name)
                 val updated = db.novelDao().findById(novel.id)
@@ -472,7 +472,7 @@ class SyncViewModel(
                     updated ?: novel, SyncResolutionReason.MISSING_LOCALLY
                 )
             } catch (e: SourceGoneException) {
-                // See docs/arkarium/foundational/architecture.md, Sync invariants S6: distinguishable from a generic network
+                // See docs/foundational/architecture.md, Sync invariants S6: distinguishable from a generic network
                 // failure so the prompt can say what's actually true - the source is
                 // gone, not just unreachable right now. Local content stays readable.
                 db.novelDao().updateSyncStatus(novel.id, SyncStatus.SOURCE_GONE.name)
@@ -495,10 +495,10 @@ class SyncViewModel(
 
     // Resolution actions offered from SyncResolutionDialog once checkForUpdates hits a
     // MissingLocalFolderException or SourceGoneException (see above and
-    // docs/arkarium/foundational/architecture.md, Sync invariants S6). All three are explicit, user-triggered choices - none of
+    // docs/foundational/architecture.md, Sync invariants S6). All three are explicit, user-triggered choices - none of
     // them ever fire automatically. Moved from MainActivity (Stage 2.5); each originally
     // gained a callback where the original touched currentScreen, for the same reason
-    // checkForUpdates' onUpdated above did - Stage 3.3 (see docs/arkarium/foundational/design-notes.md)
+    // checkForUpdates' onUpdated above did - Stage 3.3 (see docs/foundational/design-notes.md)
     // removed all three: a resync/unlink's `novels` patch is picked up on its own by the
     // "novelDetail/{novelId}" route these can fire on top of, and a removal resolves to
     // a null novel there, which that route's own logic already sends back to Home for.

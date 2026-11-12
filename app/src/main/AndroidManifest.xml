@@ -8,12 +8,12 @@
     <!-- Runtime-requested (see MainActivity's notificationPermission launcher) rather
          than implied by targeting API 33+ - required to actually show the "new chapter"
          notifications NewChapterCheckWorker posts (see
-         docs/arkarium/foundational/architecture.md, Sync: entry points). Declaring it here is still required even
+         docs/foundational/architecture.md, Sync: entry points). Declaring it here is still required even
          though it's requested at runtime; without it the runtime request itself is a
          no-op on API 33+. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- TtsPlaybackService (see docs/arkarium/proposal/reader-playback.md F10) runs
+    <!-- TtsPlaybackService (see docs/proposal/reader-playback.md F10) runs
          read-aloud as a foreground service so an active session survives rotation and
          leaving the reader, instead of dying with the composable that used to own the
          TextToSpeech engine directly. FOREGROUND_SERVICE is required for any foreground

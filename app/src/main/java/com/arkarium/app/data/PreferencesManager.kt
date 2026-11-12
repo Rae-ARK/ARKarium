@@ -17,7 +17,7 @@ import java.io.IOException
 
 val Context.dataStore by preferencesDataStore(name = "arkarium_prefs")
 
-// TTS default-settings keys (see docs/arkarium/foundational/design-notes.md, Stage 3.1).
+// TTS default-settings keys (see docs/foundational/design-notes.md, Stage 3.1).
 // File-scoped (internal, not inside PreferencesManager's companion object) so the four
 // pure functions below - and PreferencesManagerTest - can share them without needing a
 // Context or a real DataStore. Same flat-key shape as the splash toggles rather than a
@@ -44,7 +44,7 @@ internal val TTS_VOICE_NAME_KEY = stringPreferencesKey("tts_voice_name")
 // JVM-testable, Context-free reason as those.
 internal val TTS_FAVORITE_VOICES_KEY = stringSetPreferencesKey("tts_favorite_voices")
 
-// docs/arkarium/proposal/reader-settings.md, suggested-order items 1-5 ("the
+// docs/proposal/reader-settings.md, suggested-order items 1-5 ("the
 // cheap ones"): persisted reader defaults + two reader-level switches + one
 // pill-visibility opt-in. File-scoped alongside the tts_* keys above for the
 // same Context-free, JVM-testable reason. Multi-document, the day/night
@@ -121,7 +121,7 @@ internal fun readerBrightnessSliderEnabledOf(prefs: Preferences): Boolean =
 internal fun readerBrightnessOf(prefs: Preferences): Float =
     prefs[READER_BRIGHTNESS_KEY] ?: -1f
 
-// Rung 4 of docs/arkarium/foundational/design-notes.md: the default-fallback logic for
+// Rung 4 of docs/foundational/design-notes.md: the default-fallback logic for
 // the four tts_* keys, pulled out of PreferencesManager's property getters into plain
 // top-level functions over a raw Preferences snapshot - same "kept free of Context so it
 // can be unit-tested on the JVM" move as ui/ReaderTtsLogic.kt, just one layer further
@@ -170,7 +170,7 @@ enum class Theme {
 }
 
 // The slice of PreferencesManager's surface that SettingsViewModel (Stage 2.2 of
-// docs/arkarium/foundational/design-notes.md's Phase 2) wraps as StateFlows. Pulled out as an
+// docs/foundational/design-notes.md's Phase 2) wraps as StateFlows. Pulled out as an
 // interface - rather than SettingsViewModel depending on the concrete
 // PreferencesManager class directly - purely so a JVM unit test can hand it a fake
 // backed by plain MutableStateFlows instead of a real DataStore/Context, matching
@@ -183,7 +183,7 @@ interface SettingsPreferences {
     val theme: Flow<Theme>
     val systemDefaultLightVariant: Flow<Theme>
     // One-time "custom folder support was removed" notice - see "Settled
-    // decisions" in docs/arkarium/foundational/design-notes.md. True exactly once,
+    // decisions" in docs/foundational/design-notes.md. True exactly once,
     // for an install that had USE_CUSTOM_FOLDER_KEY set before the toggle was
     // removed, until dismissSafRemovedNotice() is called.
     val shouldShowSafRemovedNotice: Flow<Boolean>
@@ -203,7 +203,7 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         private val SYSTEM_DEFAULT_LIGHT_VARIANT_KEY = stringPreferencesKey("system_default_light_variant")
         private val DEFAULT_PAGE_SIZE_KEY = intPreferencesKey("default_page_size")
         // Retired per the SAF-removal decision (see "Settled decisions" in
-        // docs/arkarium/foundational/design-notes.md): the
+        // docs/foundational/design-notes.md): the
         // opt-in flag for pointing the scanner at a user-picked SAF folder, and the URI
         // it pointed at. Neither key is written anymore - the library root is now the
         // single fixed Android/media/com.arkarium.app/ folder (see
@@ -304,11 +304,11 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     // to it (Stage 3.3) - not read anywhere yet. Default 1.0f matches the hardcoded
     // rate ChapterTtsState uses today, so wiring this up later is a no-op for anyone
     // who hasn't visited settings/tts. The pill's live setRate() during a session
-    // never writes back here - see docs/arkarium/foundational/design-notes.md's "TTS settings split".
+    // never writes back here - see docs/foundational/design-notes.md's "TTS settings split".
     val ttsDefaultRate: Flow<Float> = safePrefs.map(::ttsDefaultRateOf)
 
     // Applied once at TTS engine init (Stage 3.3), no pill exposure - see
-    // docs/arkarium/foundational/design-notes.md ("TTS settings split") for why pitch doesn't get a mid-session control the
+    // docs/foundational/design-notes.md ("TTS settings split") for why pitch doesn't get a mid-session control the
     // way rate does. Default 1.0f is TextToSpeech's own neutral pitch.
     val ttsPitch: Flow<Float> = safePrefs.map(::ttsPitchOf)
 

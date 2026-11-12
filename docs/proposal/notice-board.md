@@ -140,7 +140,7 @@ prerequisite and doesn't exist yet:
 - New `viewmodel/NoticeBoardViewModel.kt` (or a few `@Composable`
   `collectAsState` reads straight off the DAO's `Flow`s, if the screen turns
   out simple enough not to need its own ViewModel - matches
-  `docs/arkarium/foundational/design-notes.md`'s own reasoning for why some
+  `docs/foundational/design-notes.md`'s own reasoning for why some
   screens get a ViewModel and some don't) backing a new `ui/NoticeBoardScreen.kt`
   and a `notice_board` route in `MainActivity`'s `NavHost`.
 - `ui/HomeScreen.kt`: bell `IconButton` + badge, next to the existing two.

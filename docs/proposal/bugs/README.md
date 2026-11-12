@@ -18,11 +18,9 @@ Split by severity into two folders:
 Format per bug file: `# <short title>`, then **Seen** · **Where** · **Repro**
 · **Expected / Actual**, and **Cause** / **Status** when known.
 
-The frozen copy of ARKster's bug history that used to live at
-`reference/arkster/bugs.md` has been removed (2026-11-10) — it had gone stale
-now that ARKster has moved on and closed most of what it described. Bugs in
-logic ARKarium inherited from ARKster (sort tiers, rescan safety, author
-pages) are tracked here like any other ARKarium bug if they resurface.
+Bugs in logic ARKarium inherited from its predecessor, ARKster (sort tiers,
+rescan safety, author pages), are tracked here like any other ARKarium bug if
+they resurface.
 
 ## Open bugs
 

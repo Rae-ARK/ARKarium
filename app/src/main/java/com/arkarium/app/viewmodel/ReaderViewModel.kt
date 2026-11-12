@@ -52,7 +52,7 @@ class ReaderViewModel(
     // paragraphForCharOffset snaps it to a real paragraph start the same way a genuine
     // CHAR_OFFSET restore does, and the converted row is written straight back as
     // CHAR_OFFSET so this is a one-time migration per chapter, not a re-estimate on every
-    // open (see docs/arkarium/proposal/bugs/other/README.md).
+    // open (see docs/proposal/bugs/other/README.md).
     // Returns null for "nothing to restore".
     suspend fun resolveInitialPosition(novelId: String, chapterId: String, content: String): ReaderPosition? {
         val saved = db.readingProgressDao().forNovel(novelId)

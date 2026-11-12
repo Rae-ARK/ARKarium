@@ -49,7 +49,7 @@ import kotlinx.coroutines.launch
 // Long text is split into utterance-sized pieces and queued back-to-back rather than
 // handed to speak() whole, which would just cut off mid-chapter with no warning.
 // Moved here unchanged from the old ChapterTtsState (ui/Tts.kt) along with the rest of
-// the chunking logic - see docs/arkarium/proposal/reader-playback.md F10.
+// the chunking logic - see docs/proposal/reader-playback.md F10.
 private const val TTS_MAX_CHUNK_CHARS = 3800
 
 // Rung 7 (read-aloud notification): Android's TextToSpeech never reports how long an
@@ -70,14 +70,14 @@ private const val ESTIMATED_SPEECH_CHARS_PER_SECOND = 15.0
 // sentence longer than `maxChunk` is hard-cut, and even then at the last whitespace /
 // CJK comma inside the window if there is one, and never between the two halves of a
 // surrogate pair. No text is dropped or duplicated; only whitespace at chunk edges is
-// trimmed. See docs/arkarium/proposal/engineering-review.md F11.
+// trimmed. See docs/proposal/engineering-review.md F11.
 internal fun splitForTts(
     text: String,
     maxChunk: Int = TTS_MAX_CHUNK_CHARS,
     locale: java.util.Locale = java.util.Locale.getDefault()
 ): List<String> = splitForTtsSpans(text, maxChunk, locale).map { text.substring(it.start, it.end) }
 
-// Rung 5 (docs/arkarium/implementation/tts-playback-controls.md): where a chunk sits in
+// Rung 5 (docs/implementation/tts-playback-controls.md): where a chunk sits in
 // the *original* `text` handed to splitForTts - [start, end), whitespace at both edges
 // already excluded, so text.substring(start, end) is exactly the chunk splitForTts
 // returns. This is the chunk-index -> text-range mapping the "currently reading"
@@ -193,7 +193,7 @@ private fun hardCutIndex(text: String, start: Int, maxChunk: Int): Int {
 /**
  * Owns the on-device TextToSpeech engine and the chunk queue that used to live inside
  * ChapterTtsState, `remember`-scoped to ReaderScreen's composable - see
- * docs/arkarium/proposal/reader-playback.md F10, which is also the record of the
+ * docs/proposal/reader-playback.md F10, which is also the record of the
  * now-fixed "Rotating the device restarts the app" bug this split addressed.
  *
  * A Service's lifecycle is independent of any Activity or composable, and this one is
@@ -240,7 +240,7 @@ class TtsPlaybackService : Service() {
         // onChunkError below. errorCode is one of TextToSpeech.ERROR_*.
         fun onError(errorCode: Int)
 
-        // Rung 3 (docs/arkarium/implementation/tts-playback-controls.md): pushed
+        // Rung 3 (docs/implementation/tts-playback-controls.md): pushed
         // whenever pendingIndex or the chunk count changes - a fresh start(), a
         // skip, a chunk finishing on its own, or the session ending (index/total
         // both 0, same "nothing to show" signal as isSpeaking/isPaused both false).
@@ -248,7 +248,7 @@ class TtsPlaybackService : Service() {
         // why a chunk isn't a stable reader-facing unit yet.
         fun onChunkProgressChanged(index: Int, total: Int)
 
-        // Rung 6 (paragraph-highlight variant, docs/arkarium/implementation/
+        // Rung 6 (paragraph-highlight variant, docs/implementation/
         // tts-playback-controls.md): pushed whenever currentParagraphStart/End changes
         // - a fresh chunk starting (seeded to the paragraph its own start falls in),
         // onRangeStart narrowing further within that chunk (API 26+ engines only), or
@@ -334,7 +334,7 @@ class TtsPlaybackService : Service() {
     var currentVoiceName: String? = null
         private set
 
-    // Stage 3.4 (see docs/arkarium/foundational/design-notes.md), moved here unchanged:
+    // Stage 3.4 (see docs/foundational/design-notes.md), moved here unchanged:
     // kept live (the Compose side pushes every DataStore change straight through) so
     // toggling auto-continue in settings/tts takes effect on the next chapter boundary
     // rather than needing the reader to leave and reopen the reader.
@@ -431,7 +431,7 @@ class TtsPlaybackService : Service() {
     // still paused.
     private var ignorePendingFinish = false
 
-    // --- F22 (docs/arkarium/proposal/reader-playback.md): audio focus, becoming-noisy,
+    // --- F22 (docs/proposal/reader-playback.md): audio focus, becoming-noisy,
     // MediaSession ---
 
     private val audioManager by lazy { getSystemService(Context.AUDIO_SERVICE) as AudioManager }

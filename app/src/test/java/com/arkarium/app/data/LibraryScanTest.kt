@@ -6,7 +6,7 @@ import org.junit.Test
 
 // mergeNovelForRescan is deliberately plain Kotlin (see its doc comment in
 // LibraryScan.kt) so it can run here on the JVM with plain JUnit - no Robolectric, no
-// instrumented device/emulator, no Room. See docs/arkarium/foundational/design-notes.md Stage 2.1.
+// instrumented device/emulator, no Room. See docs/foundational/design-notes.md Stage 2.1.
 class LibraryScanTest {
 
     // Minimal-diff fixture builder: every test below only overrides the fields it
@@ -139,7 +139,7 @@ class LibraryScanTest {
 
     // ScannerImpl.buildNovelEntity can now set syncSourceUrl on `scanned` itself (a
     // FictionLut title match - see that function's comment and
-    // docs/arkarium/implementation/engineering-backlog.md Rung 11), for a folder
+    // docs/implementation/engineering-backlog.md Rung 11), for a folder
     // that reached the library by some route other than this app's own sync and so
     // never got a chance to earn the column the normal way. This is the fill-in half
     // of that fix: a novel that was scanned (and stored) as purely local before this

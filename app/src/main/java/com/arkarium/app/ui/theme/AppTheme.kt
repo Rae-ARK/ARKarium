@@ -1,7 +1,7 @@
 package com.arkarium.app.ui.theme
 
 // Extracted from MainActivity.kt as part of the MainActivity slim-down (see
-// docs/arkarium/foundational/design-notes.md). Pure color-scheme lookup/resolution - no Compose
+// docs/foundational/design-notes.md). Pure color-scheme lookup/resolution - no Compose
 // state, no Context - so it's usable (and unit-testable, see resolveTheme below) on
 // its own without pulling in the Activity.
 

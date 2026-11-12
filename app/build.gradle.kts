@@ -145,7 +145,7 @@ dependencies {
     // MediaStyle for the read-aloud notification's transport buttons (previous / play-pause /
     // next / stop) - androidx.media.app.NotificationCompat.MediaStyle and
     // MediaSessionCompat.Token live here, not in core. See TtsPlaybackService.buildNotification
-    // and docs/arkarium/implementation/tts-playback-controls.md, rung 4.
+    // and docs/implementation/tts-playback-controls.md, rung 4.
     implementation("androidx.media:media:1.7.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
@@ -162,13 +162,13 @@ dependencies {
     // transitively by lifecycle-runtime-ktx above.
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
     // ViewModel + viewModelScope, used by SettingsViewModel (Stage 2.2 of Phase 2 -
-    // see docs/arkarium/foundational/design-notes.md) and the ViewModels planned for the rest of
+    // see docs/foundational/design-notes.md) and the ViewModels planned for the rest of
     // that phase. Not pulled in transitively by lifecycle-runtime-ktx above, which
     // only covers Lifecycle/LifecycleOwner, not ViewModel itself.
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2")
 
     // WorkManager - backs the periodic background "new chapter" check (see
-    // docs/arkarium/foundational/architecture.md, Sync: entry points and data/NewChapterCheckWorker.kt). ktx artifact
+    // docs/foundational/architecture.md, Sync: entry points and data/NewChapterCheckWorker.kt). ktx artifact
     // for the CoroutineWorker base class and suspend-friendly WorkManager APIs, rather
     // than plain work-runtime + a manual ListenableFuture bridge.
     implementation("androidx.work:work-runtime-ktx:2.9.0")
@@ -193,7 +193,7 @@ dependencies {
 
     // Unit test infra (JVM, src/test - no device/emulator needed). Kept deliberately
     // minimal: JUnit4 for assertions/runner, kotlinx-coroutines-test for suspend-fun
-    // and Flow testing. See docs/arkarium/foundational/design-notes.md for the testing strategy
+    // and Flow testing. See docs/foundational/design-notes.md for the testing strategy
     // this is meant to grow into as more logic moves out of MainActivity and into
     // plain-Kotlin/ViewModel classes that don't need Robolectric or instrumentation.
     testImplementation("junit:junit:4.13.2")

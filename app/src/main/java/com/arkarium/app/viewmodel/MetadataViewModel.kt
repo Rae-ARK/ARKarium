@@ -12,7 +12,7 @@ import com.arkarium.app.navigation.AddFictionState
 import com.arkarium.app.navigation.MetadataSearchState
 import kotlinx.coroutines.launch
 
-// Stage 2.4 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the third of the plan's four
+// Stage 2.4 of Phase 2 (docs/foundational/design-notes.md) - the third of the plan's four
 // feature-scoped ViewModels pulled out of MainActivity. Owns metadataSearchState and
 // addFictionState (the two dialog-driving sealed states this stage is scoped to) plus
 // fetchMetadataFor/applyMetadata, the "fetch/apply-metadata logic" the plan names -
@@ -68,7 +68,7 @@ class MetadataViewModel(
     // `currentScreen` when the novel being viewed in NovelDetail was the one just
     // updated, via an `onApplied` callback (the same "report the result back to the
     // caller via a plain lambda" shape ScannerImpl's onDiscovered/onProgress callbacks
-    // already use elsewhere) - Stage 3.3 (see docs/arkarium/foundational/design-notes.md) removed
+    // already use elsewhere) - Stage 3.3 (see docs/foundational/design-notes.md) removed
     // that parameter: NovelDetail is now a "novelDetail/{novelId}" route that resolves
     // its own NovelEntity from libraryViewModel.novels on every recomposition, so the
     // `novels` patch below is enough on its own for it to reflect the new info, with

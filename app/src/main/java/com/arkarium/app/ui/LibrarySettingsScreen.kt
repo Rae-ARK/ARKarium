@@ -35,13 +35,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-// Stage 2 (see docs/arkarium/foundational/design-notes.md, "mechanical extraction, no
+// Stage 2 (see docs/foundational/design-notes.md, "mechanical extraction, no
 // behavior change") - the "Use custom folder" switch, Select/Change Folder
 // button, and Rescan Library button originally moved here verbatim from the old
 // monolithic SettingsScreen.kt.
 //
 // Reworked per the SAF-removal decision (see "Settled decisions" in
-// docs/arkarium/foundational/design-notes.md): the switch and folder picker
+// docs/foundational/design-notes.md): the switch and folder picker
 // are gone - there is nothing left to toggle or pick,
 // since the library root is now the one fixed Android/media/com.arkarium.app/
 // folder (see data/LibraryScan.kt's resolveLibraryRoot). The "Use custom

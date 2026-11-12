@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 
 // Thin Compose-facing controller for read-aloud, scoped to one ReaderScreen call site
 // via rememberChapterTts() below. The TextToSpeech engine and chunk queue themselves no
-// longer live here - they moved to TtsPlaybackService (see docs/arkarium/proposal/
+// longer live here - they moved to TtsPlaybackService (see docs/proposal/
 // reader-playback.md F10) precisely because this class used to own them directly and
 // die with the composable (rotation, leaving the reader) along with them. This class is
 // now just a live mirror of the service's state plus a couple of pass-through calls,
@@ -55,7 +55,7 @@ class ChapterTtsState internal constructor() {
     var speechRate by mutableFloatStateOf(1.0f)
         internal set
 
-    // Rung 3 (docs/arkarium/implementation/tts-playback-controls.md): mirrors
+    // Rung 3 (docs/implementation/tts-playback-controls.md): mirrors
     // TtsPlaybackService.currentChunkIndex/totalChunks the same way isSpeaking/
     // isPaused above mirror their service counterparts. totalChunks is 0 with no
     // session (stopped, or not yet started) - that's the "nothing to show" case
@@ -76,7 +76,7 @@ class ChapterTtsState internal constructor() {
     var currentChunkEnd by mutableIntStateOf(-1)
         internal set
 
-    // Rung 6 (paragraph-highlight variant, docs/arkarium/implementation/
+    // Rung 6 (paragraph-highlight variant, docs/implementation/
     // tts-playback-controls.md): mirrors TtsPlaybackService.currentParagraphStart/End
     // the same way currentChunkStart/End above mirror chunkSpan() - the [start, end)
     // range, in the same chapter-body coordinates, of the prose paragraph being read
@@ -113,7 +113,7 @@ class ChapterTtsState internal constructor() {
         lastErrorMessage = null
     }
 
-    // Stage 3.4 (see docs/arkarium/foundational/design-notes.md). Pushed straight through
+    // Stage 3.4 (see docs/foundational/design-notes.md). Pushed straight through
     // to the attached service (which is where the live flag now actually lives, so it
     // survives rotation same as everything else about an in-progress session) whenever
     // it changes - see rememberChapterTts's collectAsState wiring below.
@@ -293,7 +293,7 @@ class ChapterTtsState internal constructor() {
 // what's different is that rotating the device (which recreates MainActivity, and with
 // it this composable) now just unbinds and rebinds to the *same still-running* service
 // rather than tearing down and recreating the TextToSpeech engine itself. See
-// docs/arkarium/proposal/reader-playback.md F10 and bugs.md's rotation entry.
+// docs/proposal/reader-playback.md F10 and bugs.md's rotation entry.
 @Composable
 fun rememberChapterTts(): ChapterTtsState {
     val context = LocalContext.current
@@ -301,7 +301,7 @@ fun rememberChapterTts(): ChapterTtsState {
     val prefsManager = remember { PreferencesManager(context) }
     val coroutineScope = rememberCoroutineScope()
 
-    // Stage 3.4 (see docs/arkarium/foundational/design-notes.md). Deliberately not a
+    // Stage 3.4 (see docs/foundational/design-notes.md). Deliberately not a
     // one-shot .first() read - auto-continue is checked every time a chapter finishes,
     // not just once, so it's kept live via collectAsStateWithLifecycle() and pushed onto
     // the attached service (via ChapterTtsState.autoContinueEnabled's setter above)
@@ -320,7 +320,7 @@ fun rememberChapterTts(): ChapterTtsState {
             override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
                 val svc = (binder as? TtsPlaybackService.LocalBinder)?.service() ?: return
                 state.attach(svc)
-                // Stage 3.3 (see docs/arkarium/foundational/design-notes.md): seeds this
+                // Stage 3.3 (see docs/foundational/design-notes.md): seeds this
                 // service instance's starting rate/pitch from the settings/tts defaults
                 // the first time it's ever attached to - see
                 // TtsPlaybackService.setInitialRateAndPitch's doc comment for why it's

@@ -20,7 +20,7 @@ import org.junit.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verifyNoInteractions
 
-// Rung 4.1 of docs/arkarium/implementation/test-coverage.md. `fetchMetadataFor` only -
+// Rung 4.1 of docs/implementation/test-coverage.md. `fetchMetadataFor` only -
 // `applyMetadata` stays out of scope per the ladder, same reasoning rung 4.2 already
 // applied to startScan/loadNovelDetails: it writes through concrete AppDatabase
 // (db.novelDao().updateMetadata/findById), so testing it for real needs Room, and

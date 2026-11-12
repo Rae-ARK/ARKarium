@@ -190,7 +190,7 @@ private fun toReadingMode(mode: ReadingModeDefault): ReadingMode = when (mode) {
 // Compose's LocalContext.current isn't guaranteed to be the Activity itself - it can be
 // a ContextWrapper (e.g. a ContextThemeWrapper) sitting in front of one - so this walks
 // up to find the real Activity instead of assuming a direct cast holds. Used below
-// (Stage 3.5, see docs/arkarium/foundational/design-notes.md) to reach the reader's window for
+// (Stage 3.5, see docs/foundational/design-notes.md) to reach the reader's window for
 // FLAG_KEEP_SCREEN_ON; a silent no-op (window stays null, flag never set) is a safer
 // failure mode here than crashing on a bad cast.
 private tailrec fun Context.findActivity(): Activity? = when (this) {
@@ -202,7 +202,7 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 // Full-screen-in-portrait bug (reported: landscape looked right, portrait
 // didn't; fixed here - see architecture.md's "Reading and local state",
 // `reader_fullscreen` bullet, for the lesson this taught, per
-// docs/arkarium/proposal/bugs/README.md's "fixed bugs are deleted, the
+// docs/proposal/bugs/README.md's "fixed bugs are deleted, the
 // lesson moves to foundational/" rule). This used to take two *independent*
 // switches, `edgeToEdge` and a landscape-only `drawIntoCutout`, on the theory
 // that the cutout only needs SHORT_EDGES to fix a side-of-screen letterbox in
@@ -362,7 +362,7 @@ fun ReaderScreen(
     // other call site, same rationale as onAuthorClick's own default.
     onOpenTtsSettings: () -> Unit = {},
     onOpenReaderSettings: () -> Unit = {},
-    // Rung 4 fix (docs/arkarium/implementation/tts-playback-controls.md): on API 33+,
+    // Rung 4 fix (docs/implementation/tts-playback-controls.md): on API 33+,
     // POST_NOTIFICATIONS is required for *any* notification to actually post, including
     // a foreground service's - TtsPlaybackService.startForeground() does not fail when
     // it's missing, it just posts nothing, which is why the transport buttons silently
@@ -423,7 +423,7 @@ fun ReaderScreen(
     // Read-aloud. See Tts.kt - one engine instance persists for the whole reading
     // session (including across Previous/Next), same reuse behavior as the state above.
     val tts = rememberChapterTts()
-    // Stage 3.4 (see docs/arkarium/foundational/design-notes.md): reassigned every recomposition
+    // Stage 3.4 (see docs/foundational/design-notes.md): reassigned every recomposition
     // so the closure always captures whichever onNext this screen currently has (it
     // changes chapter-to-chapter, and is null at the last chapter) - cheap and
     // idempotent, so no LaunchedEffect/key needed. Passes an anchor at the very end of
@@ -438,11 +438,11 @@ fun ReaderScreen(
     // unambiguously a completed chapter regardless of where the scroll happens to
     // sit (see ReaderPosition's doc comment).
     tts.onChapterFinished = { onNext?.invoke(ReaderPosition(content.length, "", 1f)) }
-    // Stage 3.5 (see docs/arkarium/foundational/design-notes.md): keeps the screen on for exactly
+    // Stage 3.5 (see docs/foundational/design-notes.md): keeps the screen on for exactly
     // the duration of active read-aloud, gated by tts_keep_screen_on (off by default,
     // same reasoning as auto-continue above). Direct PreferencesManager access, same
     // pattern as everywhere else these four TTS keys are read - see
-    // docs/arkarium/foundational/design-notes.md's "Settled decisions" for why TTS settings don't get a
+    // docs/foundational/design-notes.md's "Settled decisions" for why TTS settings don't get a
     // ViewModel of their own. TTS is specifically a screen-off-friendly use case
     // (listening, not reading) that the rest of the reader isn't, so this ties the flag
     // to tts.isSpeaking rather than to the reader screen merely being open.
@@ -697,7 +697,7 @@ fun ReaderScreen(
         }
         onDispose {
             controller?.show(WindowInsetsCompat.Type.systemBars())
-            // Bug 5 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): this used to also call
+            // Bug 5 fix (docs/proposal/bugs/other/uiux-bugs.md): this used to also call
             // applyWindowLayout(window, edgeToEdge = false, drawIntoCutout = false) here,
             // racing MainActivity's own LaunchedEffect(currentRoute) - which re-applies
             // edgeToEdge = true, drawIntoCutout = true the instant currentRoute leaves
@@ -1023,7 +1023,7 @@ fun ReaderScreen(
         // inset - like the Column's cutout one - resolves to zero on its
         // own, so there's nothing to zero out here even in that case.
         //
-        // Jank fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md #8): this used to be a bare
+        // Jank fix (docs/proposal/bugs/other/uiux-bugs.md #8): this used to be a bare
         // `if (showControls.value) { TopAppBar(...) }` with no animation at all, while the
         // footer Column below - the screen's other `showControls`-gated widget - already wraps
         // itself in `.animateContentSize()` specifically so its own appear/disappear doesn't
@@ -1649,7 +1649,7 @@ fun ReaderScreen(
         }
     }
 
-    // The read-aloud controls pill (rungs 1-2 of docs/arkarium/implementation/
+    // The read-aloud controls pill (rungs 1-2 of docs/implementation/
     // tts-playback-controls.md). Immersive mode only, and only while a session exists
     // (playing or paused) - bottomPill == TTS says exactly that, see ReaderTtsLogic.kt.
     // Outside immersive mode the Reader Preferences pill above holds this spot, and
@@ -1822,7 +1822,7 @@ private fun TtsControlsBar(
     }
 }
 
-// Rung 3 of docs/arkarium/implementation/tts-playback-controls.md: the "n of total"
+// Rung 3 of docs/implementation/tts-playback-controls.md: the "n of total"
 // scrub/progress readout from the uiux.md reference design, filled in at chunk
 // granularity - "chunk N of M" rather than a page number, per that rung's own
 // "done when" (a chunk isn't a stable reader-facing unit; chunk count depends on

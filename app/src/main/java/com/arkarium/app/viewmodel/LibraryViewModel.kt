@@ -28,7 +28,7 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import java.util.UUID
 
-// Stage 2.3 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the second of the plan's
+// Stage 2.3 of Phase 2 (docs/foundational/design-notes.md) - the second of the plan's
 // four feature-scoped ViewModels pulled out of MainActivity. Owns the library's core
 // in-memory state - novels, the currently-loaded novel's chapters/arcs,
 // recentlyRead/inProgressNovels, and scan progress/message - plus startScan, the one
@@ -85,7 +85,7 @@ class LibraryViewModel(
 
     // Local (non-synced) novel ids that were missing from the most recently completed
     // scan's seenNovelIds, but not yet cascade-deleted - see onScanCompleted below and
-    // docs/arkarium/proposal/bugs/other/uiux-bugs.md Bug 3. A SAF provider is allowed to
+    // docs/proposal/bugs/other/uiux-bugs.md Bug 3. A SAF provider is allowed to
     // return a partial listing (DocumentsProvider not fully warmed up, a removable/
     // network-backed DocumentFile tree still populating, ordinary I/O jitter right after
     // process start), so one pass not seeing a novel that's still genuinely on disk isn't
@@ -219,7 +219,7 @@ class LibraryViewModel(
 
     private suspend fun handleScanCompleted(sawAnyNovelFolders: Boolean, seenNovelIds: Set<String>) {
         val allNovels = db.novelDao().all()
-        // See docs/arkarium/implementation/engineering-backlog.md Rung 1
+        // See docs/implementation/engineering-backlog.md Rung 1
         // (Mechanism 2): a SAF provider is allowed to hand back a partial or
         // empty listing (still fetching results, a removable volume dropping
         // mid-enumeration) with nothing to tell that apart from a folder that
@@ -234,7 +234,7 @@ class LibraryViewModel(
                     "losing data. Rescan to retry."
             }
         } else {
-            // See bugs.md Bug 4 / docs/arkarium/foundational/architecture.md, Sync invariants S6 - a purely-local
+            // See bugs.md Bug 4 / docs/foundational/architecture.md, Sync invariants S6 - a purely-local
             // novel this pass didn't rediscover is cascade-deleted; a synced
             // novel is marked MISSING_LOCALLY instead, since its folder can
             // always be re-fetched from its relay.
@@ -291,7 +291,7 @@ class LibraryViewModel(
                 // still marked seen, so handleScanCompleted's stale-reconcile
                 // can no longer treat "something about reading it failed" as
                 // "this novel doesn't exist" - see
-                // docs/arkarium/implementation/engineering-backlog.md Rung 1 (Mechanism 1).
+                // docs/implementation/engineering-backlog.md Rung 1 (Mechanism 1).
                 onNovelFolderSeen = { novelId -> seenNovelIds.add(novelId) },
                 onDiscovered = { scanned, novelFolder ->
                     handleNovelDiscovered(scanned, novelFolder, authorsFolderFound, seenNovelIds)

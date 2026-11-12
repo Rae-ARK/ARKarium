@@ -114,7 +114,7 @@ fun FictionBrowseScreen(
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Top app bar
-        // Bug 6 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): Browse is one of
+        // Bug 6 fix (docs/proposal/bugs/other/uiux-bugs.md): Browse is one of
         // the four bottom-tab roots (AppDestination.BROWSE in AppBottomBar.kt) - reached
         // by tapping its tab, never pushed onto the back stack the way a drill-down
         // screen is. A software back arrow here left over from before the bottom-bar
@@ -192,7 +192,7 @@ fun FictionBrowseScreen(
             onDismissRequest = { showSortSheet.value = false },
             sheetState = sortSheetState
         ) {
-            // Bug 7 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): ModalBottomSheet
+            // Bug 7 fix (docs/proposal/bugs/other/uiux-bugs.md): ModalBottomSheet
             // renders in its own window layer, entirely outside the Scaffold Surface's
             // padded bounds - same gap as AppBottomBar's NavigationBar (see that fix),
             // for whenever this sheet is opened in landscape. windowInsetsPadding

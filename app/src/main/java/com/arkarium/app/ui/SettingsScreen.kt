@@ -149,7 +149,7 @@ private fun SettingsCard(content: @Composable () -> Unit) {
     }
 }
 
-// Stage 1 (see docs/arkarium/foundational/design-notes.md): this screen stops rendering
+// Stage 1 (see docs/foundational/design-notes.md): this screen stops rendering
 // any control itself (Theme radio group, Library switch/buttons, Splash
 // switches all used to live here inline) and becomes a pure index of rows,
 // each navigating to its own destination - the same tappable-row pattern
@@ -185,7 +185,7 @@ fun SettingsScreen(
     onAboutMe: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        // Bug 6 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): Settings is one of
+        // Bug 6 fix (docs/proposal/bugs/other/uiux-bugs.md): Settings is one of
         // the four bottom-tab roots (AppDestination.SETTINGS in AppBottomBar.kt) -
         // reached by tapping its tab (popUpTo("home"){saveState=true}), never pushed
         // onto the back stack the way a drill-down screen is. A software back arrow here
@@ -278,7 +278,7 @@ fun SettingsScreen(
             // defaultConfig.versionName - the single source of truth for the app's
             // version. This is the only place in the running app's normal UI that
             // shows it; the crash screens in MainActivity read the same field. Stays
-            // on the index page per docs/arkarium/foundational/design-notes.md (Settings is an index) - it's not really "a
+            // on the index page per docs/foundational/design-notes.md (Settings is an index) - it's not really "a
             // setting," so it doesn't get promoted to its own sub-page.
             Text(
                 "ARKarium v${BuildConfig.VERSION_NAME}",

@@ -7,7 +7,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 
 // Micro-haptics on state changes: chapter-complete, sync-done, and TTS session
-// start/stop (see docs/arkarium/foundational/architecture.md, Micro-haptics). Each is a single
+// start/stop (see docs/foundational/architecture.md, Micro-haptics). Each is a single
 // Vibrator.vibrate(VibrationEffect) call - no pattern, no loop, nothing that needs
 // cancelling - fired once at the moment the state actually changes, from whichever
 // call site owns that transition (saveReadingProgress's COMPLETION_THRESHOLD branch,

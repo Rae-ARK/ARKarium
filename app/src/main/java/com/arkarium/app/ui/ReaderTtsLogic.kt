@@ -54,7 +54,7 @@ fun reconcileTtsSession(
     else -> TtsSessionAction.STOP_STALE
 }
 
-// Rung 3 (docs/arkarium/implementation/tts-playback-controls.md): the label
+// Rung 3 (docs/implementation/tts-playback-controls.md): the label
 // TtsProgressIndicator (ReaderScreen.kt) shows in TtsControlsBar, at chunk
 // granularity ("chunk N of M") per that rung's "done when" - not a page number; see
 // the doc for why a chunk isn't a stable reader-facing unit yet. currentChunkIndex is
@@ -68,7 +68,7 @@ fun ttsChunkProgressLabel(currentChunkIndex: Int, totalChunks: Int): String? {
     return "chunk $current of $totalChunks"
 }
 
-// Rung 5 (docs/arkarium/implementation/tts-playback-controls.md): the "currently
+// Rung 5 (docs/implementation/tts-playback-controls.md): the "currently
 // reading" highlight and its auto-scroll. A chunk's range is in the coordinates of the
 // whole chapter body (TtsPlaybackService.chunkSpan), while the reader draws each stretch
 // of text between markup tags as its own Text - usually one for the whole chapter, but
@@ -94,7 +94,7 @@ fun ttsHighlightWithin(
     return if (to > from) TtsHighlight(from, to) else null
 }
 
-// Rung 6 (paragraph-highlight variant, docs/arkarium/implementation/
+// Rung 6 (paragraph-highlight variant, docs/implementation/
 // tts-playback-controls.md): which [start, end) range the "currently reading"
 // highlight should actually shade - the narrower paragraph range whenever there is one
 // (paragraphStart >= 0), falling back to rung 5's whole-chunk range otherwise, which

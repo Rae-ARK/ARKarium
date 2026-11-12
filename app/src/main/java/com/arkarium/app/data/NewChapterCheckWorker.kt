@@ -18,7 +18,7 @@ import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.TimeUnit
 
 // Background half of "Notify me when new chapters are available" (see
-// docs/arkarium/foundational/architecture.md, Sync: entry points and NovelDetailScreen's toggle). Runs
+// docs/foundational/architecture.md, Sync: entry points and NovelDetailScreen's toggle). Runs
 // periodically via WorkManager (scheduled by `schedule()`, called once from
 // MainActivity.onCreate) rather than anything tied to the Activity's own lifecycle -
 // this needs to keep working whether or not ARKarium is currently open.

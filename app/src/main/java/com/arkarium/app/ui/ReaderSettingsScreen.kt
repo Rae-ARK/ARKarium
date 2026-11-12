@@ -44,7 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.arkarium.app.data.ReadingModeDefault
 
-// docs/arkarium/proposal/reader-settings.md, "Page shape" + suggested-order
+// docs/proposal/reader-settings.md, "Page shape" + suggested-order
 // items 1-5 (the "cheap" batch the owner approved; multi-document, the
 // day/night button, the volume slider and column count stay
 // documented-only - see that doc's own order list). Same flat-

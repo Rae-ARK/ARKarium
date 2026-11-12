@@ -4,7 +4,7 @@ import android.content.Context
 import androidx.documentfile.provider.DocumentFile
 
 // Extracted from MainActivity.kt as Stage 2.1 of Phase 2 (see
-// docs/arkarium/foundational/design-notes.md). Both functions are plain data-in/data-out logic -
+// docs/foundational/design-notes.md). Both functions are plain data-in/data-out logic -
 // resolveLibraryRoot takes `context` as an explicit parameter instead of relying on
 // an Activity's implicit `this`, and mergeNovelForRescan never touches anything
 // beyond its own arguments - so both are usable as free functions from anywhere
@@ -14,7 +14,7 @@ import androidx.documentfile.provider.DocumentFile
 // Resolves the one fixed DocumentFile root the scanner always reads from:
 // Android/media/com.arkarium.app/, via getExternalMediaDirs()[0]. No longer
 // user-choosable - see "Settled decisions" in
-// docs/arkarium/foundational/design-notes.md:
+// docs/foundational/design-notes.md:
 // a SAF-backed custom folder used to be available as an opt-in, but that path is
 // gone, along with the folder-identity and SAF-performance problems it caused.
 // Visible to file managers and PCs via USB the same way Android/data used to be
@@ -36,7 +36,7 @@ fun resolveLibraryRoot(context: Context): DocumentFile? {
 // readingStatus, remote-metadata fields once a "Fetch info" lookup has run) - see the
 // long comment this was pulled out of below for the full field-by-field rationale.
 // Shared by MainActivity's startScan (onDiscovered) and scanSingleSyncedNovel (see
-// docs/arkarium/foundational/architecture.md, Sync invariants S8) so both a full-library rescan and a scoped
+// docs/foundational/architecture.md, Sync invariants S8) so both a full-library rescan and a scoped
 // single-novel sync scan apply the exact same merge rules.
 fun mergeNovelForRescan(
     scanned: NovelEntity,

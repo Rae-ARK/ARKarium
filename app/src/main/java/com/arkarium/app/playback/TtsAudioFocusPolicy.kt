@@ -3,7 +3,7 @@ package com.arkarium.app.playback
 import android.media.AudioManager
 
 // What TtsPlaybackService should do when Android reports an audio-focus change
-// (docs/arkarium/proposal/reader-playback.md F22). Kept as a plain function over the
+// (docs/proposal/reader-playback.md F22). Kept as a plain function over the
 // raw AudioManager.AUDIOFOCUS_* ints, free of the Service, so the decision table is
 // unit-testable without an emulator - same split as splitForTts / ttsErrorMessage.
 internal enum class FocusAction {
