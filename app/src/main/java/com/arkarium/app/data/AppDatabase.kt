@@ -20,7 +20,7 @@ class DatabaseDowngradeException(message: String) : IllegalStateException(messag
 // list actually reaches it. @Database below reads it from here - bump this (and add the
 // matching MIGRATION_n_m + a committed app/schemas/.../n.json) together, never the
 // annotation alone.
-const val APP_DATABASE_VERSION = 14
+const val APP_DATABASE_VERSION = 15
 
 // @Database must sit directly above the RoomDatabase subclass it annotates - an
 // annotation binds to the very next declaration, and with DatabaseDowngradeException's
@@ -304,13 +304,35 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v14 to v15: adds the six foreign-key indices performance.md
+        // F24 found missing (see Entities.kt's `indices = [...]` on each entity below -
+        // SQLite indexes a declared primary key automatically but never a
+        // @ForeignKey's child column, so Room only warns, it doesn't create one).
+        // reading_progress, chapter_read_events and synced_files are untouched: each is
+        // already covered by its own primary key (see F24's "Correction" in
+        // performance.md), so adding an index there would be redundant. Purely
+        // additive and non-destructive - CREATE INDEX never touches existing rows -
+        // and index names match Room's own default convention
+        // (`index_<table>_<column>`) so a committed schema export agrees with what a
+        // real build regenerates.
+        val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_arcs_novel_id` ON `arcs` (`novel_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_chapters_novel_id` ON `chapters` (`novel_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_chapters_arc_id` ON `chapters` (`arc_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_chapter_overrides_chapter_id` ON `chapter_overrides` (`chapter_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_reading_progress_chapter_id` ON `reading_progress` (`chapter_id`)")
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_scan_fingerprints_novel_id` ON `scan_fingerprints` (`novel_id`)")
+            }
+        }
+
         // Every migration, in order - the one list create() hands to Room, and the one
         // MigrationChainTest (JVM) and MigrationTest (instrumented) check. A new
         // MIGRATION_n_m only counts once it is added here.
         val ALL_MIGRATIONS: Array<Migration> = arrayOf(
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
             MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
-            MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14
+            MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15
         )
 
         // NOTE: deliberately no fallbackToDestructiveMigration() here. That fallback

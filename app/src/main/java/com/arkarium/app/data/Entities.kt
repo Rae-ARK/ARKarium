@@ -3,6 +3,7 @@ package com.arkarium.app.data
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class NovelStatus {
@@ -119,10 +120,14 @@ data class AuthorEntity(
     @ColumnInfo(name = "source_path") val sourcePath: String
 )
 
+// indices (performance.md F24): novel_id has no index of its own otherwise - `arcs`'
+// primary key is `id`, so the per-novel arc query and the novel-delete cascade were
+// both full table scans without this.
 @Entity(tableName = "arcs",
     foreignKeys = [
         ForeignKey(entity = NovelEntity::class, parentColumns = ["id"], childColumns = ["novel_id"], onDelete = ForeignKey.CASCADE)
-    ])
+    ],
+    indices = [Index("novel_id")])
 data class ArcEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "novel_id") val novelId: String,
@@ -131,11 +136,16 @@ data class ArcEntity(
     @ColumnInfo val position: Int  // order within novel
 )
 
+// indices (performance.md F24): both foreign-key columns, for the same reason as
+// ArcEntity above - `chapters`' primary key is `id`, so neither the per-novel query,
+// the chapters-in-arc query, nor either cascade (novel delete = CASCADE, arc delete =
+// SET_NULL) had an index to use.
 @Entity(tableName = "chapters",
     foreignKeys = [
         ForeignKey(entity = NovelEntity::class, parentColumns = ["id"], childColumns = ["novel_id"], onDelete = ForeignKey.CASCADE),
         ForeignKey(entity = ArcEntity::class, parentColumns = ["id"], childColumns = ["arc_id"], onDelete = ForeignKey.SET_NULL)
-    ])
+    ],
+    indices = [Index("novel_id"), Index("arc_id")])
 data class ChapterEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "novel_id") val novelId: String,
@@ -150,10 +160,14 @@ data class ChapterEntity(
     @ColumnInfo(name = "source_path") val sourcePath: String
 )
 
+// index (performance.md F24): chapter_id has no index otherwise - this table's
+// primary key is its own `id`, so the override lookup and the chapter-delete cascade
+// were both full scans.
 @Entity(tableName = "chapter_overrides",
     foreignKeys = [
         ForeignKey(entity = ChapterEntity::class, parentColumns = ["id"], childColumns = ["chapter_id"], onDelete = ForeignKey.CASCADE)
-    ])
+    ],
+    indices = [Index("chapter_id")])
 data class ChapterOverrideEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "chapter_id") val chapterId: String,
@@ -164,11 +178,15 @@ data class ChapterOverrideEntity(
 
 // positionType interpretation for ReadingProgressEntity.position:
 // CHAR_OFFSET, HTML_LOCATION, EPUB_CFI, PAGE_INDEX, PERCENTAGE
+// index (performance.md F24): only chapter_id needs one - novel_id is this table's own
+// primary key, already indexed by construction, but chapter_id's own cascade (chapter
+// delete) was a full scan without this.
 @Entity(tableName = "reading_progress",
     foreignKeys = [
         ForeignKey(entity = NovelEntity::class, parentColumns = ["id"], childColumns = ["novel_id"], onDelete = ForeignKey.CASCADE),
         ForeignKey(entity = ChapterEntity::class, parentColumns = ["id"], childColumns = ["chapter_id"], onDelete = ForeignKey.CASCADE)
-    ])
+    ],
+    indices = [Index("chapter_id")])
 data class ReadingProgressEntity(
     @PrimaryKey @ColumnInfo(name = "novel_id") val novelId: String, // one active progress row per novel
     @ColumnInfo(name = "chapter_id") val chapterId: String,
@@ -225,10 +243,14 @@ data class ChapterReadEventEntity(
     @ColumnInfo(name = "read_at") val readAt: Long
 )
 
+// index (performance.md F24): novel_id has no index otherwise - this table's primary
+// key is its own `id`, so the per-novel fingerprint lookup and the novel-delete
+// cascade were both full scans.
 @Entity(tableName = "scan_fingerprints",
     foreignKeys = [
         ForeignKey(entity = NovelEntity::class, parentColumns = ["id"], childColumns = ["novel_id"], onDelete = ForeignKey.CASCADE)
-    ])
+    ],
+    indices = [Index("novel_id")])
 data class ScanFingerprintEntity(
     @PrimaryKey val id: String,
     @ColumnInfo(name = "novel_id") val novelId: String,
