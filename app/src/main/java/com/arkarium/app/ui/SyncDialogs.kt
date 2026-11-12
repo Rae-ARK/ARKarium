@@ -232,11 +232,11 @@ fun SyncProgressDialog(
                 AnimatedContent(
                     targetState = statusText to isError,
                     transitionSpec = {
-                        // `with`, not `togetherWith` - this project's Compose BOM
+                        // `togetherWith`, not `with` - this project's Compose BOM
                         // (2023.10.01, see build.gradle.kts; bumping it is
-                        // performance.md F12, not this change) predates the release
-                        // that renamed this infix.
-                        fadeIn(animationSpec = tween(210, delayMillis = 90)) with
+                        // performance.md F12, not this change) only has the
+                        // renamed infix; `with` is unresolved here.
+                        fadeIn(animationSpec = tween(210, delayMillis = 90)) togetherWith
                             fadeOut(animationSpec = tween(90))
                     },
                     label = "syncStatusText"
