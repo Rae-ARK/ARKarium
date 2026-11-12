@@ -79,24 +79,45 @@ object ReadingStats {
     // that reaches yesterday still counts as "alive," and today itself simply
     // isn't included in the returned count until it's actually been read. Only a
     // *missing yesterday* (with today also missing) actually breaks it.
+    // F28 (performance.md): this used to call dayKeysBackwardFrom(today, 3650), which
+    // eagerly builds a 3,650-element List<String> (a Calendar.add and a date format
+    // each) before the loop below ever runs - O(3650) time and space to answer an
+    // O(streak length) question, paid on every Home-screen stats refresh regardless
+    // of how short the actual streak is. This walks the same "yyyy-MM-dd" keys
+    // backward one calendar day at a time instead, generating (and discarding) a key
+    // only once the loop actually needs it, so the real cost is proportional to the
+    // streak length - still capped at the same 3650-day (10-year) lookback as a hard
+    // safety bound, just no longer spent up front on every call. The rule this
+    // preserves exactly (see the doc comment above): a streak that reaches yesterday
+    // still counts as alive even if today hasn't been read yet; only a missing
+    // yesterday (with today also missing) breaks it.
     fun currentStreakDays(readDates: Collection<String>, today: Long = System.currentTimeMillis()): Int {
         if (readDates.isEmpty()) return 0
         val readSet = readDates.toHashSet()
 
-        // 3650 days (10 years) is far more lookback than any real streak will ever
-        // need - this just needs to be "large enough that the loop below always
-        // finds its own break condition before running out of keys," not tuned to
-        // any expected streak length.
-        val keys = dayKeysBackwardFrom(today, 3650)
+        val calendar = Calendar.getInstance().apply { timeInMillis = today }
+        val fmt = formatter()
+        var daysWalked = 0
+        fun nextKey(): String {
+            if (daysWalked > 0) calendar.add(Calendar.DAY_OF_YEAR, -1)
+            daysWalked++
+            return fmt.format(calendar.time)
+        }
 
-        var startIndex = 0
-        if (keys[0] !in readSet) {
-            startIndex = if (keys[1] in readSet) 1 else return 0
+        var key = nextKey() // today
+        if (key !in readSet) {
+            key = nextKey() // yesterday
+            if (key !in readSet) return 0
         }
 
         var streak = 0
-        for (i in startIndex until keys.size) {
-            if (keys[i] in readSet) streak++ else break
+        // Same 3650-day (10-year) cap as before - see its original rationale: far
+        // more lookback than any real streak will ever need, just large enough that
+        // this loop always finds its own break condition first.
+        while (daysWalked <= 3650) {
+            if (key !in readSet) break
+            streak++
+            key = nextKey()
         }
         return streak
     }

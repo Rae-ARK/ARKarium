@@ -2,6 +2,7 @@ package com.arkarium.app.data
 
 import android.content.Context
 import androidx.documentfile.provider.DocumentFile
+import androidx.room.withTransaction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
@@ -232,13 +233,17 @@ class ScannerImpl(private val context: Context) {
         authorIdByNormalizedName: Map<String, String>
     ): NovelEntity {
         val id = novelIdFor(root, child)
-        val coverUri = findCoverUri(child)
+        // Listed once and shared with findCoverUri/readLocalMetadata below, instead
+        // of each of them separately calling child.listFiles() against the same
+        // folder - see F26 in performance.md.
+        val childFiles = child.listFiles().toList()
+        val coverUri = findCoverUri(childFiles)
         // Optional per-novel metadata.json in the novel's own folder, next to
         // cover.* and the chapter/arc folders - see readLocalMetadata() for the
         // schema. Lets a user set title/author/description/genres/publishedDate
         // by hand (or via a script) without needing the "Fetch info" lookup,
         // which only searches Google Books and mostly won't have web novels.
-        val localMetadata = readLocalMetadata(child)
+        val localMetadata = readLocalMetadata(childFiles)
         // Resolution order (see "Linking a fiction to an author" in
         // AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md): explicit authorId first, then a
         // case-insensitive name fallback, then no link at all.
@@ -314,7 +319,11 @@ class ScannerImpl(private val context: Context) {
     ) = withContext(Dispatchers.IO) {
       try {
         onProgress("Checking fingerprint...")
-        val fingerprint = computeFingerprint(novelFolder, novelId)
+        // Listed once and shared with computeFingerprint, arc detection and the
+        // root-level parseChaptersInFolder call below, instead of each of them
+        // separately calling novelFolder.listFiles() - see F26 in performance.md.
+        val novelChildren = novelFolder.listFiles().toList()
+        val fingerprint = computeFingerprint(novelFolder, novelId, novelChildren)
 
         // Check if we can skip rescan (incremental optimization)
         val existingFingerprint = db.scanFingerprintDao().forNovel(novelId)
@@ -350,7 +359,7 @@ class ScannerImpl(private val context: Context) {
         // match an arc pattern but have no captured number (just "Arc" / "Volume" with
         // nothing after it) fall back to sorting after every numbered arc, by name.
         onProgress("Detecting arcs...")
-        val arcFolders = novelFolder.listFiles()
+        val arcFolders = novelChildren
             .filter { it.isDirectory && isArcFolder(it.name ?: "") }
             .sortedWith(
                 compareBy(
@@ -358,41 +367,70 @@ class ScannerImpl(private val context: Context) {
                     { it.name ?: "" }
                 )
             )
-        val arcs = mutableMapOf<String, ArcEntity>()
-        val seenArcIds = mutableSetOf<String>()
-        arcFolders.forEachIndexed { idx, arcFolder ->
-            val arcName = arcFolder.name ?: "Arc ${idx + 1}"
-            val arcId = UUID.nameUUIDFromBytes("${novelId}:${arcFolder.uri}".toByteArray()).toString()
-            val arcCoverUri = findCoverUri(arcFolder)
-            val arc = ArcEntity(id = arcId, novelId = novelId, name = arcName, coverUri = arcCoverUri, position = idx)
-            db.arcDao().upsert(arc)
-            arcs[arcFolder.uri.toString()] = arc
-            seenArcIds.add(arcId)
-        }
-        // Remove arcs whose folder no longer exists (chapters under it fall back to
-        // novel-level via the ON DELETE SET NULL foreign key rather than being deleted).
-        val existingArcs = db.arcDao().forNovel(novelId)
-        existingArcs.filter { it.id !in seenArcIds }.forEach { stale ->
-            db.arcDao().delete(stale.id)
-        }
+        // Each arc folder listed once here and reused below by findCoverUri and
+        // parseChaptersInFolder, instead of each separately re-listing the same arc
+        // folder - see F26 in performance.md. (computeFingerprint's own directory walk
+        // above still lists every subfolder, arc-matching or not, independently of
+        // this: it has to run before we even know whether a rescan is needed at all,
+        // so it can't share this particular listing - see performance.md's note on
+        // the remaining overlap.)
+        val arcChildrenByUri = arcFolders.associate { it.uri.toString() to it.listFiles().toList() }
 
-        // Parse chapter files from root and arc subfolders, tracking which chapter IDs
-        // are still present so we can remove only the ones that truly vanished.
         onProgress("Parsing chapters...")
-        val seenChapterIds = mutableSetOf<String>()
-        seenChapterIds += parseChaptersInFolder(novelFolder, novelId, null, db)
-        for (arcFolder in arcFolders) {
-            val arcId = arcs[arcFolder.uri.toString()]?.id
-            seenChapterIds += parseChaptersInFolder(arcFolder, novelId, arcId, db)
-        }
-        val existingChapters = db.chapterDao().forNovel(novelId)
-        existingChapters.filter { it.id !in seenChapterIds }.forEach { stale ->
-            db.chapterDao().delete(stale.id)
-        }
 
-        // Save fingerprint
-        onProgress("Saving fingerprint...")
-        db.scanFingerprintDao().upsert(fingerprint)
+        // F25 (performance.md): every upsert/delete below used to be its own bare
+        // suspend DAO call, i.e. its own implicit SQLite transaction/commit - a
+        // 300-chapter novel did roughly 300 separate commits for one logical "rescan
+        // this novel" unit of work. db.withTransaction groups all of it into a single
+        // commit, which also makes this the natural atomicity boundary a rescan that
+        // dies partway through should have had all along: either the whole novel's
+        // diff lands, or none of it does, rather than being left half-written. That's
+        // consistent with onNovelFolderSeen (scanRoot, fired before this function is
+        // ever reached) - a novel marked "seen" whose transaction here then fails is
+        // simply retried whole on the next scan, never partially applied.
+        //
+        // Deliberately does NOT wrap the onProgress calls above/below inside the
+        // transaction: onProgress can drive UI state on the caller's side, and this
+        // avoids holding a SQLite transaction open across arbitrary external suspend
+        // work, even though Room's transaction dispatcher would likely tolerate it.
+        db.withTransaction {
+            val arcs = mutableMapOf<String, ArcEntity>()
+            val seenArcIds = mutableSetOf<String>()
+            arcFolders.forEachIndexed { idx, arcFolder ->
+                val arcName = arcFolder.name ?: "Arc ${idx + 1}"
+                val arcId = UUID.nameUUIDFromBytes("${novelId}:${arcFolder.uri}".toByteArray()).toString()
+                val arcCoverUri = findCoverUri(arcChildrenByUri.getValue(arcFolder.uri.toString()))
+                val arc = ArcEntity(id = arcId, novelId = novelId, name = arcName, coverUri = arcCoverUri, position = idx)
+                db.arcDao().upsert(arc)
+                arcs[arcFolder.uri.toString()] = arc
+                seenArcIds.add(arcId)
+            }
+            // Remove arcs whose folder no longer exists (chapters under it fall back to
+            // novel-level via the ON DELETE SET NULL foreign key rather than being deleted).
+            val existingArcs = db.arcDao().forNovel(novelId)
+            existingArcs.filter { it.id !in seenArcIds }.forEach { stale ->
+                db.arcDao().delete(stale.id)
+            }
+
+            // Parse chapter files from root and arc subfolders, tracking which chapter
+            // IDs are still present so we can remove only the ones that truly vanished.
+            val seenChapterIds = mutableSetOf<String>()
+            seenChapterIds += parseChaptersInFolder(novelFolder, novelId, null, db, novelChildren)
+            for (arcFolder in arcFolders) {
+                val arcId = arcs[arcFolder.uri.toString()]?.id
+                seenChapterIds += parseChaptersInFolder(
+                    arcFolder, novelId, arcId, db,
+                    arcChildrenByUri.getValue(arcFolder.uri.toString())
+                )
+            }
+            val existingChapters = db.chapterDao().forNovel(novelId)
+            existingChapters.filter { it.id !in seenChapterIds }.forEach { stale ->
+                db.chapterDao().delete(stale.id)
+            }
+
+            // Save fingerprint, in the same transaction as the diff it describes.
+            db.scanFingerprintDao().upsert(fingerprint)
+        }
       } catch (e: SecurityException) {
           // Permission to this novel's folder was revoked mid-scan - skip it instead of
           // taking down the whole library scan (and the app) with it.
@@ -406,9 +444,13 @@ class ScannerImpl(private val context: Context) {
         folder: DocumentFile,
         novelId: String,
         arcId: String?,
-        db: AppDatabase
+        db: AppDatabase,
+        // Already-listed children of `folder`, shared by the caller instead of this
+        // function listing the same folder again on its own - see F26 in
+        // performance.md.
+        children: List<DocumentFile>
     ): List<String> = withContext(Dispatchers.IO) {
-        val files = folder.listFiles().filter { it.isFile && it.name?.matches(Regex("(?i).*\\.(txt|md)$")) == true }
+        val files = children.filter { it.isFile && it.name?.matches(Regex("(?i).*\\.(txt|md)$")) == true }
         val ids = mutableListOf<String>()
         files.forEachIndexed { idx, file ->
             val parsed = parseChapter(file.name ?: "Chapter ${idx + 1}")
@@ -502,13 +544,26 @@ class ScannerImpl(private val context: Context) {
     // edited, or removed, which would otherwise make the incremental-rescan check
     // silently miss changes. File count is tracked alongside size/lastModified so a
     // same-size rename (delete A, add B) still changes the fingerprint.
-    private fun computeFingerprint(novelFolder: DocumentFile, novelId: String): ScanFingerprintEntity {
+    // Takes the novel folder's already-listed children (novelChildren) instead of
+    // listing novelFolder itself again - this used to call novelFolder.listFiles()
+    // twice on its own (once for the root-level pass below, once more just to find
+    // subfolders), on top of scanChaptersForNovel's own separate listing of the same
+    // folder for arc detection - see F26 in performance.md. Each subfolder is still
+    // listed once here, which can't be shared further: this needs every subfolder's
+    // file metadata (not just the arc-pattern-matching ones the arc loop cares
+    // about), and it has to run before we even know whether a rescan is needed at
+    // all, before arc folders are listed separately for that loop.
+    private fun computeFingerprint(
+        novelFolder: DocumentFile,
+        novelId: String,
+        novelChildren: List<DocumentFile>
+    ): ScanFingerprintEntity {
         var fileCount = 0
         var maxLastModified = 0L
         var totalSize = 0L
 
-        fun accumulateFiles(folder: DocumentFile) {
-            folder.listFiles().forEach { entry ->
+        fun accumulateFiles(entries: List<DocumentFile>) {
+            entries.forEach { entry ->
                 if (entry.isFile) {
                     fileCount++
                     val entryModified = entry.lastModified()
@@ -528,8 +583,8 @@ class ScannerImpl(private val context: Context) {
         // into arbitrarily deep folder trees the scanner never reads chapters from,
         // which both wastes time and would make the fingerprint sensitive to changes
         // scanChaptersForNovel() doesn't even look at.
-        accumulateFiles(novelFolder)
-        novelFolder.listFiles().filter { it.isDirectory }.forEach { accumulateFiles(it) }
+        accumulateFiles(novelChildren)
+        novelChildren.filter { it.isDirectory }.forEach { accumulateFiles(it.listFiles().toList()) }
 
         val fingerprintId = UUID.nameUUIDFromBytes("${novelId}:fingerprint".toByteArray()).toString()
         return ScanFingerprintEntity(
@@ -548,8 +603,13 @@ class ScannerImpl(private val context: Context) {
     // were silently skipped. Now: prefer an exact "cover.<ext>" match if one exists
     // (keeps today's convention as the unambiguous default), otherwise fall back to
     // any image in the folder whose name contains "cover" as a standalone word.
-    private fun findCoverUri(folder: DocumentFile): String? {
-        val images = folder.listFiles().filter {
+    // Takes an already-listed folder.listFiles() result rather than the folder
+    // itself - see F26 in performance.md: this used to call folder.listFiles() on
+    // its own, one more redundant listing of a folder every other helper touching
+    // that same folder was also independently listing. Callers now list each folder
+    // once and share the result across every helper that needs it.
+    private fun findCoverUri(children: List<DocumentFile>): String? {
+        val images = children.filter {
             it.isFile && it.name?.matches(Regex("(?i).*\\.(jpg|jpeg|png|webp)$")) == true
         }
         images.firstOrNull { it.name?.matches(Regex("(?i)cover\\.(jpg|jpeg|png|webp)$")) == true }
@@ -584,8 +644,10 @@ class ScannerImpl(private val context: Context) {
     // "genres" accepts either a JSON array of strings or a single comma-separated string.
     // "authorId" links this fiction to authors/<authorId>.json - see
     // AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md's "Linking a fiction to an author".
-    private fun readLocalMetadata(folder: DocumentFile): LocalMetadata? {
-        val file = folder.listFiles().firstOrNull {
+    // Same change as findCoverUri above - takes the folder's already-listed children
+    // instead of listing it again itself (F26, performance.md).
+    private fun readLocalMetadata(children: List<DocumentFile>): LocalMetadata? {
+        val file = children.firstOrNull {
             it.isFile && it.name?.equals("metadata.json", ignoreCase = true) == true
         } ?: return null
         return try {
@@ -633,10 +695,13 @@ class ScannerImpl(private val context: Context) {
     private fun findAuthorsFolder(root: DocumentFile): DocumentFile? =
         root.listFiles().firstOrNull { it.isDirectory && it.name?.equals("authors", ignoreCase = true) == true }
 
-    // Resolves an author.json "avatar" filename against the authors/ folder, the same
-    // way findCoverUri resolves cover.* against a novel folder.
-    private fun resolveAuthorAvatarUri(authorsFolder: DocumentFile, avatarFilename: String): String? =
-        authorsFolder.listFiles().firstOrNull {
+    // Resolves an author.json "avatar" filename against the authors/ folder's
+    // already-listed children, the same way findCoverUri resolves cover.* against a
+    // novel folder's children - see F26 in performance.md: this used to call
+    // authorsFolder.listFiles() again for every single author, on top of
+    // scanAuthorsFolder's own listing of the same folder for the .json pass.
+    private fun resolveAuthorAvatarUri(children: List<DocumentFile>, avatarFilename: String): String? =
+        children.firstOrNull {
             it.isFile && it.name?.equals(avatarFilename, ignoreCase = true) == true
         }?.uri?.toString()
 
@@ -644,11 +709,11 @@ class ScannerImpl(private val context: Context) {
     // has none at all): a same-folder image named after the author, e.g.
     // "authors/<name>.png" or "authors/<id>.png", the same pattern as a novel/arc's
     // cover.*. Tries the id first (usually already filename-safe, lowercase) then the
-    // display name, and accepts jpg/jpeg/png/webp.
-    private fun findAuthorAvatarUri(authorsFolder: DocumentFile, id: String, name: String): String? {
-        val images = authorsFolder.listFiles().filter {
-            it.isFile && it.name?.matches(Regex("(?i).*\\.(jpg|jpeg|png|webp)$")) == true
-        }
+    // display name, and accepts jpg/jpeg/png/webp. Takes the authors/ folder's
+    // pre-filtered image list (built once in scanAuthorsFolder) instead of
+    // re-listing and re-filtering the whole folder for every author - same F26 fix
+    // as resolveAuthorAvatarUri above.
+    private fun findAuthorAvatarUri(images: List<DocumentFile>, id: String, name: String): String? {
         fun matching(key: String): String? = images.firstOrNull {
             it.name?.substringBeforeLast('.')?.equals(key, ignoreCase = true) == true
         }?.uri?.toString()
@@ -700,8 +765,16 @@ class ScannerImpl(private val context: Context) {
         authorsFolder: DocumentFile,
         onProgress: suspend (message: String) -> Unit
     ): List<AuthorEntity> {
-        val files = authorsFolder.listFiles().filter {
+        // Listed once and shared below (the .json pass, the exact-avatar-filename
+        // lookup, and the image-filename-matching fallback) instead of each pass
+        // separately re-listing authorsFolder, once per author in the per-author
+        // lookups' case - see F26 in performance.md.
+        val authorsFolderChildren = authorsFolder.listFiles().toList()
+        val files = authorsFolderChildren.filter {
             it.isFile && it.name?.endsWith(".json", ignoreCase = true) == true
+        }
+        val avatarImages = authorsFolderChildren.filter {
+            it.isFile && it.name?.matches(Regex("(?i).*\\.(jpg|jpeg|png|webp)$")) == true
         }
         val result = mutableListOf<AuthorEntity>()
         val seenIds = mutableSetOf<String>()
@@ -729,8 +802,8 @@ class ScannerImpl(private val context: Context) {
                     // Explicit "avatar" field in author.json wins if it resolves;
                     // otherwise fall back to a same-folder authors/<id-or-name>.png
                     // (jpg/webp also accepted) - see findAuthorAvatarUri above.
-                    avatarUri = parsed?.avatar?.let { resolveAuthorAvatarUri(authorsFolder, it) }
-                        ?: findAuthorAvatarUri(authorsFolder, id, name),
+                    avatarUri = parsed?.avatar?.let { resolveAuthorAvatarUri(authorsFolderChildren, it) }
+                        ?: findAuthorAvatarUri(avatarImages, id, name),
                     bio = parsed?.bio,
                     joined = parsed?.joined,
                     location = parsed?.location,
