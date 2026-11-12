@@ -14,7 +14,9 @@ import kotlinx.coroutines.launch
 // Stage 2.2 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the first of the plan's four
 // feature-scoped ViewModels pulled out of MainActivity. Deliberately the smallest of
 // the four: it owns no state MainActivity didn't already have (currentTheme,
-// currentSystemDefaultLightVariant, useCustomFolder, savedUri), it just re-exposes
+// currentSystemDefaultLightVariant, and - since
+// docs/arkarium/proposal/remove-saf-support.md, "accepted" - shouldShowSafRemovedNotice
+// in place of the old useCustomFolder/savedUri pair), it just re-exposes
 // SettingsPreferences' Flows as StateFlows - so call sites keep reading `.value` via
 // collectAsState() the same way they read the old mutableStateOf fields - and
 // forwards writes back to it. All persistence/validation logic stays on
@@ -44,11 +46,11 @@ class SettingsViewModel(private val prefs: SettingsPreferences) : ViewModel() {
     val currentSystemDefaultLightVariant: StateFlow<Theme> = prefs.systemDefaultLightVariant
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Theme.LIGHT)
 
-    val useCustomFolder: StateFlow<Boolean> = prefs.useCustomFolder
+    // Seeded false (don't show) rather than true, so the dialog never flashes on
+    // first composition before DataStore's real value has loaded - the same
+    // "show nothing until we actually know" posture every other StateFlow here uses.
+    val shouldShowSafRemovedNotice: StateFlow<Boolean> = prefs.shouldShowSafRemovedNotice
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
-
-    val savedUri: StateFlow<String?> = prefs.libraryUri
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun setTheme(theme: Theme) {
         viewModelScope.launch { prefs.setTheme(theme) }
@@ -58,12 +60,8 @@ class SettingsViewModel(private val prefs: SettingsPreferences) : ViewModel() {
         viewModelScope.launch { prefs.setSystemDefaultLightVariant(variant) }
     }
 
-    fun setUseCustomFolder(enabled: Boolean) {
-        viewModelScope.launch { prefs.setUseCustomFolder(enabled) }
-    }
-
-    fun setLibraryUri(uri: String) {
-        viewModelScope.launch { prefs.setLibraryUri(uri) }
+    fun dismissSafRemovedNotice() {
+        viewModelScope.launch { prefs.dismissSafRemovedNotice() }
     }
 
     companion object {

@@ -1,7 +1,6 @@
 package com.arkarium.app.data
 
 import android.content.Context
-import android.net.Uri
 import androidx.documentfile.provider.DocumentFile
 
 // Extracted from MainActivity.kt as Stage 2.1 of Phase 2 (see
@@ -12,21 +11,23 @@ import androidx.documentfile.provider.DocumentFile
 // (a ViewModel in a later Phase 2 stage, not just MainActivity), same as
 // ui/theme/AppTheme.kt's resolveTheme from Phase 1.
 
-// Resolves whichever DocumentFile root the scanner should currently read from.
-// - Custom folder OFF (the default): the app's own private external-storage folder,
-//   e.g. Android/data/com.arkarium.app/files - readable/writable with zero permission
-//   prompts on every Android version, so a fresh install has a working library the
-//   moment novel folders are dropped in there, no SAF picker interaction required.
-// - Custom folder ON: the SAF tree the user picked in Settings, or null if they've
-//   turned the toggle on but haven't picked a folder yet (caller should leave the
-//   library empty and let EmptyLibraryPrompt/Settings prompt them to pick one).
-fun resolveLibraryRoot(context: Context, useCustomFolder: Boolean, savedUri: String?): DocumentFile? {
-    if (useCustomFolder) {
-        val uri = savedUri?.let { Uri.parse(it) } ?: return null
-        return DocumentFile.fromTreeUri(context, uri)
-    }
-    val defaultDir = (context.getExternalFilesDir(null) ?: context.filesDir).also { it.mkdirs() }
-    return DocumentFile.fromFile(defaultDir)
+// Resolves the one fixed DocumentFile root the scanner always reads from:
+// Android/media/com.arkarium.app/, via getExternalMediaDirs()[0]. No longer
+// user-choosable - see docs/arkarium/proposal/remove-saf-support.md ("accepted"):
+// a SAF-backed custom folder used to be available as an opt-in, but that path is
+// gone, along with the folder-identity and SAF-performance problems it caused.
+// Visible to file managers and PCs via USB the same way Android/data used to be
+// before Android 13 closed that off, and any app can read/write it, so dragging a
+// novel folder in from outside ARKarium needs no in-app picker step.
+// getExternalMediaDirs() carries a deprecated annotation in the SDK but has no
+// removal timeline and remains in production use (WhatsApp, Telegram, etc.) - see
+// the proposal doc for the full tradeoff. Its first element can be null if shared
+// storage genuinely isn't available on this device/state; callers already treat a
+// null result as "leave the library empty," same as the old SAF-unconfigured case.
+fun resolveLibraryRoot(context: Context): DocumentFile? {
+    val dir = context.getExternalMediaDirs().firstOrNull() ?: return null
+    dir.mkdirs()
+    return DocumentFile.fromFile(dir)
 }
 
 // Merges a freshly-scanned NovelEntity with whatever row already exists for this

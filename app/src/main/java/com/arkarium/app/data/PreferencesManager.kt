@@ -182,17 +182,18 @@ enum class Theme {
 interface SettingsPreferences {
     val theme: Flow<Theme>
     val systemDefaultLightVariant: Flow<Theme>
-    val useCustomFolder: Flow<Boolean>
-    val libraryUri: Flow<String?>
+    // One-time "custom folder support was removed" notice - see
+    // docs/arkarium/proposal/remove-saf-support.md ("accepted"). True exactly once,
+    // for an install that had USE_CUSTOM_FOLDER_KEY set before the toggle was
+    // removed, until dismissSafRemovedNotice() is called.
+    val shouldShowSafRemovedNotice: Flow<Boolean>
     suspend fun setTheme(theme: Theme)
     suspend fun setSystemDefaultLightVariant(variant: Theme)
-    suspend fun setUseCustomFolder(enabled: Boolean)
-    suspend fun setLibraryUri(uri: String)
+    suspend fun dismissSafRemovedNotice()
 }
 
 class PreferencesManager(private val context: Context) : SettingsPreferences {
     companion object {
-        private val LIBRARY_URI_KEY = stringPreferencesKey("library_uri")
         private val THEME_KEY = stringPreferencesKey("theme")
         // Only consulted while THEME_KEY resolves to SYSTEM_DEFAULT and the system is
         // currently in its light/day state - picks which of the two non-dark themes
@@ -201,10 +202,17 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         // lose whichever daytime look the user last chose.
         private val SYSTEM_DEFAULT_LIGHT_VARIANT_KEY = stringPreferencesKey("system_default_light_variant")
         private val DEFAULT_PAGE_SIZE_KEY = intPreferencesKey("default_page_size")
-        // Opt-in flag for pointing the scanner at a user-picked SAF folder instead of the
-        // app's own private storage. Defaults to false (off) so a fresh install has a
-        // working library with zero permission prompts - see MainActivity.resolveLibraryRoot.
+        // Retired per docs/arkarium/proposal/remove-saf-support.md ("accepted"): the
+        // opt-in flag for pointing the scanner at a user-picked SAF folder, and the URI
+        // it pointed at. Neither key is written anymore - the library root is now the
+        // single fixed Android/media/com.arkarium.app/ folder (see
+        // data/LibraryScan.kt's resolveLibraryRoot). Both keys are kept here, private
+        // and read-only, purely so an install that had USE_CUSTOM_FOLDER_KEY set before
+        // this change can be shown the one-time removal notice below; they are never
+        // written to again and can be dropped entirely once that notice has shipped for
+        // a while.
         private val USE_CUSTOM_FOLDER_KEY = booleanPreferencesKey("use_custom_folder")
+        private val HAS_SHOWN_SAF_REMOVED_NOTICE_KEY = booleanPreferencesKey("has_shown_saf_removed_notice")
         // Splash-screen behavior toggles (see SettingsScreen's "Splash Screen"
         // section). Both default to true - the line-reconstruction animation and
         // its guitar-chord score are the intended experience out of the box; these
@@ -223,8 +231,8 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         private val HAS_SEEN_COVER_ENLARGE_HINT_KEY = booleanPreferencesKey("has_seen_cover_enlarge_hint")
     }
 
-    // libraryUri.collect() and theme.collect() run unattended in MainActivity.onCreate,
-    // before the user has touched anything - same situation as startScan(). DataStore's
+    // theme.collect() runs unattended in MainActivity.onCreate, before the user has
+    // touched anything - same situation as startScan(). DataStore's
     // .data Flow throws IOException if the prefs file on disk can't be read (corrupted
     // file, first-run race, low storage, some OEM storage quirks); without this .catch,
     // that exception propagates out of collect() and crashes the whole app on launch
@@ -235,8 +243,12 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         if (e is IOException) emit(emptyPreferences()) else throw e
     }
 
-    override val libraryUri: Flow<String?> = safePrefs.map { prefs ->
-        prefs[LIBRARY_URI_KEY]
+    // See USE_CUSTOM_FOLDER_KEY/HAS_SHOWN_SAF_REMOVED_NOTICE_KEY's doc comment above -
+    // true exactly once, for an install that had the old SAF toggle on, until
+    // dismissSafRemovedNotice() below is called. LibrarySettingsScreen shows the
+    // one-time notice dialog when this is true.
+    override val shouldShowSafRemovedNotice: Flow<Boolean> = safePrefs.map { prefs ->
+        (prefs[USE_CUSTOM_FOLDER_KEY] ?: false) && !(prefs[HAS_SHOWN_SAF_REMOVED_NOTICE_KEY] ?: false)
     }
 
     // Defaults to SYSTEM_DEFAULT (follow the device's day/night setting) on a fresh
@@ -273,10 +285,6 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
 
     val defaultPageSize: Flow<Int> = safePrefs.map { prefs ->
         prefs[DEFAULT_PAGE_SIZE_KEY] ?: 10
-    }
-
-    override val useCustomFolder: Flow<Boolean> = safePrefs.map { prefs ->
-        prefs[USE_CUSTOM_FOLDER_KEY] ?: false
     }
 
     // Default true - see SPLASH_ANIMATION_ENABLED_KEY's doc comment above.
@@ -348,15 +356,12 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     val readerBrightnessSliderEnabled: Flow<Boolean> = safePrefs.map(::readerBrightnessSliderEnabledOf)
     val readerBrightness: Flow<Float> = safePrefs.map(::readerBrightnessOf)
 
-    override suspend fun setLibraryUri(uri: String) {
+    // Called once, when LibrarySettingsScreen's one-time SAF-removed notice is
+    // dismissed - see HAS_SHOWN_SAF_REMOVED_NOTICE_KEY's doc comment above. There's
+    // deliberately no setter to flip this back to false.
+    override suspend fun dismissSafRemovedNotice() {
         context.dataStore.edit { prefs ->
-            prefs[LIBRARY_URI_KEY] = uri
-        }
-    }
-
-    override suspend fun setUseCustomFolder(enabled: Boolean) {
-        context.dataStore.edit { prefs ->
-            prefs[USE_CUSTOM_FOLDER_KEY] = enabled
+            prefs[HAS_SHOWN_SAF_REMOVED_NOTICE_KEY] = true
         }
     }
 

@@ -133,12 +133,14 @@ import java.util.UUID
 // tracking are the single source of truth for "what's showing" from Stage 3.1 onward, the
 // same conclusion Stage 3.4's `from`-field removal already reached for Screen.Author.
 //
-// currentTheme/currentSystemDefaultLightVariant/useCustomFolder/savedUri formerly
-// lived here as an Activity mutableStateOf field (the first two) or a per-composition
-// collectAsState() local (the last two) - both now come from settingsViewModel
-// (Stage 2.2 of Phase 2, see docs/arkarium/foundational/design-notes.md). Every read site below
-// (`currentTheme.value`, `useCustomFolder.value`, etc.) is unchanged, since
-// settingsViewModel's StateFlows are collected under those same local names.
+// currentTheme/currentSystemDefaultLightVariant formerly lived here as an Activity
+// mutableStateOf field, now come from settingsViewModel (Stage 2.2 of Phase 2, see
+// docs/arkarium/foundational/design-notes.md). Every read site below (`currentTheme.value`,
+// etc.) is unchanged, since settingsViewModel's StateFlows are collected under those
+// same local names. The old useCustomFolder/savedUri pair (once a per-composition
+// collectAsState() local) is gone with SAF support itself - see
+// docs/arkarium/proposal/remove-saf-support.md ("accepted") - replaced by
+// settingsViewModel.shouldShowSafRemovedNotice, collected the same way.
 //
 // metadataSearchState/addFictionState and fetchMetadataFor/applyMetadata formerly
 // lived here too - all four now come from metadataViewModel (Stage 2.4 of Phase 2,
@@ -296,59 +298,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val pickFolder = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-        uri?.let { selectedUri ->
-            contentResolver.takePersistableUriPermission(selectedUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            lifecycleScope.launch {
-                // Release the previously-persisted grant (if any) before overwriting it
-                // below. Without this, Android's per-app cap on persisted URI grants
-                // (OEM-dependent, commonly low hundreds) fills up with every re-pick of
-                // "Use custom folder" ever accumulating a permanent, never-released grant -
-                // eventually takePersistableUriPermission throws a SecurityException with
-                // no visible cause. Must read the old value before setLibraryUri overwrites
-                // it two lines below, and only release if it's actually a different URI
-                // (re-picking the same folder shouldn't drop the grant we just took above).
-                val oldUri = prefsManager.libraryUri.first()
-                if (oldUri != null && oldUri != selectedUri.toString()) {
-                    try {
-                        contentResolver.releasePersistableUriPermission(
-                            Uri.parse(oldUri),
-                            Intent.FLAG_GRANT_READ_URI_PERMISSION
-                        )
-                    } catch (_: SecurityException) {
-                        // Grant was already gone (e.g. released elsewhere, or never
-                        // actually held) - nothing to clean up.
-                    }
-                }
-                // Picking a folder here only ever happens once "Use custom folder" is on
-                // (see SettingsScreen) - persisting it true here too is just defensive:
-                // it keeps this the single source of truth for "which folder did the user
-                // pick" even if some future caller ever launches pickFolder before the
-                // toggle has been flipped. Kept as direct, awaited prefsManager suspend
-                // calls (not settingsViewModel.setUseCustomFolder/setLibraryUri, which
-                // fire-and-forget into their own viewModelScope launch) so both writes
-                // are guaranteed to land, in order, before novels.clear()/startScan below
-                // run in this same coroutine - unchanged from pre-Stage-2.2 behavior.
-                prefsManager.setUseCustomFolder(true)
-                prefsManager.setLibraryUri(selectedUri.toString())
-                // Switching to a newly-picked folder mints entirely different novel IDs
-                // (see ScannerImpl's id hash, keyed off root.uri) - clear first so the
-                // reconciliation in startScan's onScanCompleted doesn't have to wait for a
-                // second scan pass to drop the old source's now-stale novels.
-                libraryViewModel.novels.clear()
-                libraryViewModel.startScan(DocumentFile.fromTreeUri(this@MainActivity, selectedUri) ?: return@launch)
-            }
-        }
-    }
+    // pickFolder (the SAF ACTION_OPEN_DOCUMENT_TREE launcher, plus the persisted
+    // URI-permission grant/release logic around it) was removed per
+    // docs/arkarium/proposal/remove-saf-support.md ("accepted") - there is no folder
+    // left to pick, since the library root is now the one fixed
+    // Android/media/com.arkarium.app/ folder resolveLibraryRoot always returns.
 
     // resolveLibraryRoot and mergeNovelForRescan formerly declared here now live in
     // data/LibraryScan.kt as plain top-level functions (Stage 2.1 of Phase 2 - see
-    // docs/arkarium/foundational/design-notes.md). Every call site below is unchanged except
-    // resolveLibraryRoot's, which now passes `this@MainActivity` as the new explicit
-    // `context` parameter (several call sites are inside `lifecycleScope.launch { }`/
-    // Composable lambdas, where a bare `this` would resolve to the wrong receiver -
-    // see e.g. pickFolder's existing `DocumentFile.fromTreeUri(this@MainActivity,
-    // ...)` above for the same pattern already in use).
+    // docs/arkarium/foundational/design-notes.md). Every call site below passes
+    // `this@MainActivity` as resolveLibraryRoot's explicit `context` parameter
+    // (several call sites are inside `lifecycleScope.launch { }`/Composable lambdas,
+    // where a bare `this` would resolve to the wrong receiver). It no longer takes
+    // useCustomFolder/savedUri parameters - see the proposal doc above.
 
     // scanSingleSyncedNovel formerly lived here too (see docs/arkarium/foundational/architecture.md,
     // Sync invariants S8) - it now lives on syncViewModel alongside syncAllRaeArkNovels, its only
@@ -784,27 +746,24 @@ class MainActivity : ComponentActivity() {
                 savedInstanceState.getString(STATE_PENDING_NOTIFY_TOGGLE_NOVEL)
         }
 
-        // Auto-scan on every cold launch, before the user has touched anything.
-        // Custom folder OFF (the default): always resolves to the app's private storage
-        // folder, so this runs and populates the library with zero user interaction ever
-        // required. Custom folder ON: resolves to the saved SAF tree, or null if the
-        // toggle is on but nothing's been picked yet - in which case this deliberately
-        // does nothing and leaves EmptyLibraryPrompt/Settings to prompt for a folder.
+        // Auto-scan on every cold launch, before the user has touched anything. The
+        // library root is now the one fixed Android/media/com.arkarium.app/ folder (see
+        // docs/arkarium/proposal/remove-saf-support.md, "accepted"), so this always
+        // resolves and runs, populating the library with zero user interaction ever
+        // required - there's no longer an "unconfigured" state to wait on, so this is a
+        // one-shot call rather than collecting a Flow of preference changes.
         // startScan() already fails soft internally, but this outer catch is the last
         // line of defense so that literally nothing thrown on this path (an unexpected DB
-        // error, a revoked SAF grant surfacing oddly, etc) can crash the app on startup.
+        // error, shared storage not being ready yet, etc) can crash the app on startup.
         // An uncaught exception here previously did exactly that.
         lifecycleScope.launch {
-            combine(prefsManager.useCustomFolder, prefsManager.libraryUri) { useCustom, uri -> useCustom to uri }
-                .collect { (useCustom, uri) ->
-                    if (libraryViewModel.novels.isEmpty()) {
-                        try {
-                            resolveLibraryRoot(this@MainActivity, useCustom, uri)?.let { libraryViewModel.startScan(it) }
-                        } catch (e: Exception) {
-                            libraryViewModel.reportScanSetupError("Couldn't load your library: ${e.message}")
-                        }
-                    }
+            if (libraryViewModel.novels.isEmpty()) {
+                try {
+                    resolveLibraryRoot(this@MainActivity)?.let { libraryViewModel.startScan(it) }
+                } catch (e: Exception) {
+                    libraryViewModel.reportScanSetupError("Couldn't load your library: ${e.message}")
                 }
+            }
         }
 
         // Theme and its System Default sub-preference are no longer watched here -
