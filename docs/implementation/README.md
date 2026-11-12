@@ -9,7 +9,7 @@ Each doc is one ladder: a table of rungs, each `done`, `current`, `next`,
 |---|---|---|
 | [`tts-playback-controls.md`](tts-playback-controls.md) | rungs 1-6 done in code | none — all 6 coded; 4, 5, 6 still need an on-device pass before exit |
 | [`test-coverage.md`](test-coverage.md) | not started | 4.1 (next): `MetadataViewModelTest` |
-| [`engineering-backlog.md`](engineering-backlog.md) | 12 of 18 rungs done (1–11, 14) | 12 (next, own ladder when started): F3 novel identity |
+| [`engineering-backlog.md`](engineering-backlog.md) | 13 of 18 rungs done (1–11, 14, 19); 12 and 15 won't-fix; 18 partial (F15/F16 done, F19 open) | none — 13, 16, 17 queued pending their own ladder; 18's F19 remainder still queued |
 | [`multi-document-reader.md`](multi-document-reader.md) | rung 0 done | 1: loud (not silent) TTS listener collision |
 | [`ui-layer-reorg.md`](ui-layer-reorg.md) | not started | A1 (next): dialog host out of `MainActivity.renderMainContent()` |
 
