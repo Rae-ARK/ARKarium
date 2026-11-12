@@ -1,6 +1,6 @@
 # Engineering backlog: merged roadmap
 
-> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12 and 15 closed won't-fix (see below), 19 done in code, unmeasured (see below), 13, 16–18 queued · **Verified:** 2026-11-13 @ (this patch; rung 19 only — the rest as of 2026-11-12)
+> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12 and 15 closed won't-fix (see below), 19 done in code, unmeasured (see below), 18 done in code for F15/F16, unmeasured, F19 still open (see below), 13, 16, 17 queued · **Verified:** 2026-11-13 @ 56c19c4 (rung 18's F15/F16 portion only — rung 19 as of the prior patch, the rest as of 2026-11-12)
 > **Origin:** a follow-up review pass over the open findings in
 > [`../proposal/engineering-review.md`](../proposal/engineering-review.md) and its
 > detail docs, the two open entries in [`../proposal/bugs/`](../proposal/bugs/README.md),
@@ -39,7 +39,7 @@ and point this row at that instead.
 | 15 | F5 — SAF scan does ~3 provider queries per file (per-directory cache) | Large | **won't-fix — SAF support removed instead, see below** | [`../foundational/design-notes.md`](../foundational/design-notes.md) ("Settled decisions") |
 | 16 | F12/F14/F17 — Kotlin 2.x / Compose BOM / Navigation upgrade (D4 decided: staged) | Large | queued — own ladder when started | [`../proposal/performance.md`](../proposal/performance.md) |
 | 17 | F13 — splash cold-start cost (D6 decided: policy) | Large | queued | [`../proposal/performance.md`](../proposal/performance.md) |
-| 18 | F15, F16, F19 — image crossfade, general animation, reader typography | Large | queued | [`../proposal/performance.md`](../proposal/performance.md), [`../proposal/animation-and-polish.md`](../proposal/animation-and-polish.md) |
+| 18 | F15, F16, F19 — image crossfade, general animation, reader typography | Large | **F15 and F16 done in code, unmeasured; F19 still queued** | [`../proposal/performance.md`](../proposal/performance.md), [`../proposal/animation-and-polish.md`](../proposal/animation-and-polish.md) |
 | 19 | F25, F26, F28 — scan transaction batching, redundant `listFiles()` calls, streak-calc eager date-key list (F27 reviewed, deferred — no code change; F24 still open, needs a migration) | Small | **done in code, unmeasured — see below** | [`../proposal/performance.md`](../proposal/performance.md) |
 
 **Not yet started at all, no decision made, not on this ladder:** EPUB/PDF

@@ -1,6 +1,6 @@
 # Performance: SAF I/O, build/startup, recomposition, images, database and scan cost
 
-> **Kind:** proposal · **Status:** F14, F25, F26 and F28 fixed in code (all unmeasured — no device/benchmark run); F27 reviewed and deferred, no code change (see below); F24 and everything else not yet built; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-13 @ (this patch; F25/F26/F28 fixes and F27's deferral only — F24 and the rest as of 2026-11-12, the F14 additions/closure as of that same pass)
+> **Kind:** proposal · **Status:** F14, F15, F25, F26 and F28 fixed in code (all unmeasured — no device/benchmark run); F27 reviewed and deferred, no code change (see below); F24 and everything else not yet built; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-13 @ 56c19c4 (F15's shared `ImageLoader` only — F25/F26/F28 fixes and F27's deferral as of the prior patch, F24 and the rest as of 2026-11-12, the F14 additions/closure as of that same pass)
 > **Origin:** [`engineering-review.md`](engineering-review.md) F5, F12–F15, F24–F28.
 
 ### F5. SAF scan and sync cost several provider queries per file
@@ -187,26 +187,30 @@ same D4 toolchain-upgrade decision as F12.
 output to see which composables are actually non-skippable today, rather
 than guessing from the parameter types alone.
 
-### F15. No shared image loader, no crossfade or placeholder on cover art
+### F15. No shared image loader, no crossfade or placeholder on cover art — built
 
 **Severity:** Low. **Tags:** V.
-**Where:** no `Application` subclass anywhere under `app/src/main` (checked —
-none exists); Coil's `AsyncImage` calls across `ui/`.
+**Where:** `ArkariumApp.kt` now implements `ImageLoaderFactory`; Coil's
+`AsyncImage` calls across `ui/` pick the shared loader up automatically.
 
 `AsyncImage` with bounded sizes (already in place) is the right call for a
 list — `rememberAsyncImagePainter` alone loads at the image's original
-dimensions, and `SubcomposeAsyncImage` is too slow for a list context — but
-there's no `Application` class to hold a single shared Coil `ImageLoader`, so
-each `AsyncImage` call effectively gets Coil's default loader with no
-explicit shared memory/disk cache configuration, no `crossfade(true)`, and no
-placeholder — covers pop in abruptly rather than fading in, and there's
-nothing shown while a cover is loading.
+dimensions, and `SubcomposeAsyncImage` is too slow for a list context.
+Previously there was no `Application` class to hold a single shared Coil
+`ImageLoader`, so each `AsyncImage` call effectively got Coil's default
+loader with no explicit shared memory/disk cache configuration, no
+`crossfade(true)`, and no placeholder — covers popped in abruptly rather
+than fading in, and nothing was shown while a cover was loading.
 
-**Direction:** add an `Application` subclass implementing
-`ImageLoaderFactory`, configure one `ImageLoader` with a shared memory and
-disk cache and `crossfade(true)`, and give `AsyncImage` a `placeholder`. The
+**Built:** `ArkariumApp` now implements `ImageLoaderFactory` and its
+`newImageLoader()` builds one `ImageLoader` with a 200ms crossfade, a
+25%-of-memory `MemoryCache`, and a 2%-of-disk `DiskCache` under
+`cacheDir/image_cache`. Coil caches that loader itself once built, so every
+`AsyncImage` call site picked it up with no per-call-site change needed —
+see `animation-and-polish.md` F16 for the user-facing side of this (the
+cover crossfade itself). Still open: no `placeholder` per call site, and the
 planned full-screen cover viewer (`uiux.md`, "Arc covers are too small to
-see") needs its own full-resolution request separate from the list
+see") still needs its own full-resolution request separate from the list
 thumbnail's bounded one — don't reuse the same request for both.
 
 ### F24. Foreign-key columns have no index
