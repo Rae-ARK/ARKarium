@@ -1,5 +1,6 @@
 package com.arkarium.app.viewmodel
 
+import android.content.Context
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -11,13 +12,20 @@ import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.ArcEntity
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
+import com.arkarium.app.data.ChapterOverrideEntity
+import com.arkarium.app.data.ChapterReadEventEntity
 import com.arkarium.app.data.NovelEntity
+import com.arkarium.app.data.ReaderPosition
+import com.arkarium.app.data.ReadingProgressEntity
 import com.arkarium.app.data.ReadingStats
 import com.arkarium.app.data.ScannerImpl
 import com.arkarium.app.data.SyncStatus
 import com.arkarium.app.data.mergeNovelForRescan
+import com.arkarium.app.util.Haptics
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import java.util.UUID
 
 // Stage 2.3 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the second of the plan's
 // four feature-scoped ViewModels pulled out of MainActivity. Owns the library's core
@@ -31,16 +39,22 @@ import kotlinx.coroutines.withContext
 // but the writers on MainActivity would mean reaching back into private ViewModel
 // state from outside it, exactly what rule 2 (separation of concerns) rules out.
 //
-// Everything else that still reads/writes `novels` - addFictionByName,
-// syncAllRaeArkNovels/checkForUpdates/scanSingleSyncedNovel, setNotifyEnabled, the
-// sync-resolution actions, saveChapterEdits (which only calls this class's
-// loadNovelDetails to refresh, rather than owning chapters itself) - stays on
-// MainActivity until Stage 2.5 gives it a ViewModel; until then it reaches into
-// libraryViewModel.novels directly, exactly as the plan's Stage 2.5 note anticipates:
-// "[SyncViewModel's] scanSingleSyncedNovel path... reads/updates the novel list Stage
-// 2.3 already moved." fetchMetadataFor/applyMetadata made the same move a stage early
-// (Stage 2.4, MetadataViewModel) - applyMetadata takes this class as a constructor
-// dependency and reaches into `novels` the same way MainActivity's other callers do.
+// addFictionByName, syncAllRaeArkNovels/checkForUpdates/scanSingleSyncedNovel, and the
+// sync-resolution actions reach into `novels` from SyncViewModel instead (Stage 2.5) -
+// fetchMetadataFor/applyMetadata do the same from MetadataViewModel (Stage 2.4),
+// applyMetadata taking this class as a constructor dependency.
+//
+// setNotifyEnabled, saveChapterEdits, saveReadingProgress, loadAuthorPage, and
+// resolveLastReadChapterId (MainActivity's navigateToLastReadChapterOrDetail minus the
+// NavController.navigate call, which stays in MainActivity per "Navigation is
+// NavController only" below) used to live on MainActivity instead - this class's own
+// comment above named them as the Stage 2.5 follow-up that never happened; Stage 2.5
+// landed SyncViewModel but left these five behind. Moved here (not SyncViewModel)
+// because none of them touch SyncManager - they're all `db` reads/writes plus
+// `novels`/`chapters`/`arcs` refreshes, the same shape as loadNovelDetails/
+// refreshRecentlyRead just above. saveReadingProgress takes a Context parameter rather
+// than storing one (rule 1 - a one-off call parameter isn't a stored resource), used
+// only to fire Haptics.confirm; it is not retained past the call.
 //
 // mutableStateListOf/mutableStateOf, not StateFlow<List<...>> - every one of these is
 // mutated incrementally in place (index-set, add, removeAll), which is exactly the
@@ -108,6 +122,14 @@ class LibraryViewModel(
     val overriddenChapterIds: State<Set<String>> = _overriddenChapterIds
     private val _arcStartChapterIds = mutableStateOf<Set<String>>(emptySet())
     val arcStartChapterIds: State<Set<String>> = _arcStartChapterIds
+
+    // Backs Screen.Author (the "author/{authorId}" route) - see loadAuthorPage below.
+    // Moved from MainActivity alongside the function that writes them; same
+    // mutableStateOf-plus-SnapshotStateList split as the rest of this class's fields
+    // above (a single nullable entity vs. a list that's cleared/added-to in place).
+    private val _authorPageAuthor = mutableStateOf<AuthorEntity?>(null)
+    val authorPageAuthor: State<AuthorEntity?> = _authorPageAuthor
+    val authorPageNovels: SnapshotStateList<NovelEntity> = mutableStateListOf()
 
     // (current, total) or null if not scanning.
     private val _scanProgress = mutableStateOf<Pair<Int, Int>?>(null)
@@ -346,6 +368,150 @@ class LibraryViewModel(
         val readDates = db.chapterReadEventDao().distinctReadDates()
         _readingStreakDays.value = ReadingStats.currentStreakDays(readDates)
         _chaptersReadThisWeek.value = db.chapterReadEventDao().countSince(ReadingStats.windowStartKey(7))
+    }
+
+    // Moved from MainActivity (see this class's own doc comment above). Loads the
+    // AuthorEntity + every novel linked to it (NovelDao.byAuthor) for Screen.Author. A
+    // missing/unknown authorId (author.json removed since the fiction page or reader
+    // last resolved it) just leaves authorPageAuthor null - AuthorPage's caller treats
+    // that as "nothing to show" rather than crashing, same never-fail-on-missing-
+    // optional-metadata guarantee the rest of the app follows.
+    suspend fun loadAuthorPage(authorId: String) {
+        _authorPageAuthor.value = db.authorDao().findById(authorId)
+        authorPageNovels.clear()
+        authorPageNovels.addAll(db.novelDao().byAuthor(authorId))
+    }
+
+    // Moved from MainActivity's navigateToLastReadChapterOrDetail, minus the actual
+    // NavController.navigate call - navigation stays in MainActivity/the NavHost route
+    // ("Navigation is NavController only", design-notes.md), this just resolves which
+    // destination applies and loads the novel's details before the caller navigates to
+    // either one, same as every other path into the reader. Shared by the Continue
+    // Reading shortcut and HomeScreen's onContinueReading, which used to each
+    // implement this sequencing independently and had drifted apart.
+    suspend fun resolveLastReadChapterId(novel: NovelEntity): String? {
+        val lastProgress = db.readingProgressDao().forNovel(novel.id)
+        val chapter = lastProgress?.let { db.chapterDao().findById(it.chapterId) }
+        loadNovelDetails(novel)
+        return chapter?.id
+    }
+
+    // Moved from MainActivity (see this class's own doc comment above). Diffs the
+    // editor's edited chapter list against the raw scanned chapters and persists
+    // per-chapter overrides only where something actually changed; an edit that
+    // matches the scanned default again has any stale override removed instead of
+    // being kept around with stale values.
+    //
+    // Runs under NonCancellable (same reasoning as saveReadingProgress below): a
+    // cancellation landing between two of the per-chapter DAO calls below used to leave
+    // only some chapters' overrides written - title changes, reordering and arc-start
+    // flags for the rest of the list silently dropped, with no error and no retry.
+    suspend fun saveChapterEdits(novel: NovelEntity, edited: List<ChapterEntity>, arcStartIds: Set<String>) {
+        withContext(NonCancellable + Dispatchers.IO) {
+            val raw = db.chapterDao().forNovel(novel.id) // natural scan order, no overrides
+            val rawById = raw.associateBy { it.id }
+            val rawIndexById = raw.withIndex().associate { (i, c) -> c.id to i }
+
+            edited.forEachIndexed { index, chapter ->
+                val original = rawById[chapter.id] ?: return@forEachIndexed
+                val titleOverride = if (chapter.title != original.title) chapter.title else null
+                val positionOverride = if (index != rawIndexById[chapter.id]) index else null
+                val isArcStart = chapter.id in arcStartIds
+
+                if (titleOverride != null || positionOverride != null || isArcStart) {
+                    db.chapterOverrideDao().upsert(
+                        ChapterOverrideEntity(
+                            id = UUID.nameUUIDFromBytes("override:${chapter.id}".toByteArray()).toString(),
+                            chapterId = chapter.id,
+                            titleOverride = titleOverride,
+                            positionOverride = positionOverride,
+                            isArcStart = isArcStart
+                        )
+                    )
+                } else {
+                    db.chapterOverrideDao().delete(chapter.id)
+                }
+            }
+            loadNovelDetails(novel)
+        }
+    }
+
+    // Moved from MainActivity (see this class's own doc comment above). Single
+    // authority for "where was the reader": every writer of reading_progress goes
+    // through here. The DB write runs under NonCancellable so that whichever scope the
+    // caller happens to be in being cancelled mid-flight can no longer abort a write
+    // that already started. The UI refresh afterwards is on Main: refreshRecentlyRead
+    // mutates Compose snapshot lists, which must not be rebuilt (clear + addAll) from
+    // IO. `context` is a call parameter, not a stored dependency (rule 1) - used only
+    // to fire Haptics.confirm, never retained past this call.
+    suspend fun saveReadingProgress(
+        context: Context,
+        novelId: String,
+        chapterId: String,
+        position: ReaderPosition
+    ) {
+        val finishedNow = withContext(NonCancellable + Dispatchers.IO) {
+            db.readingProgressDao().upsert(
+                ReadingProgressEntity(
+                    novelId = novelId,
+                    chapterId = chapterId,
+                    position = position.charOffset.toFloat(),
+                    positionType = ReaderPosition.POSITION_TYPE,
+                    positionSnippet = position.snippet,
+                    updatedAt = System.currentTimeMillis()
+                )
+            )
+            // Reading-stats streak/weekly-count (see ChapterReadEventEntity's doc
+            // comment) only cares about chapters actually finished, not every scroll
+            // position update - COMPLETION_THRESHOLD gates that.
+            if (ReadingStats.isCompletionThreshold(position.completionFraction)) {
+                val now = System.currentTimeMillis()
+                val today = ReadingStats.dayKey(now)
+                // The read-event row is keyed by chapter and day, so re-saving the same
+                // finished chapter (a pause checkpoint, then the dispose checkpoint,
+                // then Next's own save) just rewrites it - but the haptic below must
+                // only fire the first time, or one finished chapter buzzes two or
+                // three times.
+                val alreadyLogged = db.chapterReadEventDao().isLogged(chapterId, today)
+                db.chapterReadEventDao().upsert(
+                    ChapterReadEventEntity(
+                        chapterId = chapterId,
+                        novelId = novelId,
+                        readDate = today,
+                        readAt = now
+                    )
+                )
+                !alreadyLogged
+            } else {
+                false
+            }
+        }
+        withContext(NonCancellable + Dispatchers.Main) {
+            if (finishedNow) {
+                // Micro-haptics (util/Haptics.kt): once per chapter actually finished.
+                Haptics.confirm(context)
+            }
+            refreshRecentlyRead()
+        }
+    }
+
+    // Moved from MainActivity (see this class's own doc comment above). Backs
+    // NovelDetailScreen's "Notify me when new chapters are available" toggle - the
+    // permission gate lives in the toggle's own onToggleNotify callback in
+    // MainActivity (which calls this directly when already granted, or via the
+    // permission-result callback otherwise); this just persists the change and
+    // refreshes in-memory state. Runs under NonCancellable for the same reason
+    // saveChapterEdits/saveReadingProgress do - a cancellation landing mid-write could
+    // otherwise drop the notify_new_chapters write silently.
+    suspend fun setNotifyEnabled(novelId: String, enabled: Boolean) {
+        val updated = withContext(NonCancellable + Dispatchers.IO) {
+            db.novelDao().updateNotifyNewChapters(novelId, enabled)
+            db.novelDao().findById(novelId)
+        } ?: return
+        withContext(NonCancellable + Dispatchers.Main) {
+            val idx = novels.indexOfFirst { it.id == updated.id }
+            if (idx >= 0) novels[idx] = updated
+        }
     }
 
     companion object {
