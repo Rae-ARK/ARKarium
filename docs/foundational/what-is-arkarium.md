@@ -1,15 +1,32 @@
 # What ARKarium is
 
-> **Kind:** foundational · **Verified:** 2026-11-06 @ b4fcc2f · **Truth lives in:** `README.md`, this file
+> **Kind:** foundational · **Verified:** 2026-11-13 @ (this patch) · **Truth lives in:** `README.md`, this file
 
 ARKarium is a native reader for independently published fiction, built around
 **direct author-to-reader distribution**. The author's repository is the
 canonical source; content is published as static files and synced into the
 reader's local library. There is no platform backend in the reading path.
 
-It is not a Royal Road clone. The aim is to control the chain that matters
-(publish format → distribution → reading experience) while keeping the
-infrastructure boring.
+**It is Rae ARK's own app for his own readers - not a general-purpose
+reading platform.** There is exactly one author and one relay today
+(`RELAY_HOST` in `data/SyncManager.kt` serves only Rae ARK's own fictions;
+`FictionLut`'s full entry list is "every fiction Rae ARK has published," not
+a storefront catalogue with a per-author filter). This isn't a current
+limitation waiting to be lifted - it's the premise. A feature that would only
+make sense for a platform serving many unrelated authors or readers
+(cross-author discovery, public ratings/rankings, a marketplace, social
+features between strangers) is out of scope by default, not just unbuilt;
+see [`backend-social.md`](../far-future-concern/backend-social.md) for what a
+genuine move in that direction would actually require. A multi-author
+version is conceivable later (`../proposal/ideas.md`'s "Publisher pipeline
+(ARKlight)" row sketches what that would need) but is a distinct, larger
+decision, not where this app already is.
+
+It is not a Royal Road clone, and not a Kindle/Libby-style app either - both
+of those serve many authors' and publishers' work to an open readership. The
+aim here is narrower: control the chain that matters for one author's work
+reaching his own readers (publish format → distribution → reading
+experience) while keeping the infrastructure boring.
 
 ## Principles
 

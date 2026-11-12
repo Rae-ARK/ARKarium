@@ -5,6 +5,12 @@
 > not just the ones already synced into the library, with a Follow step that
 > gates reading.
 
+Per [`what-is-arkarium.md`](../foundational/what-is-arkarium.md): this is a
+catalogue of **one author's own fictions**, not a discovery surface across
+authors. "Browse" here means "see what Rae ARK has published that you
+haven't followed yet," never "explore what's out there" - there's nothing
+else out there for this app to show.
+
 ## What's built today
 
 `FictionBrowseScreen` (`ui/FictionBrowseScreen.kt`) only ever renders
