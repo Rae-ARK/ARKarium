@@ -7,7 +7,11 @@ app reads this back via `BuildConfig.VERSION_NAME` and shows it in Settings and
 on the crash screens, so it's never hand-typed a second time in code).
 
 Features
-- SAF-based folder selection and persistent permission handling
+- One fixed library folder (`Android/media/com.arkarium.app/`, visible to file
+  managers and over USB) - no folder picker or permission grant to manage; see
+  "Library scan" in `docs/arkarium/foundational/architecture.md` and
+  `docs/arkarium/proposal/remove-saf-support.md` for why the old SAF-based
+  custom-folder picker was removed
 - Progressive folder scanning that discovers novels, arcs, and chapters
 - Diff-based incremental rescan: unchanged novels are skipped by fingerprint,
   changed ones are upserted in place (manual chapter overrides survive), and
@@ -23,7 +27,6 @@ Features
   line spacing, and Light/Sepia/Dark mode
 - Manual chapter title/position overrides, persisted independently of rescans
 - Text encoding fallback (UTF-8 → ISO-8859-1)
-- Persistent storage of selected library URI (restores on app restart)
 - Global uncaught-exception handler with a persisted last-crash trace (tagged
   with the version it happened on) shown on next launch
 
@@ -31,7 +34,9 @@ How to build and run
 1. Open this folder in Android Studio.
 2. Sync Gradle (File → Sync Now).
 3. Build and run on an Android device (API 24+).
-4. Tap "Select library folder" to pick a folder containing novel subfolders.
+4. Drop novel subfolders into `Android/media/com.arkarium.app/` on the device
+   (from a PC, a file manager, or ARKarium's own sync) - there is no in-app
+   folder picker to use instead.
 5. Wait for scan to complete, then tap a novel to see chapters, and tap a chapter to read.
 
 Known limitations
