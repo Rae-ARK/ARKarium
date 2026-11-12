@@ -25,7 +25,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -76,15 +75,11 @@ import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.AppScope
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.DatabaseDowngradeException
-import com.arkarium.app.data.ChapterOverrideEntity
-import com.arkarium.app.data.ChapterReadEventEntity
 import com.arkarium.app.data.GoogleBooksMetadataProvider
 import com.arkarium.app.data.resolveLibraryRoot
 import com.arkarium.app.data.ReaderPosition
 import com.arkarium.app.data.paragraphForCharOffset
 import com.arkarium.app.data.paragraphOffsets
-import com.arkarium.app.data.ReadingProgressEntity
-import com.arkarium.app.data.ReadingStats
 import com.arkarium.app.data.ScannerImpl
 import com.arkarium.app.data.NewChapterCheckWorker
 import com.arkarium.app.data.ReadingProgressSaveWorker
@@ -175,10 +170,9 @@ class MainActivity : ComponentActivity() {
     // reader is opened. Null covers both "not resolved yet" and "this fiction has no
     // linked author" (see NovelEntity.authorId).
     private val readerAuthor = mutableStateOf<AuthorEntity?>(null)
-    // Backs Screen.Author - reloaded via LaunchedEffect whenever the authorId changes,
-    // same "state lives in the Activity, screen just renders it" pattern as chapters/arcs.
-    private val authorPageAuthor = mutableStateOf<AuthorEntity?>(null)
-    private val authorPageNovels = mutableStateListOf<NovelEntity>()
+    // authorPageAuthor/authorPageNovels - backing Screen.Author, reloaded via
+    // LaunchedEffect whenever the authorId changes - moved to libraryViewModel
+    // alongside loadAuthorPage (see that class's own doc comment).
     // showSplash itself moved into renderMainContent()'s composable scope as a
     // rememberSaveable (see bugs.md, "Rotating the device restarts the app") - it used
     // to live here as a plain mutableStateOf field, which reset to true on every
@@ -262,7 +256,7 @@ class MainActivity : ComponentActivity() {
             // callback can fire right as the Activity instance that launched the
             // permission request is being torn down for recreation, same race
             // saveReadingProgress/saveChapterEdits were already fixed for.
-            AppScope.io.launch { setNotifyEnabled(novelId, true) }
+            AppScope.io.launch { libraryViewModel.setNotifyEnabled(novelId, true) }
         }
     }
 
@@ -322,200 +316,30 @@ class MainActivity : ComponentActivity() {
     // Activity's. Every call site below (`startScan(...)`, `loadNovelDetails(...)`,
     // `refreshRecentlyRead()`) now calls `libraryViewModel.` + the same name.
 
-    // Loads the AuthorEntity + every novel linked to it (NovelDao.byAuthor) for
-    // Screen.Author. A missing/unknown authorId (author.json removed since the fiction
-    // page or reader last resolved it) just leaves authorPageAuthor null - AuthorPage's
-    // caller below treats that as "nothing to show" rather than crashing, same
-    // never-fail-on-missing-optional-metadata guarantee the rest of the app follows.
-    private suspend fun loadAuthorPage(authorId: String) {
-        authorPageAuthor.value = db.authorDao().findById(authorId)
-        authorPageNovels.clear()
-        authorPageNovels.addAll(db.novelDao().byAuthor(authorId))
-    }
+    // loadAuthorPage, navigateToLastReadChapterOrDetail's db/loadNovelDetails half
+    // (now resolveLastReadChapterId), saveChapterEdits, saveReadingProgress, and
+    // setNotifyEnabled formerly lived here too - all five now live on libraryViewModel
+    // (see that class's own doc comment for why they moved and why LibraryViewModel
+    // rather than SyncViewModel). navigateToLastReadChapterOrDetail's actual
+    // NavController.navigate call stays below as navigateToChapterOrDetail, a
+    // navigation-only helper with no db access of its own ("Navigation is NavController
+    // only", design-notes.md). addFictionByName, syncAllRaeArkNovels, and
+    // checkForUpdates live on syncViewModel (Stage 2.5 of Phase 2, see
+    // docs/arkarium/foundational/design-notes.md and SyncViewModel's own doc comment).
 
-    // Shared "last read chapter -> reader, else NovelDetail" sequencing, used by
-    // both the Continue Reading shortcut (pendingContinueReadingShortcut's
-    // LaunchedEffect) and HomeScreen's onContinueReading. These used to each
-    // implement this independently and had drifted apart - onContinueReading
-    // fell back to NovelDetail when there was no resolvable chapter, the
-    // shortcut's effect silently did nothing instead (and kept retrying). One
-    // shared implementation means a future fix to this sequencing can't land in
-    // only one of the two call sites again.
-    //
-    // loadNovelDetails() is always called before navigating, same as every
-    // other path into the reader - see onContinueReading's old inline comment
-    // on why that matters for Previous/Next chapter.
-    private suspend fun navigateToLastReadChapterOrDetail(novel: NovelEntity, navController: NavHostController) {
-        val lastProgress = db.readingProgressDao().forNovel(novel.id)
-        val chapter = lastProgress?.let { db.chapterDao().findById(it.chapterId) }
-        libraryViewModel.loadNovelDetails(novel)
-        if (chapter != null) {
-            navController.navigate("reader/${novel.id}/${chapter.id}") { launchSingleTop = true }
+    // Pure navigation, no db access - the other half of what used to be
+    // navigateToLastReadChapterOrDetail (see libraryViewModel.resolveLastReadChapterId's
+    // doc comment). Shared by the Continue Reading shortcut and HomeScreen's
+    // onContinueReading, which used to each implement this sequencing independently and
+    // had drifted apart - onContinueReading fell back to NovelDetail when there was no
+    // resolvable chapter, the shortcut's effect silently did nothing instead (and kept
+    // retrying). One shared implementation means a future fix to this sequencing can't
+    // land in only one of the two call sites again.
+    private fun navigateToChapterOrDetail(novel: NovelEntity, chapterId: String?, navController: NavHostController) {
+        if (chapterId != null) {
+            navController.navigate("reader/${novel.id}/$chapterId") { launchSingleTop = true }
         } else {
             navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
-        }
-    }
-
-    // Diffs the editor's edited chapter list against the raw scanned chapters and
-    // persists per-chapter overrides only where something actually changed. If an edit
-    // matches the scanned default again, any stale override for that chapter is removed
-    // instead of being kept around with stale values.
-    //
-    // Durability fix (same class of bug as reading-progress - see AppScope.kt's doc
-    // comment): this used to run with no NonCancellable guard, called from
-    // ChapterEditorScreen's rememberCoroutineScope (see that file's own doc comment on
-    // its Save button). That scope is cancelled the instant the composable tearing it
-    // down is disposed - which includes this very Activity being recreated (rotation,
-    // multi-window resize, a memory-pressure reclaim) mid-save. `edited.forEachIndexed`
-    // issues one DAO call per chapter; a cancellation landing between two of those calls
-    // used to leave only some chapters' overrides written - title changes, reordering
-    // and arc-start flags for the rest of the list silently dropped, with no error and
-    // no retry, since the coroutine that would have called onBack() never got there
-    // either. Wrapping the whole read-then-write sequence in NonCancellable means a
-    // cancellation request can no longer interrupt it once it's started - mirroring
-    // saveReadingProgress's own NonCancellable wrap for the identical reason.
-    private suspend fun saveChapterEdits(novel: NovelEntity, edited: List<ChapterEntity>, arcStartIds: Set<String>) {
-        withContext(NonCancellable + Dispatchers.IO) {
-            val raw = db.chapterDao().forNovel(novel.id) // natural scan order, no overrides
-            val rawById = raw.associateBy { it.id }
-            val rawIndexById = raw.withIndex().associate { (i, c) -> c.id to i }
-
-            edited.forEachIndexed { index, chapter ->
-                val original = rawById[chapter.id] ?: return@forEachIndexed
-                val titleOverride = if (chapter.title != original.title) chapter.title else null
-                val positionOverride = if (index != rawIndexById[chapter.id]) index else null
-                val isArcStart = chapter.id in arcStartIds
-
-                if (titleOverride != null || positionOverride != null || isArcStart) {
-                    db.chapterOverrideDao().upsert(
-                        ChapterOverrideEntity(
-                            id = UUID.nameUUIDFromBytes("override:${chapter.id}".toByteArray()).toString(),
-                            chapterId = chapter.id,
-                            titleOverride = titleOverride,
-                            positionOverride = positionOverride,
-                            isArcStart = isArcStart
-                        )
-                    )
-                } else {
-                    db.chapterOverrideDao().delete(chapter.id)
-                }
-            }
-            libraryViewModel.loadNovelDetails(novel)
-        }
-    }
-
-    // Rung 14 (F9, docs/arkarium/proposal/reader-playback.md): took a plain Float
-    // scroll fraction before this rung; now takes the character-offset anchor
-    // ReaderScreen's currentAnchor() computes (see ReaderPosition.kt) and writes it as
-    // a CHAR_OFFSET row instead of PERCENTAGE. Every call site below already had a
-    // ReaderPosition in hand (ReaderScreen's onBack/onBackToFiction/onPrevious/onNext
-    // all take one now), so this is purely a parameter-type change, not a new lookup.
-    //
-    // Single authority for "where was the reader": every writer of reading_progress goes
-    // through here. The DB write runs under NonCancellable so that whichever scope the
-    // caller happens to be in (lifecycleScope for the in-app exits, AppScope.io for the
-    // pause/dispose checkpoints) being cancelled mid-flight - MainActivity being
-    // destroyed during a rotation, say - can no longer abort a write that already
-    // started. The UI refresh afterwards is on Main: refreshRecentlyRead mutates
-    // Compose snapshot lists, which must not be rebuilt (clear + addAll) from IO.
-    //
-    // Regression fixed here (docs/arkarium/proposal/bugs/other/continue-reading-completion-fraction.md):
-    // this used to take a `chapterLength: Int` and derive its own completion fraction
-    // as `position.charOffset.toFloat() / chapterLength`, comparing that against
-    // ReadingStats.COMPLETION_THRESHOLD. charOffset is the resume anchor (the
-    // paragraph at the top of the viewport), not a measure of how much of the chapter
-    // was scrolled through, so that fraction almost never reached 0.9 for an
-    // ordinarily-finished chapter - silently breaking the "chapter finished" haptic
-    // and the streak/chapters-this-week counters. position.completionFraction (see
-    // ReaderPosition's own doc comment) is the real scroll fraction, computed where
-    // the scroll state actually lives (ReaderScreen), so this function no longer
-    // needs chapterLength at all.
-    private suspend fun saveReadingProgress(
-        novelId: String,
-        chapterId: String,
-        position: ReaderPosition
-    ) {
-        val finishedNow = withContext(NonCancellable + Dispatchers.IO) {
-            db.readingProgressDao().upsert(
-                ReadingProgressEntity(
-                    novelId = novelId,
-                    chapterId = chapterId,
-                    position = position.charOffset.toFloat(),
-                    positionType = ReaderPosition.POSITION_TYPE,
-                    positionSnippet = position.snippet,
-                    updatedAt = System.currentTimeMillis()
-                )
-            )
-            // Reading-stats streak/weekly-count (see ChapterReadEventEntity's doc
-            // comment) only cares about chapters actually finished, not every scroll
-            // position update - COMPLETION_THRESHOLD gates that.
-            if (ReadingStats.isCompletionThreshold(position.completionFraction)) {
-                val now = System.currentTimeMillis()
-                val today = ReadingStats.dayKey(now)
-                // The read-event row is keyed by chapter and day, so re-saving the same finished
-                // chapter (a pause checkpoint, then the dispose checkpoint, then Next's
-                // own save) just rewrites it - but the haptic below must only fire the
-                // first time, or one finished chapter buzzes two or three times.
-                val alreadyLogged = db.chapterReadEventDao().isLogged(chapterId, today)
-                db.chapterReadEventDao().upsert(
-                    ChapterReadEventEntity(
-                        chapterId = chapterId,
-                        novelId = novelId,
-                        readDate = today,
-                        readAt = now
-                    )
-                )
-                !alreadyLogged
-            } else {
-                false
-            }
-        }
-        withContext(NonCancellable + Dispatchers.Main) {
-            if (finishedNow) {
-                // Micro-haptics (util/Haptics.kt): once per chapter actually finished.
-                // applicationContext, not the Activity - this can run after the
-                // instance that launched it has been destroyed.
-                Haptics.confirm(applicationContext)
-            }
-            libraryViewModel.refreshRecentlyRead()
-        }
-    }
-
-    // addFictionByName, syncAllRaeArkNovels, and checkForUpdates formerly lived here
-    // too - all three now live on syncViewModel (Stage 2.5 of Phase 2, see
-    // docs/arkarium/foundational/design-notes.md and SyncViewModel's own doc comment), unchanged
-    // in body except for the fields/services they read/write resolving to that
-    // class's own state/constructor dependencies instead of the Activity's, and
-    // checkForUpdates' currentScreen patch on a successful resync now happening via
-    // an `onUpdated` callback passed in from each call site below instead of inline.
-
-    // Backs NovelDetailScreen's "Notify me when new chapters are available" toggle
-    // (see docs/arkarium/foundational/architecture.md, Sync: entry points). The actual permission gate lives in the
-    // toggle's onToggleNotify callback below (which calls this directly when already
-    // granted, or via notificationPermission's result callback otherwise) - this
-    // function itself just persists the change and refreshes in-memory state, same
-    // "update DB then patch `novels`" pattern checkForUpdates uses. Used to also patch
-    // currentScreen when NovelDetail was showing the toggled novel; Stage 3.3 (see
-    // docs/arkarium/foundational/design-notes.md) made that unnecessary - the "novelDetail/{novelId}"
-    // route now resolves its novel from libraryViewModel.novels on every recomposition,
-    // so patching that list here is enough on its own.
-    // Durability fix (same class of bug as reading-progress/chapter-edits - see
-    // AppScope.kt's and saveChapterEdits' own doc comments): now wrapped in
-    // NonCancellable and called from AppScope.io instead of lifecycleScope at both
-    // call sites (the direct toggle and the permission-grant callback). Before this,
-    // a cancellation landing mid-write (MainActivity recreated right as the toggle is
-    // flipped, or right as the permission-result callback fires) could drop the
-    // updateNotifyNewChapters write silently - the toggle visually flips on, nothing
-    // errors, but notify_new_chapters never actually changed on disk, and
-    // NewChapterCheckWorker keeps treating the novel as not subscribed.
-    private suspend fun setNotifyEnabled(novelId: String, enabled: Boolean) {
-        val updated = withContext(NonCancellable + Dispatchers.IO) {
-            db.novelDao().updateNotifyNewChapters(novelId, enabled)
-            db.novelDao().findById(novelId)
-        } ?: return
-        withContext(NonCancellable + Dispatchers.Main) {
-            val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
-            if (idx >= 0) libraryViewModel.novels[idx] = updated
         }
     }
 
@@ -966,8 +790,9 @@ class MainActivity : ComponentActivity() {
                     val novel = libraryViewModel.novels.firstOrNull { it.id == lastNovelId }
                         ?: return@LaunchedEffect
                     // Shared with HomeScreen's onContinueReading - see
-                    // navigateToLastReadChapterOrDetail's own doc comment.
-                    navigateToLastReadChapterOrDetail(novel, navController)
+                    // navigateToChapterOrDetail's own doc comment.
+                    val chapterId = libraryViewModel.resolveLastReadChapterId(novel)
+                    navigateToChapterOrDetail(novel, chapterId, navController)
                     pendingContinueReadingShortcut.value = false
                 }
 
@@ -1176,10 +1001,11 @@ class MainActivity : ComponentActivity() {
                                     // readerAuthor resolution and the chapter body fetch both
                                     // happen in that composable's own LaunchedEffects, keyed
                                     // off the route arguments, instead of here. See
-                                    // navigateToLastReadChapterOrDetail's own doc comment for
-                                    // the loadNovelDetails()-before-navigating sequencing and
-                                    // why this is shared with the Continue Reading shortcut.
-                                    navigateToLastReadChapterOrDetail(novel, navController)
+                                    // navigateToChapterOrDetail's own doc comment for the
+                                    // loadNovelDetails()-before-navigating sequencing and why
+                                    // this is shared with the Continue Reading shortcut.
+                                    val chapterId = libraryViewModel.resolveLastReadChapterId(novel)
+                                    navigateToChapterOrDetail(novel, chapterId, navController)
                                 }
                             },
                             onBrowseClick = {
@@ -1345,9 +1171,10 @@ class MainActivity : ComponentActivity() {
                                             pendingNotifyToggleNovelId.value = novel.id
                                             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                                         } else {
-                                            // AppScope.io, not lifecycleScope - see setNotifyEnabled's
-                                            // own doc comment and AppScope.kt.
-                                            AppScope.io.launch { setNotifyEnabled(novel.id, enabled) }
+                                            // AppScope.io, not lifecycleScope - see
+                                            // libraryViewModel.setNotifyEnabled's own doc
+                                            // comment and AppScope.kt.
+                                            AppScope.io.launch { libraryViewModel.setNotifyEnabled(novel.id, enabled) }
                                         }
                                     }
                                 } else null,
@@ -1372,7 +1199,7 @@ class MainActivity : ComponentActivity() {
                                 chapters = libraryViewModel.chapters,
                                 initialArcStartIds = libraryViewModel.arcStartChapterIds.value,
                                 onSave = { updatedChapters, arcStartIds ->
-                                    saveChapterEdits(novel, updatedChapters, arcStartIds)
+                                    libraryViewModel.saveChapterEdits(novel, updatedChapters, arcStartIds)
                                 },
                                 onBack = { navController.popBackStack() }
                             )
@@ -1586,7 +1413,7 @@ class MainActivity : ComponentActivity() {
                                     // thread-safe).
                                     onBack = { position ->
                                         AppScope.io.launch {
-                                            saveReadingProgress(novelId, chapterId, position)
+                                            libraryViewModel.saveReadingProgress(applicationContext, novelId, chapterId, position)
                                             withContext(Dispatchers.Main) {
                                                 // Same popUpTo("home") reasoning as NovelDetail's
                                                 // onBack - Reader's Back always went straight to
@@ -1604,7 +1431,7 @@ class MainActivity : ComponentActivity() {
                                     onBackToFiction = { position ->
                                         if (novel != null) {
                                             AppScope.io.launch {
-                                                saveReadingProgress(novelId, chapterId, position)
+                                                libraryViewModel.saveReadingProgress(applicationContext, novelId, chapterId, position)
                                                 withContext(Dispatchers.Main) {
                                                     navController.navigate("novelDetail/${novel.id}") {
                                                         launchSingleTop = true
@@ -1619,7 +1446,7 @@ class MainActivity : ComponentActivity() {
                                     onPrevious = previousChapter?.let { prev ->
                                         { position: ReaderPosition ->
                                             AppScope.io.launch {
-                                                saveReadingProgress(novelId, chapterId, position)
+                                                libraryViewModel.saveReadingProgress(applicationContext, novelId, chapterId, position)
                                                 withContext(Dispatchers.Main) {
                                                     // Replace, not push - Back from chapter 5
                                                     // returns to NovelDetail, not chapter 4,
@@ -1639,7 +1466,7 @@ class MainActivity : ComponentActivity() {
                                     onNext = nextChapter?.let { next ->
                                         { position: ReaderPosition ->
                                             AppScope.io.launch {
-                                                saveReadingProgress(novelId, chapterId, position)
+                                                libraryViewModel.saveReadingProgress(applicationContext, novelId, chapterId, position)
                                                 withContext(Dispatchers.Main) {
                                                     navController.navigate("reader/$novelId/${next.id}") {
                                                         popUpTo("reader/{novelId}/{chapterId}") { inclusive = true }
@@ -1696,7 +1523,7 @@ class MainActivity : ComponentActivity() {
                                     // to hop back to Main afterward.
                                     onPositionChanged = { position ->
                                         AppScope.io.launch {
-                                            saveReadingProgress(novelId, chapterId, position)
+                                            libraryViewModel.saveReadingProgress(applicationContext, novelId, chapterId, position)
                                         }
                                         // Durable backstop (see ReadingProgressSaveWorker's own
                                         // doc comment): AppScope.io survives Activity
@@ -1730,7 +1557,7 @@ class MainActivity : ComponentActivity() {
                                     // instead of popping the back stack from a background thread.
                                     onSystemBack = { position ->
                                         AppScope.io.launch {
-                                            saveReadingProgress(novelId, chapterId, position)
+                                            libraryViewModel.saveReadingProgress(applicationContext, novelId, chapterId, position)
                                             withContext(Dispatchers.Main) {
                                                 navController.popBackStack()
                                             }
@@ -1764,14 +1591,14 @@ class MainActivity : ComponentActivity() {
                     // but this keeps the screen correct if it ever is) - not on every
                     // recomposition.
                     LaunchedEffect(authorId) {
-                        loadAuthorPage(authorId)
+                        libraryViewModel.loadAuthorPage(authorId)
                     }
-                    val author = authorPageAuthor.value
+                    val author = libraryViewModel.authorPageAuthor.value
                     if (author != null) {
                         Column(modifier = Modifier.fillMaxSize()) {
                             AuthorPageScreen(
                                 author = author,
-                                novels = authorPageNovels,
+                                novels = libraryViewModel.authorPageNovels,
                                 onBack = { navController.popBackStack() },
                                 onNovelClick = { novel ->
                                     lifecycleScope.launch {
