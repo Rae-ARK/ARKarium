@@ -5,6 +5,10 @@ import android.content.Intent
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 
 // Process-level owner of things that must exist exactly once per process, not once per
 // MainActivity instance. MainActivity used to install the uncaught-exception handler
@@ -16,17 +20,44 @@ import androidx.core.graphics.drawable.IconCompat
 //
 // Ownership map (one authority per thing - see docs/foundational/architecture.md,
 // "Lifecycle ownership"):
-//   process (this class)    crash recorder, AppScope (data/AppScope.kt), AppDatabase singleton
+//   process (this class)    crash recorder, AppScope (data/AppScope.kt), AppDatabase singleton,
+//                            shared Coil ImageLoader
 //   Activity (MainActivity) UI + one-shot intent routing only
 //   ViewModels              in-memory library/sync/settings state
 //   TtsPlaybackService      the TextToSpeech engine and the read-aloud session
-class ArkariumApp : Application() {
+//
+// ImageLoaderFactory (animation-and-polish.md F16, performance.md F15): with no
+// Application subclass implementing this, every AsyncImage call across ui/ got Coil's
+// bare default loader - no shared memory/disk cache, no crossfade, covers just popped
+// in. Coil calls newImageLoader() once and caches the result itself, so this is the one
+// place a shared ImageLoader needs to be built; every AsyncImage() in the app picks it
+// up automatically via Coil.imageLoader(context), no change needed at each call site.
+class ArkariumApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
         installCrashRecorder()
         publishContinueReadingShortcut()
     }
+
+    override fun newImageLoader(): ImageLoader =
+        ImageLoader.Builder(this)
+            // Crossfade is the "Cover load" row of animation-and-polish.md F16's table:
+            // covers fade in over 200ms instead of popping in once decoded, whether
+            // they come from the memory cache (near-instant) or disk/network (visible).
+            .crossfade(200)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.25)
+                    .build()
+            }
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(cacheDir.resolve("image_cache"))
+                    .maxSizePercent(0.02)
+                    .build()
+            }
+            .build()
 
     // "Continue Reading" used to be a *static* (manifest/XML-declared) shortcut. Static
     // shortcuts can't carry custom Intent flags - per Android's own docs, their launch

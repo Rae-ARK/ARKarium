@@ -1,5 +1,10 @@
 package com.arkarium.app.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExperimentalAnimationApi
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -136,6 +141,7 @@ fun AddFictionByNameDialog(
 // novel) has no single cover to show, so that call site passes null and gets the same
 // placeholder NovelCardVertical/NovelContinueCard already fall back to elsewhere in
 // the app.
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
 fun SyncProgressDialog(
     novelTitle: String,
@@ -211,17 +217,34 @@ fun SyncProgressDialog(
 
                 // Exactly one line of status: the arc name (isLoading), the final
                 // result message, or the error - never a file path or a count.
-                when {
-                    errorMessage != null -> Text(
-                        errorMessage,
+                //
+                // AnimatedContent (animation-and-polish.md F16, "Sync progress ... Text
+                // swaps -> AnimatedContent on the arc label"): this line used to replace
+                // its Text outright every time the arc being synced changed, which read
+                // as a flicker on a dialog this small. Keyed on the line's own text so a
+                // genuine change (next arc, or the loading state resolving to a result/
+                // error) still crossfades, while a recomposition that leaves the string
+                // unchanged doesn't replay the animation. No progress bar alongside it -
+                // deliberately: see this function's own doc comment above on why there's
+                // no "file 12/40" count here to drive one from.
+                val statusText = errorMessage ?: message
+                val isError = errorMessage != null
+                AnimatedContent(
+                    targetState = statusText to isError,
+                    transitionSpec = {
+                        // `with`, not `togetherWith` - this project's Compose BOM
+                        // (2023.10.01, see build.gradle.kts; bumping it is
+                        // performance.md F12, not this change) predates the release
+                        // that renamed this infix.
+                        fadeIn(animationSpec = tween(210, delayMillis = 90)) with
+                            fadeOut(animationSpec = tween(90))
+                    },
+                    label = "syncStatusText"
+                ) { (text, error) ->
+                    Text(
+                        text,
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
-                    else -> Text(
-                        message,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
