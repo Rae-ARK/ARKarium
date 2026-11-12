@@ -156,6 +156,11 @@ dependencies {
 
     // Lifecycle
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
+    // collectAsStateWithLifecycle() for Compose - lifecycle-aware Flow collection used by
+    // rememberChapterTts() (ui/Tts.kt) in place of plain collectAsState() so collection
+    // stops while the screen is backgrounded (engineering-review.md F14). Not pulled in
+    // transitively by lifecycle-runtime-ktx above.
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
     // ViewModel + viewModelScope, used by SettingsViewModel (Stage 2.2 of Phase 2 -
     // see docs/arkarium/foundational/design-notes.md) and the ViewModels planned for the rest of
     // that phase. Not pulled in transitively by lifecycle-runtime-ktx above, which
@@ -215,4 +220,3 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test:runner:1.5.2")
 }
-

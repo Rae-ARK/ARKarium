@@ -1,6 +1,6 @@
 # Performance: SAF I/O, build/startup, recomposition, images, database and scan cost
 
-> **Kind:** proposal · **Status:** nothing built yet; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-12 @ (this patch; F24–F28 and the F14 additions only, the rest as of 2026-11-07)
+> **Kind:** proposal · **Status:** F14 fixed in code (unmeasured); nothing else built yet; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-12 @ (this patch; F24–F28 and the F14 additions/closure only, the rest as of 2026-11-07)
 > **Origin:** [`engineering-review.md`](engineering-review.md) F5, F12–F15, F24–F28.
 
 ### F5. SAF scan and sync cost several provider queries per file
@@ -128,8 +128,12 @@ problem outright instead of just making it briefer.
 ### F14. Lazy lists mostly unkeyed; derived data not remembered; non-lifecycle-aware Flow collection
 
 **Severity:** Low–Medium. **Tags:** V for what's in the code, E for the Kotlin/Compose-compiler-version guidance.
-**Where:** every `LazyColumn`/`LazyRow` under `ui/` except
-`ChapterEditorScreen.kt`, `TtsVoicePickerScreen.kt`, the reader (keyed by block index), and now `NovelDetailScreen.kt` (see below); `collectAsState()` call sites throughout `ui/`.
+**Where:** every `LazyColumn`/`LazyRow` under `ui/` (all now keyed — see
+below) and every `collectAsState()` call site in `ui/` (all now
+`collectAsStateWithLifecycle()` — see below).
+**Status: fixed in code (V), unmeasured.** Nothing left open under `ui/`;
+on-device measurement (recomposition counts, scroll jank) is still open,
+same as the rest of this doc pending the Macrobenchmark setup in F12.
 
 **`NovelDetailScreen.kt` — fixed in code (V), unmeasured.** Its three lazy
 lists (`items(genreList)`, `itemsIndexed(arcs)`, `itemsIndexed(chaptersToShow)`)
@@ -147,19 +151,30 @@ for *fling* jank specifically; the fix is good practice regardless and
 unblocks `animateItem()` for this screen's lists (`animation-and-polish.md`
 F16).
 
-`items(...)` is still called with no `key =` in `AuthorPageScreen.kt`,
-`FictionBrowseScreen.kt`, `HomeScreen.kt` (three separate rows),
-`LegalDocumentScreen.kt` and `MetadataMatchDialog.kt`. Without a stable key,
-Compose can't tell that an item in the next composition is "the same" item
-that moved or changed, which both costs more recomposition when the list
-changes and blocks `animateItem()` placement animation (see
-`animation-and-polish.md` F16) from working correctly on those screens.
+**Fixed in code (V), unmeasured.** `AuthorPageScreen.kt` and
+`FictionBrowseScreen.kt` were already keyed from an earlier pass. This pass
+added `key =` to `HomeScreen.kt`'s remaining two rows (`trendingNovels`,
+`newReleases` — the third, `continueReadingNovels`, was already keyed),
+`LegalDocumentScreen.kt`'s `itemsIndexed(sections)` (keyed on
+`section.heading`, the closest thing that section list has to an id), and
+`MetadataMatchDialog.kt`'s `items(candidates)` (keyed on `infoLink`, falling
+back to a title+authors+publishedDate composite for the rare candidate with
+no `infoLink`, since `NovelMetadataCandidate` has no id of its own). Every
+`LazyColumn`/`LazyRow` under `ui/` is now keyed.
 
-`collectAsState()` (not `collectAsStateWithLifecycle()`) is used throughout;
-the lifecycle-aware variant is the recommended default on Android because it
-stops collecting while the screen is backgrounded. The project's upstream
-Flow source is DataStore, so the practical cost here is small, but it's a
-one-line change per site.
+`collectAsState()` has been replaced with `collectAsStateWithLifecycle()` at
+every site in `ui/`: the one in `Tts.kt` (`rememberChapterTts()`'s
+`autoContinue`) and the six in `ReaderScreen.kt` (`keepScreenOnEnabled`,
+`readerKeepScreenOnEnabled`, `fullscreenEnabled`, `breakLinesEnabled`,
+`brightnessOverrideEnabled`, `brightnessLevel`). This needed adding
+`androidx.lifecycle:lifecycle-runtime-compose:2.6.2` to
+`app/build.gradle.kts` (the `collectAsStateWithLifecycle()` extension isn't
+pulled in by `lifecycle-runtime-ktx`, which the project already depended on).
+The project's upstream Flow source is DataStore, so the practical cost here
+is small, but it's now the lifecycle-aware default everywhere in `ui/`
+rather than a one-line change left pending per site. `MainActivity.kt`'s
+`collectAsState()` sites are outside this finding's stated scope (`ui/`) and
+are not touched here.
 
 The project is on Kotlin 1.9.10 / Compose compiler 1.5.3. "Strong skipping"
 became the Compose compiler's default behavior in Kotlin 2.0.20; before that,

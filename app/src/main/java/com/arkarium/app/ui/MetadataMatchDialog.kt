@@ -75,7 +75,18 @@ fun MetadataSearchDialog(
                             modifier = Modifier.padding(bottom = 8.dp)
                         )
                         LazyColumn(modifier = Modifier.height(320.dp)) {
-                            items(candidates) { candidate ->
+                            items(
+                                candidates,
+                                // No stable id comes back from the metadata source (see
+                                // NovelMetadataCandidate) - infoLink is unique per result when
+                                // present; fall back to a title+authors+publishedDate composite
+                                // for the rare candidate with no infoLink, rather than leaving
+                                // the list unkeyed.
+                                key = { candidate ->
+                                    candidate.infoLink
+                                        ?: "${candidate.title}|${candidate.authors.joinToString(",")}|${candidate.publishedDate}"
+                                }
+                            ) { candidate ->
                                 MetadataCandidateRow(
                                     candidate = candidate,
                                     onClick = { onCandidateSelected(candidate) }

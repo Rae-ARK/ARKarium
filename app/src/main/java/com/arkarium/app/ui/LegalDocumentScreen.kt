@@ -261,7 +261,7 @@ fun LegalDocumentScreen(
                 }
             }
 
-            itemsIndexed(sections) { index, section ->
+            itemsIndexed(sections, key = { _, section -> section.heading }) { index, section ->
                 LegalSectionCard(section, sectionAccent(index))
             }
 
