@@ -84,20 +84,12 @@ fun HomeScreen(
     onContinueReading: (NovelEntity) -> Unit = {},
     onBrowseClick: () -> Unit = {},
     onSearch: (String) -> Unit = {},
-    // There was previously no reachable screen on first launch that could trigger the SAF
-    // folder picker: Home -> "Browse All Novels" led to FictionBrowse (which has no picker
-    // either), and the only screen that did have a picker button (Library) was only
-    // reachable via "back" from NovelDetail/Reader - which themselves require novels to
-    // already exist. New installs had no way in. This callback gives Home a direct entry
-    // point to the picker so that dead end can't happen again.
-    // Still only reachable from EmptyLibraryPrompt now (see below) - the top bar's own
-    // folder icon was repurposed for onAddFictionClick, so this param stays but isn't
-    // wired to the top bar anymore.
-    onSelectFolderClick: () -> Unit = {},
     // Opens the "Add fiction by name" dialog (see SyncDialogs.kt
-    // AddFictionByNameDialog). Lives on the top bar next to Settings - previously that
-    // spot was a shortcut to the folder picker (now settings-only, and still reachable
-    // via EmptyLibraryPrompt on a truly empty library).
+    // AddFictionByNameDialog). Lives on the top bar next to Settings. The SAF
+    // folder-picker entry point this used to sit next to (and EmptyLibraryPrompt's
+    // own "set up your own folder" shortcut to it) is gone - see
+    // docs/arkarium/proposal/remove-saf-support.md - so this is Home's one
+    // top-bar action now, not a replacement for a removed one.
     onAddFictionClick: () -> Unit = {},
     // Primary action on the empty-library first-run screen: syncs every fiction
     // FictionLut knows about in one go (see FictionLut.allEntries / MainActivity's
@@ -179,7 +171,7 @@ fun HomeScreen(
             // `SlotTableKt.key`/`Composer.endRoot` - exactly the crash this app hit on
             // first launch (empty library = novels.isEmpty() = true). Wrapping the rest of
             // the content in `else` instead avoids the early return entirely.
-            EmptyLibraryPrompt(onSelectFolderClick = onSelectFolderClick, onSyncAllClick = onSyncAllClick)
+            EmptyLibraryPrompt(onSyncAllClick = onSyncAllClick)
         } else {
         LazyColumn(
             modifier = Modifier
@@ -333,7 +325,6 @@ fun HomeScreen(
 
 @Composable
 fun EmptyLibraryPrompt(
-    onSelectFolderClick: () -> Unit = {},
     onSyncAllClick: () -> Unit = {}
 ) {
     Box(
@@ -365,14 +356,14 @@ fun EmptyLibraryPrompt(
                 Icon(Icons.Default.LibraryAdd, contentDescription = null, modifier = Modifier.size(18.dp))
                 Text("Sync all Rae ARK's novels", modifier = Modifier.padding(start = 8.dp))
             }
-            // Secondary, deliberately less prominent than the sync button above - but
-            // still present, since this is the only guaranteed entry point into the SAF
-            // folder picker on a fresh install for anyone managing their own local
-            // folder instead of syncing (see the comment on HomeScreen's
-            // onSelectFolderClick param).
-            androidx.compose.material3.TextButton(onClick = onSelectFolderClick) {
-                Text("or set up your own folder in Settings")
-            }
+            // The secondary "or set up your own folder in Settings" button that used to
+            // sit here pointed at the SAF folder picker, which
+            // docs/arkarium/proposal/remove-saf-support.md removed - the library now
+            // always lives at the one fixed Android/media/com.arkarium.app/ location, so
+            // there is no folder left to set up. Deleted rather than reworded, since
+            // Sync All above and the top bar's "Add fiction" action already cover
+            // first-run entry points without it (see
+            // docs/arkarium/proposal/bugs/README.md's fixed-and-deleted list).
         }
     }
 }

@@ -49,7 +49,7 @@ publisher tooling from the second and third.
 | Matane | A short first-run setup flow, an offline "What's new" note shown once after an update, per-title reader settings, a cover-size slider, a page color derived from the cover. |
 | Mihon | Categories, scheduled updates, trackers, backups. |
 | LNReader | Reading and TTS continue in the background; backups go to Google Drive; lets users inject their own CSS/JS into chapters (see the security caveat below). |
-| Readest | A dedicated TTS settings tab with highlight opacity and a hotkey to highlight the sentence being read aloud; reads books in place from external folders without copying — the model ARKarium itself used via a SAF custom folder at the time this survey was written. **(2026-11-12 note: ARKarium has since removed that SAF opt-in in favor of one fixed `Android/media/` folder — see [`remove-saf-support.md`](remove-saf-support.md) — so this comparison point no longer holds for ARKarium's current build.)** |
+| Readest | A dedicated TTS settings tab with highlight opacity and a hotkey to highlight the sentence being read aloud; reads books in place from external folders without copying — the model ARKarium itself used via a SAF custom folder at the time this survey was written. **(2026-11-12 note: ARKarium has since removed that SAF opt-in in favor of one fixed `Android/media/` folder — see "Settled decisions" in [`../foundational/design-notes.md`](../foundational/design-notes.md) — so this comparison point no longer holds for ARKarium's current build.)** |
 | itch.io | The upload/publish dialog previews new/modified/deleted files before pushing, and builds can be pushed hidden/unlisted before going public. |
 
 ## Suggestions

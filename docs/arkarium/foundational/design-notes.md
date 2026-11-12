@@ -94,6 +94,19 @@ default.** Four rules:
   session-scoped behavior. Multi-document, the day/night button, the volume
   slider and column count remain documented-only in reader-settings.md,
   not built - see that doc's own suggested order for what's next.
+- **One fixed library folder, no user-picked SAF tree.** `resolveLibraryRoot()`
+  always resolves to `Android/media/com.arkarium.app/`
+  (`context.getExternalMediaDirs()[0]`) - visible to file managers and PCs
+  over USB, unlike `Android/data`, with no runtime permission or persisted
+  URI-grant bookkeeping to manage. The old SAF opt-in was built defensively,
+  never requested, and was the only reason `novelId` identity was tied to a
+  URI that could change or vanish (closed `engineering-backlog.md`'s F3/F5
+  "Large" tickets outright) and the only path paying ~3 content-provider
+  queries per file instead of plain filesystem calls.
+  `LibrarySettingsScreen`'s old "Use custom folder" switch is now a purely
+  informational row with a "Custom folder removed" dialog, shown once on
+  upgrade for anyone who had it on. See "Library scan" in
+  [`architecture.md`](architecture.md) for the mechanism.
 - **Flag decisions instead of guessing.** When a change involves a real
   decision with more than one reasonable answer - not just a style
   preference, but something that changes behavior, scope or what gets
