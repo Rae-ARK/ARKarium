@@ -6,9 +6,7 @@ for the format and the critical/other split.
 
 | Bug | Status |
 |---|---|
-| [`continue-reading-position-lost.md`](continue-reading-position-lost.md) | fix applied (7 causes), needs on-device confirmation |
-| [`continue-reading-completion-fraction.md`](continue-reading-completion-fraction.md) | fix applied (streak/weekly-count/haptic), needs on-device confirmation |
-| [`scrolling-bug.md`](scrolling-bug.md) | open — cause 1 (progress readout recomposition scope) fixed, unmeasured; causes 2-4 untouched; moved here from `critical/` (its own severity line already said Medium, not critical) |
+| [`scrolling-bug.md`](scrolling-bug.md) | open — causes 1-3 are gone in code (progress readout is scoped and deferred; the reader is a keyed `LazyColumn`), unmeasured; cause 4 (build config, F12) untouched; which screen the stutter was on is unrecorded |
 | [`uiux-bugs.md`](uiux-bugs.md) | open — all 10 fixed in source, most awaiting an on-device pass; #10 is a fix-on-a-fix, found by re-reading forward from #9's own change rather than a separate owner repro |
 
 Fixed and deleted per the rule in `../README.md`:
@@ -26,3 +24,11 @@ Fixed and deleted per the rule in `../README.md`:
   button (and `HomeScreen`'s now-unused `onSelectFolderClick` param and its
   `MainActivity.kt` wiring) rather than rewording it, since Sync All and the
   top bar's "Add fiction" action already cover first-run entry points.
+- `continue-reading-position-lost.md` — Continue Reading opened at the top of
+  the chapter instead of the saved spot; seven separate causes, all fixed and
+  confirmed on a device. See `MainActivity.kt`'s `initialReaderPosition` effect
+  and `ReaderScreen.kt`'s `currentAnchor()`.
+- `continue-reading-completion-fraction.md` — streak, weekly count and the
+  completion haptic stopped updating once position became a character offset.
+  Fixed by splitting resume position from completion fraction; confirmed on a
+  device. See `ReaderPosition.kt` and `ReadingStats.kt`.

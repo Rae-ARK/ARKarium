@@ -45,7 +45,7 @@ the natural anchor for the TTS highlight in F10/`uiux.md` below — one
 position representation serving both features is simpler than inventing a
 second one for playback.
 
-**Two gaps left by rung 14, both still open:**
+**One gap left by rung 14, still open:**
 
 - **The snippet fallback isn't read back yet.** `positionSnippet` is stored
   on every save but never checked against the live chapter text before
@@ -55,11 +55,11 @@ second one for playback.
   A verification step (`raw.regionMatches(offset, snippet, ...)`, falling
   back to `raw.indexOf(snippet)`, and otherwise staying at the top rather
   than guessing) would close this.
-- **Upgrading from a pre-rung-14 build loses the in-progress position.** A
-  row still carrying the old `PERCENTAGE` type is no longer restored into at
-  all — see
-  `bugs/other/legacy-percentage-position-lost-on-upgrade.md` (bug file since deleted; see bugs/other/continue-reading-position-lost.md)
-  for the gap and a possible one-time-conversion fix.
+
+A second gap, upgrading from a pre-rung-14 build losing the in-progress
+position (a row still carrying the old `PERCENTAGE` type was no longer
+restored into), is fixed by a one-time conversion; see `bugs/other/README.md`'s
+note on it and `MainActivity.kt`'s `initialReaderPosition` effect.
 
 ### F10. TTS playback is tied to a composable's lifecycle — fixed
 

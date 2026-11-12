@@ -1,7 +1,7 @@
-# Performance: SAF I/O, build/startup, recomposition, images
+# Performance: SAF I/O, build/startup, recomposition, images, database and scan cost
 
-> **Kind:** proposal · **Status:** nothing built yet; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-07 @ b777145
-> **Origin:** [`engineering-review.md`](engineering-review.md) F5, F12–F15.
+> **Kind:** proposal · **Status:** nothing built yet; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-12 @ (this patch; F24–F28 and the F14 additions only, the rest as of 2026-11-07)
+> **Origin:** [`engineering-review.md`](engineering-review.md) F5, F12–F15, F24–F28.
 
 ### F5. SAF scan and sync cost several provider queries per file
 
@@ -129,13 +129,13 @@ problem outright instead of just making it briefer.
 
 **Severity:** Low–Medium. **Tags:** V for what's in the code, E for the Kotlin/Compose-compiler-version guidance.
 **Where:** every `LazyColumn`/`LazyRow` under `ui/` except
-`ChapterEditorScreen.kt`; `ui/NovelDetailScreen.kt` (chapter filter/drop/take
+`ChapterEditorScreen.kt`, `TtsVoicePickerScreen.kt` and the reader (keyed by block index); `ui/NovelDetailScreen.kt` (chapter filter/drop/take
 in the composable body); `collectAsState()` call sites throughout `ui/`.
 
 `items(...)` is called with no `key =` in `AuthorPageScreen.kt`,
 `FictionBrowseScreen.kt`, `HomeScreen.kt` (three separate rows),
 `LegalDocumentScreen.kt`, `MetadataMatchDialog.kt` and `NovelDetailScreen.kt` —
-only `ChapterEditorScreen.kt` supplies one. Without a stable key, Compose
+only `ChapterEditorScreen.kt` and `TtsVoicePickerScreen.kt` supply one (the reader keys by block index). Without a stable key, Compose
 can't tell that an item in the next composition is "the same" item that moved
 or changed, which both costs more recomposition when the list changes and
 blocks `animateItem()` placement animation (see `animation-and-polish.md`
@@ -146,6 +146,19 @@ directly in the composable body, so it reruns on every recomposition the
 screen gets, not just when the chapter list or filter actually changes — at
 a few hundred chapters this is a small but avoidable per-keystroke cost that
 `remember(...)` around the inputs removes for free.
+
+The cost is bigger than it looks because of scope, not because of the filter:
+`NovelDetailScreen` is one very large composable, and everything it reads
+directly (`descriptionExpanded`, `showEnlargedCover`, `selectedTabIndex`,
+`pageSize`, `searchQuery`) invalidates the whole body. So expanding the
+description or dismissing the cover viewer re-runs both the arc filter and the
+search filter even though neither input changed. Contrast `chapterCountByArcId`
+two lines above them, which is correctly `remember(chapters)`. Fix shape:
+`remember(chapters, selectedTabIndex.intValue)` for the arc filter and
+`remember(chaptersInArc, searchQuery)` for the search filter; splitting the
+function so each section owns its own reads would help more than either.
+This does *not* explain jank during a plain fling, since scrolling changes none
+of those reads; see `bugs/other/scrolling-bug.md` cause 5.
 
 `collectAsState()` (not `collectAsStateWithLifecycle()`) is used throughout;
 the lifecycle-aware variant is the recommended default on Android because it
@@ -185,3 +198,111 @@ disk cache and `crossfade(true)`, and give `AsyncImage` a `placeholder`. The
 planned full-screen cover viewer (`uiux.md`, "Arc covers are too small to
 see") needs its own full-resolution request separate from the list
 thumbnail's bounded one — don't reuse the same request for both.
+
+### F24. Foreign-key columns have no index
+
+**Severity:** Medium. **Tags:** V (no `indices`/`Index(...)` on any entity, no `CREATE INDEX` in any migration), I (cost not measured; scales with total rows across the whole library).
+**Where:** `data/Entities.kt`; the `forNovel`/`forArc`-style queries in `data/Dao.kt`; every `ON DELETE CASCADE`.
+
+SQLite indexes a table's primary key and nothing else: a `ForeignKey(...)`
+declaration does not create an index on its child column. Room only warns about
+this. So these lookups and cascades are table scans:
+
+| Table.column | Queried or cascaded by |
+|---|---|
+| `chapters.novel_id` | `ChapterDao` per-novel queries; novel delete |
+| `chapters.arc_id` | chapters-in-arc query; the arc `SET_NULL` on arc delete |
+| `arcs.novel_id` | `ArcDao` per-novel query; novel delete |
+| `chapter_overrides.chapter_id` | override lookups and the join from the novel's chapters; chapter delete |
+| `reading_progress.chapter_id` | chapter delete cascade |
+| `scan_fingerprints.novel_id` | per-novel fingerprint lookup; novel delete |
+
+**Correction to the first write-up of this finding:** three tables are already
+covered by their keys and are *not* affected. `reading_progress` (primary key
+`novel_id`), `chapter_read_events` (primary key `(chapter_id, read_date)`, so
+`chapter_id` leads) and `synced_files` (primary key `(novel_id, relative_path)`,
+so `novel_id` leads). `chapter_read_events.novel_id` is not a declared foreign
+key at all.
+
+**Why it matters:** the cascade is the worst case. Deleting a parent row makes
+SQLite find every child row, and with no index on the child column that is a
+full scan of the child table per deleted parent, then again for each table below
+it. A rescan that removes several stale novels does this several times over,
+and nearly every screen open runs one of the per-novel queries above. It is
+invisible at tens of novels and grows linearly with chapter count.
+
+**Direction:** add `indices = [Index("novel_id")]` and the other columns in the
+table to the matching `@Entity` declarations. This is a schema change, so it
+follows the F1/F2 rules in [`data-safety.md`](data-safety.md): a new version
+(`APP_DATABASE_VERSION` is 14 today), an explicit `MIGRATION_14_15` that runs
+`CREATE INDEX`, the exported schema committed, and a `MigrationTestHelper`
+test for it. No destructive fallback. Measure first if a number is wanted: an
+`EXPLAIN QUERY PLAN` on `chapters WHERE novel_id = ?` shows `SCAN` today and
+`SEARCH ... USING INDEX` after.
+
+### F25. The scan writes one row per transaction
+
+**Severity:** Low–Medium. **Tags:** V (the pattern; there is no `withTransaction` or `@Transaction` anywhere in `app/`), I (the per-commit cost is not measured on a device).
+**Where:** `data/ScannerImpl.kt` — the per-chapter `chapterDao().upsert(...)` in the chapter-parsing loop, the per-arc `arcDao().upsert(...)`, and the per-row stale deletes (`arcDao().delete`, `chapterDao().delete`).
+
+Each bare suspend DAO call is its own implicit transaction, so a 300-chapter
+novel does about 300 separate commits for one logical unit of work. Still O(n)
+in chapters, but the constant is a journal commit, not a list append.
+
+**Direction:** do each novel's upserts and stale deletes inside one
+`db.withTransaction { }`, or use list-taking DAO methods (`@Upsert` over a
+`List`, `DELETE ... WHERE id IN (:ids)`). One transaction per novel is also
+the natural atomicity boundary: a scan that dies midway through a novel would
+no longer leave it half-written, which relates to the rescan-safety rules
+(`onNovelFolderSeen`) the scanner already depends on. Check that interaction
+before changing the order of writes.
+
+### F26. The same folder is listed several times per novel
+
+**Severity:** Low. **Tags:** V (the repeated calls), I (constant factor only).
+**Where:** `data/ScannerImpl.kt` — `findCoverUri`, `readLocalMetadata`, `computeFingerprint` (twice), the arc-folder detection, and `parseChaptersInFolder` each call `listFiles()` on the same novel folder; `findAuthorAvatarUri` re-lists the whole `authors/` folder once per author.
+
+**Scope correction:** the first write-up argued each `listFiles()` is a binder
+round-trip through a `DocumentsProvider`. That was true of the SAF tree sources
+this app no longer has (see F5 and "Settled decisions" in
+[`../foundational/design-notes.md`](../foundational/design-notes.md)). The
+library root is now `DocumentFile.fromFile(...)`, which is backed by plain
+`java.io.File`, so each call is a local directory read, not IPC. The
+redundancy is real but its cost is a few extra `readdir` calls per novel; don't
+expect a visible scan-time change.
+
+**Direction:** list each folder once, pass the `List<DocumentFile>` to the
+helpers, and build the authors-folder avatar lookup once as a name → file map.
+Mostly a readability and tidiness change; do it opportunistically when the
+scanner is next touched, not as its own project.
+
+### F27. The scan is strictly sequential across novels
+
+**Severity:** Low. **Tags:** V (sequential `forEachIndexed` in `scanRoot`), I (any gain unmeasured).
+**Where:** `data/ScannerImpl.kt` `scanRoot`.
+
+Each novel folder is discovered and scanned before the next starts. The work
+is independent per folder, so in principle it could fan out. **Recommendation:
+don't, yet.** SQLite has a single writer, so once F25 batches the writes the
+parallel gain shrinks, and the loop carries ordering the rest of the app relies
+on: `onProgress` counts, and `onNovelFolderSeen` being recorded *before* a
+novel's pipeline runs so a failure still leaves the id marked as present. Fan-out
+would have to preserve both. Revisit only if a measured scan on a large library
+is still slow after F25.
+
+### F28. The streak calculation builds ten years of date strings to read the first few
+
+**Severity:** Low. **Tags:** V.
+**Where:** `data/ReadingStats.kt` `currentStreakDays` and `dayKeysBackwardFrom`.
+
+`currentStreakDays` calls `dayKeysBackwardFrom(today, 3650)`, which eagerly
+builds a 3,650-element `List<String>` (a `Calendar.add` and a date format each)
+before the loop that walks it, and that loop stops at the first missing day, so
+usually within days. The cost is O(3650) time and space per Home stats refresh
+to answer an O(streak length) question; `readDates.isEmpty()` already
+short-circuits only the empty case.
+
+**Direction:** generate the keys lazily (a `Sequence` or an inline walk with
+one `Calendar` stepping back a day at a time) so the work is proportional to the
+streak. Keep the current "today may be unread, yesterday counts" rule exactly;
+there are no tests around it, so add one for that rule first.
