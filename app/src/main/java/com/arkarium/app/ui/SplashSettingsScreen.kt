@@ -85,8 +85,8 @@ fun SplashSettingsScreen(
                         ) {
                             Text("Animation", style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                "Lines converge into the ARKarium mark on launch. Turn " +
-                                    "off for a plain, faster fade-in instead.",
+                                "Two lines whoosh in, cross, and trace the ARKarium mark " +
+                                    "on launch. Turn off for a plain, faster fade-in instead.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
