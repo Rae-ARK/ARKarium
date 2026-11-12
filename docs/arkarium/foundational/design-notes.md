@@ -132,6 +132,7 @@ what they resolve to.
 | 2 | 2.5 | `SyncViewModel` (an `AndroidViewModel`: `FictionLut` needs `Context`; also owns `addFictionByName`) |
 | 3 | 3.1–3.4 | `NavHost` migration: static screens → Home/Browse → NovelDetail/ChapterEditor (by `novelId`) → Reader/Author |
 | 3 | 3.5 | `Screen` and `currentScreen` deleted; `MainActivity` ≈ 1428 lines |
+| 3 | 3.6 | Last direct `db`/`contentRepo` access leaves `MainActivity`: `saveReadingProgress`, `saveChapterEdits`, `setNotifyEnabled`, `loadAuthorPage`, last-read resolution, the Continue Reading shortcut's history lookup, `markNovelInProgress`, `setPageSize` and the reader route's missing-chapter restore → `LibraryViewModel`; reader author lookup, chapter text load and saved-position resolve/migrate → new `ReaderViewModel`. What remains is navigation, intent/permission callbacks and rendering. |
 
 Phase 4 (closing the ViewModel test gap) is not done: see
 [`../implementation/test-coverage.md`](../implementation/test-coverage.md).

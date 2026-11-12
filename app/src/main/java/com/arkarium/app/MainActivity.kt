@@ -73,38 +73,32 @@ import com.arkarium.app.ui.WebViewScreen
 import com.arkarium.app.ui.FictionBrowseScreen
 import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.AppScope
-import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.DatabaseDowngradeException
 import com.arkarium.app.data.GoogleBooksMetadataProvider
 import com.arkarium.app.data.resolveLibraryRoot
 import com.arkarium.app.data.ReaderPosition
-import com.arkarium.app.data.paragraphForCharOffset
-import com.arkarium.app.data.paragraphOffsets
 import com.arkarium.app.data.ScannerImpl
 import com.arkarium.app.data.NewChapterCheckWorker
 import com.arkarium.app.data.ReadingProgressSaveWorker
 import com.arkarium.app.data.NewChapterNotifier
 import com.arkarium.app.data.NovelEntity
-import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.SyncManager
-import com.arkarium.app.data.NovelStatus
 import com.arkarium.app.data.TextChapterContentRepository
 import com.arkarium.app.navigation.NavMotion
 import com.arkarium.app.navigation.AddFictionState
 import com.arkarium.app.navigation.SyncAllState
 import com.arkarium.app.ui.theme.colorSchemeFor
 import com.arkarium.app.ui.theme.resolveTheme
-import com.arkarium.app.util.Haptics
+import com.arkarium.app.viewmodel.ChapterRestore
 import com.arkarium.app.viewmodel.LibraryViewModel
 import com.arkarium.app.viewmodel.MetadataViewModel
+import com.arkarium.app.viewmodel.ReaderViewModel
 import com.arkarium.app.viewmodel.SettingsViewModel
 import com.arkarium.app.viewmodel.SyncViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.util.UUID
 
 // The *SearchState/*State dialog-driving sealed classes formerly declared here now live
 // in navigation/AppState.kt; the color-scheme helpers (warmPaperColorScheme,
@@ -160,16 +154,8 @@ class MainActivity : ComponentActivity() {
     // (Stage 2.3 of Phase 2, see docs/arkarium/foundational/design-notes.md). Every read site
     // below is unchanged except for the `libraryViewModel.` prefix, since the fields
     // kept their names.
-    // Author of the fiction currently open in the reader. Stage 3.4 (see
-    // docs/arkarium/foundational/design-notes.md) moved resolution from each entry point setting
-    // this manually into a LaunchedEffect(novelId) inside the "reader/{novelId}/
-    // {chapterId}" composable itself, keyed off the route argument - same pattern
-    // Screen.Author's own LaunchedEffect(authorId) already used. Still looked up once
-    // per novel rather than reactively per-recomposition - it doesn't change across a
-    // Previous/Next hop within the same fiction, only when a *different* fiction's
-    // reader is opened. Null covers both "not resolved yet" and "this fiction has no
-    // linked author" (see NovelEntity.authorId).
-    private val readerAuthor = mutableStateOf<AuthorEntity?>(null)
+    // readerAuthor - the author of the fiction open in the reader - moved to
+    // readerViewModel alongside loadReaderAuthor (see that class's own doc comment).
     // authorPageAuthor/authorPageNovels - backing Screen.Author, reloaded via
     // LaunchedEffect whenever the authorId changes - moved to libraryViewModel
     // alongside loadAuthorPage (see that class's own doc comment).
@@ -213,7 +199,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var db: AppDatabase
     private lateinit var scanner: ScannerImpl
     private lateinit var prefsManager: PreferencesManager
-    private lateinit var contentRepo: TextChapterContentRepository
     private lateinit var syncManager: SyncManager
     // Stage 2.2 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the first ViewModel
     // pulled out of MainActivity. Constructed in onCreate right after prefsManager
@@ -235,6 +220,10 @@ class MainActivity : ComponentActivity() {
     // metadataViewModel (one of its dependencies, alongside db/scanner/syncManager/
     // libraryViewModel), same pattern as the other three.
     private lateinit var syncViewModel: SyncViewModel
+    // Finishes the extraction: owns the reader route's own data access (author lookup,
+    // chapter text load, saved-position resolve/migrate) so the NavHost destination no
+    // longer touches db/contentRepo. Constructed in onCreate after db/contentRepo.
+    private lateinit var readerViewModel: ReaderViewModel
 
     // Originally launched only from a "Notify me when new chapters are available"
     // toggle being switched on (see NovelDetailScreen's onToggleNotify wiring below);
@@ -498,10 +487,12 @@ class MainActivity : ComponentActivity() {
             scanner = ScannerImpl(applicationContext)
             prefsManager = PreferencesManager(applicationContext)
             syncManager = SyncManager(applicationContext)
-            // contentRepo is the control case: it's only ever referenced as a
-            // MainActivity-owned field, never handed into a ViewModel, so it correctly
-            // dies with the Activity on every rotation - built with `this` on purpose.
-            contentRepo = TextChapterContentRepository(this)
+            // contentRepo used to be the control case - an Activity-owned field built with
+            // `this` that died with the Activity on every rotation. It's handed to
+            // ReaderViewModel now, and a ViewModel outlives the Activity instance, so it
+            // is built with applicationContext for the same leak reason as the three
+            // services above. TextChapterContentRepository only uses contentResolver.
+            val contentRepo = TextChapterContentRepository(applicationContext)
             settingsViewModel = ViewModelProvider(this, SettingsViewModel.factory(prefsManager))
                 .get(SettingsViewModel::class.java)
             libraryViewModel = ViewModelProvider(this, LibraryViewModel.factory(db, scanner))
@@ -514,6 +505,8 @@ class MainActivity : ComponentActivity() {
                 this,
                 SyncViewModel.factory(application, db, scanner, syncManager, libraryViewModel, metadataViewModel)
             ).get(SyncViewModel::class.java)
+            readerViewModel = ViewModelProvider(this, ReaderViewModel.factory(db, contentRepo))
+                .get(ReaderViewModel::class.java)
         } catch (e: DatabaseDowngradeException) {
             // See F23 in docs/arkarium/proposal/data-safety.md - this is Room
             // refusing to open a database written by a newer version of the app, not
@@ -776,7 +769,7 @@ class MainActivity : ComponentActivity() {
                     // set so this re-runs once libraryViewModel.novels.size changes,
                     // instead of giving up on a race it can still win.
                     if (libraryViewModel.novels.isEmpty()) return@LaunchedEffect
-                    val lastNovelId = db.readingProgressDao().recentNovelIds(1).firstOrNull()
+                    val lastNovelId = libraryViewModel.lastReadNovelId()
                     if (lastNovelId == null) {
                         // No reading history at all, ever - not a race, nothing for
                         // more scanning to surface. Fall through to Home and don't
@@ -1116,8 +1109,7 @@ class MainActivity : ComponentActivity() {
                                 onChapterSelected = { chapter ->
                                     lifecycleScope.launch {
                                         // Mark novel as IN_PROGRESS when starting to read
-                                        db.novelDao().updateReadingStatus(novel.id, NovelStatus.IN_PROGRESS.name)
-                                        libraryViewModel.refreshRecentlyRead()
+                                        libraryViewModel.markNovelInProgress(novel.id)
                                         // Stage 3.4 (see docs/arkarium/foundational/design-notes.md):
                                         // Reader is now its own "reader/{novelId}/
                                         // {chapterId}" route - readerAuthor resolution and
@@ -1131,7 +1123,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onResizePages = { pageSize ->
                                     lifecycleScope.launch {
-                                        db.novelDao().updatePageSize(novel.id, pageSize)
+                                        libraryViewModel.setPageSize(novel.id, pageSize)
                                     }
                                 },
                                 onEditClick = { navController.navigate("chapterEditor/${novel.id}") },
@@ -1241,24 +1233,20 @@ class MainActivity : ComponentActivity() {
                         // non-null. Only a chapter the database doesn't know (a rescan really
                         // dropped it) leaves for NovelDetail/Home.
                         LaunchedEffect(novelId, chapterId) {
-                            val dbChapter = db.chapterDao().findById(chapterId)
-                            val dbNovel = db.novelDao().findById(novelId)
-                            if (dbChapter != null && dbNovel != null && dbChapter.novelId == dbNovel.id) {
-                                libraryViewModel.loadNovelDetails(dbNovel)
-                                if (libraryViewModel.chapters.any { it.id == chapterId }) {
-                                    return@LaunchedEffect
-                                }
-                            }
-                            if (dbNovel != null) {
-                                navController.navigate("novelDetail/${dbNovel.id}") {
-                                    popUpTo("home") { inclusive = false }
-                                    launchSingleTop = true
-                                }
-                            } else {
-                                navController.navigate("home") {
-                                    popUpTo("home") { inclusive = false }
-                                    launchSingleTop = true
-                                }
+                            // The db lookups moved to libraryViewModel.restoreMissingChapter;
+                            // only the navigation stays here.
+                            when (val restored = libraryViewModel.restoreMissingChapter(novelId, chapterId)) {
+                                is ChapterRestore.Restored -> return@LaunchedEffect
+                                is ChapterRestore.FallbackToNovel ->
+                                    navController.navigate("novelDetail/${restored.novelId}") {
+                                        popUpTo("home") { inclusive = false }
+                                        launchSingleTop = true
+                                    }
+                                is ChapterRestore.FallbackToHome ->
+                                    navController.navigate("home") {
+                                        popUpTo("home") { inclusive = false }
+                                        launchSingleTop = true
+                                    }
                             }
                         }
                     } else {
@@ -1267,7 +1255,7 @@ class MainActivity : ComponentActivity() {
                         // "Activity mutableStateOf set via LaunchedEffect" pattern
                         // Screen.Author's own author lookup below already used.
                         LaunchedEffect(novelId) {
-                            readerAuthor.value = novel?.authorId?.let { db.authorDao().findById(it) }
+                            readerViewModel.loadReaderAuthor(novel?.authorId)
                         }
                         // Keyed on chapterId (via `remember(chapterId)`) so a Previous/Next
                         // hop's `navigate(...) { popUpTo(...) { inclusive = true } }` below -
@@ -1281,7 +1269,7 @@ class MainActivity : ComponentActivity() {
                         val chapterRetryCount = remember(chapterId) { mutableStateOf(0) }
                         LaunchedEffect(chapterId, chapterRetryCount.value) {
                             chapterContentState.value = null
-                            chapterContentState.value = contentRepo.getTextContent(chapter.sourcePath)
+                            chapterContentState.value = readerViewModel.loadChapterContent(chapter.sourcePath)
                         }
                         val loadResult = chapterContentState.value
                         val content = (loadResult as? ChapterLoadResult.Ok)?.content?.body
@@ -1335,33 +1323,8 @@ class MainActivity : ComponentActivity() {
                                 initialPositionResolved.value = false
                                 return@LaunchedEffect
                             }
-                            val saved = db.readingProgressDao().forNovel(novelId)
-                            initialReaderPosition.value = if (saved == null || saved.chapterId != chapterId) {
-                                null
-                            } else if (saved.positionType == ReaderPosition.POSITION_TYPE) {
-                                ReaderPosition(saved.position.toInt(), saved.positionSnippet ?: "")
-                            } else if (content.isNotEmpty()) {
-                                val approxOffset = (saved.position.coerceIn(0f, 1f) * content.length).toInt()
-                                val paragraph = paragraphForCharOffset(paragraphOffsets(content), approxOffset)
-                                if (paragraph != null) {
-                                    val converted = ReaderPosition(
-                                        paragraph.rawStart,
-                                        ReaderPosition.snippetFrom(content, paragraph.rawStart)
-                                    )
-                                    db.readingProgressDao().upsert(
-                                        saved.copy(
-                                            position = converted.charOffset.toFloat(),
-                                            positionType = ReaderPosition.POSITION_TYPE,
-                                            positionSnippet = converted.snippet
-                                        )
-                                    )
-                                    converted
-                                } else {
-                                    null
-                                }
-                            } else {
-                                null
-                            }
+                            initialReaderPosition.value =
+                                readerViewModel.resolveInitialPosition(novelId, chapterId, content)
                             initialPositionResolved.value = true
                         }
                         if (loadResult is ChapterLoadResult.Failed) {
@@ -1402,7 +1365,7 @@ class MainActivity : ComponentActivity() {
                                     novelTitle = novel?.title,
                                     arcTitle = arcTitle,
                                     coverUri = readerCoverUri,
-                                    author = readerAuthor.value,
+                                    author = readerViewModel.readerAuthor.value,
                                     initialPosition = initialReaderPosition.value,
                                     // The four handlers below (onBack, onBackToFiction,
                                     // onPrevious, onNext) use AppScope.io plus the durable
@@ -1479,7 +1442,7 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     onAuthorClick = {
-                                        val authorId = readerAuthor.value?.id
+                                        val authorId = readerViewModel.readerAuthor.value?.id
                                         if (authorId != null) {
                                             navController.navigate("author/$authorId")
                                         }
