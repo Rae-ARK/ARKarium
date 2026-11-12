@@ -90,7 +90,7 @@ private val PAGE_SIZE_OPTIONS = listOf(10, 20, 50, 100)
 // collapsed few-line preview and needs a "Show more" toggle.
 private const val DESCRIPTION_COLLAPSE_THRESHOLD = 220
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun NovelDetailScreen(
     novel: NovelEntity,
