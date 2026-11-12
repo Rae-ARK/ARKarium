@@ -28,7 +28,7 @@ pages) are tracked here like any other ARKarium bug if they resurface.
 
 | Bug | Severity |
 |---|---|
-| [`other/scrolling-bug.md`](other/scrolling-bug.md) | other — reader scrolling reported not smooth; the code causes found 2026-11-08 are fixed (reader is now a `LazyColumn`), unconfirmed on a device, and it's unclear which screen the stutter was on |
+| [`other/scrolling-bug.md`](other/scrolling-bug.md) | other — reader scrolling reported not smooth; every known code cause is now fixed (reader is a `LazyColumn`; the fiction-page chapter list remembers its filters and keys its lazy lists), unconfirmed on a device, and it's unclear which screen the stutter was on |
 | [`other/uiux-bugs.md`](other/uiux-bugs.md) | open — all 10 fixed in source, most awaiting an on-device pass; #10 is a fix-on-a-fix, found by re-reading forward from #9's own change rather than a separate owner repro |
 
 The six previously tracked here are all fixed and their files deleted per

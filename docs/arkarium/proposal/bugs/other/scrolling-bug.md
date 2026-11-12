@@ -1,6 +1,6 @@
-# Scrolling is not smooth: the reader's code causes are fixed but nothing is measured, and the stutter's screen is unrecorded
+# Scrolling is not smooth: the known code causes are fixed but nothing is measured, and the stutter's screen is unrecorded
 
-> **Kind:** proposal · **Status:** open — reader causes 1-3 are gone in code (unmeasured), cause 4 untouched, cause 5 is a candidate for a different screen · **Verified:** 2026-11-12 @ (this patch)
+> **Kind:** proposal · **Status:** open — causes 1-3 and 5 are gone in code (unmeasured), cause 4 untouched · **Verified:** 2026-11-12 @ (this patch)
 > **Origin:** owner report ("scrolling isn't smooth"); first code read of `ReaderScreen.kt` on 2026-11-08, re-read against the current code on 2026-11-12 after the reader moved to a `LazyColumn`.
 
 **Seen:** reported by the owner on a device; build type, device model **and
@@ -43,15 +43,18 @@ not smooth, on a screen nobody wrote down.
    there is no baseline profile, Compose is the 2023.10 BOM. The official first
    check for a slow Compose app is a release build with R8 (E). Untouched; see
    `performance.md` F12.
-5. **Fiction page chapter list (V for the code, I for the impact).**
+5. **Fiction page chapter list — fixed in code (V), unmeasured.**
    `NovelDetailScreen` is a different screen from the reader, so none of
-   1-3 apply to it either way. Its chapter filtering is recomputed on every
-   recomposition of a very large composable and its lazy rows are unkeyed
-   (`performance.md` F14). Scrolling itself does not change the state those
-   filters read, so this is an unproven fit: it would explain jank after
+   1-3 apply to it either way. Its chapter filtering used to be recomputed on
+   every recomposition of a very large composable and its lazy rows were
+   unkeyed; both are now fixed (`performance.md` F14 — the filters are
+   `remember`ed and `items`/`itemsIndexed` all supply `key =`). Scrolling
+   itself never changed the state those filters read, so this was always an
+   unproven fit for *fling* jank specifically — it would explain jank after
    *toggling* something (expanding the description, switching tabs, typing in
-   search), not a plain fling. Only worth chasing if the stutter was on this
-   screen.
+   search), not a plain fling. The fix landed anyway since it was cheap and is
+   good practice regardless; only worth re-opening if the stutter turns out to
+   have been on this screen and the fix didn't help.
 
 **Evidence still needed (why this stays unconfirmed):** which screen the stutter
 was on; the `gfxinfo` numbers from the repro, in both reader modes and on the
@@ -66,9 +69,10 @@ a tab switch (cause 5 predicts a jump on the switch, not the fling).
    suspects are already fixed.
 2. If it was the reader: build hygiene (backlog F12) — R8 with keep rules, a
    baseline profile, then the staged toolchain bump (D4), benchmarking each step.
-3. If it was the fiction page: the F14 changes — `remember` around the arc and
-   search filters and `key = { it.id }` on its `items(...)` calls — then
-   re-measure.
+3. If it was the fiction page: already done — the F14 changes (`remember`
+   around the arc and search filters, `key =` on its `items(...)` calls) have
+   landed. Re-measure; if jank remains, cause 5 wasn't it and this bug has no
+   remaining code-level suspect on that screen.
 
 **Severity:** Medium — nothing is lost and the flow works, but reading is the
 app's primary activity. Not critical by the `critical/` criteria.
