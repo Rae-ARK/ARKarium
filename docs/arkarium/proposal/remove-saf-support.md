@@ -1,6 +1,8 @@
 # Remove SAF support: one fixed library folder at Android/media/
 
-> **Kind:** proposal · **Status:** accepted — implemented (see
+> **Kind:** proposal · **Status:** accepted — implemented in production code; **one
+> test file left broken** (see "Known gap" below) and `app/README.md` left stale
+> (now corrected) (see
 > [`engineering-backlog.md`](../implementation/engineering-backlog.md) rungs 12 and 15,
 > closed won't-fix below) · **Verified:** 2026-11-12 @ (this patch)
 > **Origin:** follow-up to [`engineering-backlog.md`](../implementation/engineering-backlog.md)
@@ -101,11 +103,49 @@ Traced against the codebase at the time this change landed.
 | `data/NewChapterCheckWorker.kt` | Collapsed its private duplicate `resolveLibraryRoot` down to a call into the shared one; dropped the now-unused `PreferencesManager` construction |
 | `data/LibraryScan.kt` | Collapsed `resolveLibraryRoot` to the unconditional `Android/media` resolution |
 | `data/ScannerImpl.kt`, `ui/ThemeSettingsScreen.kt` | Comment references updated |
-| `test/.../SettingsViewModelTest.kt` | `FakeSettingsPreferences` trimmed to match the new interface; `useCustomFolder`/`setLibraryUri` tests replaced with a `dismissSafRemovedNotice` test |
+| `test/.../SettingsViewModelTest.kt` | **Not actually done** — see "Known gap" below |
 
 No `AndroidManifest.xml` changes — `ACTION_OPEN_DOCUMENT_TREE` never required a
 declared permission. No instrumentation/UI tests referenced this feature,
 only the one unit test file above.
+
+## Known gap (found 2026-11-12, docs-consistency pass)
+
+This table's own `SettingsViewModelTest.kt` row was wrong from the day this
+doc was written: `FakeSettingsPreferences` in that file still declares
+`override val useCustomFolder`, `override val libraryUri`,
+`override suspend fun setUseCustomFolder(...)` and
+`override suspend fun setLibraryUri(...)`, and the test class still has
+`` `setUseCustomFolder forwards to SettingsPreferences` `` and
+`` `setLibraryUri forwards to SettingsPreferences` `` test functions that call
+`viewModel.setUseCustomFolder(...)`/`viewModel.setLibraryUri(...)` and read
+`viewModel.savedUri`. None of `useCustomFolder`, `libraryUri`,
+`setUseCustomFolder`, `setLibraryUri` or `savedUri` exist on
+`SettingsPreferences`/`SettingsViewModel` any more — those four members were
+removed from the interface in this same change (see the
+`data/PreferencesManager.kt` and `viewmodel/SettingsViewModel.kt` rows above).
+A Kotlin `override` on a member the supertype no longer declares is a compile
+error, so **`app/src/test/java/com/arkarium/app/viewmodel/SettingsViewModelTest.kt`
+does not compile as it sits in the tree today** — the test source set is
+broken, not just stale.
+
+This was missed because the production code (`MainActivity.kt`,
+`PreferencesManager.kt`, `SettingsViewModel.kt`, `LibrarySettingsScreen.kt`,
+`AppDialogHost.kt`) was fully and consistently updated in both commits; only
+this one test file's `FakeSettingsPreferences` double and its two
+`useCustomFolder`/`setLibraryUri` tests were left behind, and this doc's own
+table claimed otherwise instead of being re-checked against the actual diff.
+`app/README.md` (features list, and the "Select library folder" build/run
+step) was similarly missed by both commits and has been corrected separately.
+
+**Needed fix** (not applied here — this pass is docs-only): drop
+`useCustomFolder`/`libraryUri` from `FakeSettingsPreferences` and its
+constructor params, drop the `setUseCustomFolder`/`setLibraryUri` override
+methods, drop the two tests that exercise them, and add a
+`` `dismissSafRemovedNotice` forwards to SettingsPreferences `` test in their
+place (mirroring `setTheme`'s own test shape, backed by a
+`shouldShowSafRemovedNoticeFlow: MutableStateFlow<Boolean>` on the fake) —
+i.e., actually do what this table always said was done.
 
 Both open backlog items this was blocking are now closed outright:
 
