@@ -129,36 +129,31 @@ problem outright instead of just making it briefer.
 
 **Severity:** Low–Medium. **Tags:** V for what's in the code, E for the Kotlin/Compose-compiler-version guidance.
 **Where:** every `LazyColumn`/`LazyRow` under `ui/` except
-`ChapterEditorScreen.kt`, `TtsVoicePickerScreen.kt` and the reader (keyed by block index); `ui/NovelDetailScreen.kt` (chapter filter/drop/take
-in the composable body); `collectAsState()` call sites throughout `ui/`.
+`ChapterEditorScreen.kt`, `TtsVoicePickerScreen.kt`, the reader (keyed by block index), and now `NovelDetailScreen.kt` (see below); `collectAsState()` call sites throughout `ui/`.
 
-`items(...)` is called with no `key =` in `AuthorPageScreen.kt`,
+**`NovelDetailScreen.kt` — fixed in code (V), unmeasured.** Its three lazy
+lists (`items(genreList)`, `itemsIndexed(arcs)`, `itemsIndexed(chaptersToShow)`)
+now all supply `key =` — the genre string itself, `arc.id`, and `chapter.id`
+respectively — and the arc/search chapter filtering that used to run directly
+in the composable body is now wrapped in `remember(chapters,
+selectedTabIndex.intValue)` and `remember(chaptersInArc, searchQuery)`, the
+exact shape this section used to recommend. Expanding the description or
+dismissing the cover viewer no longer reruns either filter, since neither
+reads `descriptionExpanded` or `showEnlargedCover`. This also closes
+`bugs/other/scrolling-bug.md` cause 5 in code, though that bug stays open
+pending the on-device measurement its "Done when" asks for — scrolling itself
+never changed the state those filters read, so cause 5 was always a weak fit
+for *fling* jank specifically; the fix is good practice regardless and
+unblocks `animateItem()` for this screen's lists (`animation-and-polish.md`
+F16).
+
+`items(...)` is still called with no `key =` in `AuthorPageScreen.kt`,
 `FictionBrowseScreen.kt`, `HomeScreen.kt` (three separate rows),
-`LegalDocumentScreen.kt`, `MetadataMatchDialog.kt` and `NovelDetailScreen.kt` —
-only `ChapterEditorScreen.kt` and `TtsVoicePickerScreen.kt` supply one (the reader keys by block index). Without a stable key, Compose
-can't tell that an item in the next composition is "the same" item that moved
-or changed, which both costs more recomposition when the list changes and
-blocks `animateItem()` placement animation (see `animation-and-polish.md`
-F16) from working correctly.
-
-`NovelDetailScreen` re-runs `filter`/`drop`/`take` over the chapter list
-directly in the composable body, so it reruns on every recomposition the
-screen gets, not just when the chapter list or filter actually changes — at
-a few hundred chapters this is a small but avoidable per-keystroke cost that
-`remember(...)` around the inputs removes for free.
-
-The cost is bigger than it looks because of scope, not because of the filter:
-`NovelDetailScreen` is one very large composable, and everything it reads
-directly (`descriptionExpanded`, `showEnlargedCover`, `selectedTabIndex`,
-`pageSize`, `searchQuery`) invalidates the whole body. So expanding the
-description or dismissing the cover viewer re-runs both the arc filter and the
-search filter even though neither input changed. Contrast `chapterCountByArcId`
-two lines above them, which is correctly `remember(chapters)`. Fix shape:
-`remember(chapters, selectedTabIndex.intValue)` for the arc filter and
-`remember(chaptersInArc, searchQuery)` for the search filter; splitting the
-function so each section owns its own reads would help more than either.
-This does *not* explain jank during a plain fling, since scrolling changes none
-of those reads; see `bugs/other/scrolling-bug.md` cause 5.
+`LegalDocumentScreen.kt` and `MetadataMatchDialog.kt`. Without a stable key,
+Compose can't tell that an item in the next composition is "the same" item
+that moved or changed, which both costs more recomposition when the list
+changes and blocks `animateItem()` placement animation (see
+`animation-and-polish.md` F16) from working correctly on those screens.
 
 `collectAsState()` (not `collectAsStateWithLifecycle()`) is used throughout;
 the lifecycle-aware variant is the recommended default on Android because it
