@@ -1,6 +1,6 @@
 # Performance: SAF I/O, build/startup, recomposition, images, database and scan cost
 
-> **Kind:** proposal · **Status:** F14 fixed in code (unmeasured); nothing else built yet; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-12 @ (this patch; F24–F28 and the F14 additions/closure only, the rest as of 2026-11-07)
+> **Kind:** proposal · **Status:** F14, F25, F26 and F28 fixed in code (all unmeasured — no device/benchmark run); F27 reviewed and deferred, no code change (see below); F24 and everything else not yet built; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-13 @ (this patch; F25/F26/F28 fixes and F27's deferral only — F24 and the rest as of 2026-11-12, the F14 additions/closure as of that same pass)
 > **Origin:** [`engineering-review.md`](engineering-review.md) F5, F12–F15, F24–F28.
 
 ### F5. SAF scan and sync cost several provider queries per file
@@ -267,6 +267,19 @@ no longer leave it half-written, which relates to the rescan-safety rules
 (`onNovelFolderSeen`) the scanner already depends on. Check that interaction
 before changing the order of writes.
 
+**Fixed in code**, unmeasured on a device. `scanChaptersForNovel` now wraps every
+arc upsert, stale-arc delete, chapter upsert and stale-chapter delete, plus the
+fingerprint save, in one `db.withTransaction { }` (`androidx.room.withTransaction`,
+already available via the existing `room-ktx` dependency — no new one needed), so
+one rescanned novel now does a single commit instead of one per row. The checked
+interaction with `onNovelFolderSeen`: that callback fires in `scanRoot`, before
+`scanChaptersForNovel` is even reached, so it's unaffected either way — a novel
+whose transaction here throws is simply retried whole (not half-applied) on the
+next scan, which is the atomicity boundary this finding asked for. `onProgress`
+calls are deliberately kept outside the transaction block (see the code comment)
+rather than wrapped inside it, so a slow or UI-bound progress callback can't hold
+a SQLite transaction open.
+
 ### F26. The same folder is listed several times per novel
 
 **Severity:** Low. **Tags:** V (the repeated calls), I (constant factor only).
@@ -286,6 +299,32 @@ helpers, and build the authors-folder avatar lookup once as a name → file map.
 Mostly a readability and tidiness change; do it opportunistically when the
 scanner is next touched, not as its own project.
 
+**Fixed in code**, unmeasured (expected to be a tidiness win, not a visible
+scan-time change — see the scope correction above). `findCoverUri` and
+`readLocalMetadata` now take an already-listed `List<DocumentFile>` instead of
+listing their folder argument themselves; `buildNovelEntity` lists the novel
+folder once and passes that list to both. `scanChaptersForNovel` lists the novel
+folder once (`novelChildren`) and shares it between `computeFingerprint`'s
+root-level pass, arc-folder detection, and the root-level `parseChaptersInFolder`
+call; each arc folder is likewise listed once and shared between `findCoverUri`
+and that arc's `parseChaptersInFolder` call. `scanAuthorsFolder` lists
+`authors/` once and builds the `.json` list and the avatar-image list from that
+one listing, instead of `findAuthorAvatarUri`/`resolveAuthorAvatarUri` each
+re-listing the whole folder per author.
+
+**Not fully eliminated, by design:** `computeFingerprint`'s own per-subfolder
+walk (needed for every subfolder's file metadata, arc-matching or not) still
+runs before arc folders are listed for the arc loop, because it has to run
+unconditionally — including on the common "nothing changed, skip rescan" path,
+before the function even knows whether arc processing will happen at all. So on
+an actual rescan (fingerprint changed), an arc folder is still listed once more
+by `computeFingerprint`'s directory walk, on top of the once-shared listing arc
+processing now uses — one remaining duplicate per arc folder, down from three.
+Removing that last one would mean restructuring `computeFingerprint` to hand
+back its own per-directory listings for reuse, which is more than this
+finding's severity (Low) calls for; flagged here rather than silently
+left unmentioned.
+
 ### F27. The scan is strictly sequential across novels
 
 **Severity:** Low. **Tags:** V (sequential `forEachIndexed` in `scanRoot`), I (any gain unmeasured).
@@ -299,6 +338,16 @@ on: `onProgress` counts, and `onNovelFolderSeen` being recorded *before* a
 novel's pipeline runs so a failure still leaves the id marked as present. Fan-out
 would have to preserve both. Revisit only if a measured scan on a large library
 is still slow after F25.
+
+**Reviewed, deferred — no code change.** F25 has landed (see above), which is
+exactly the precondition this recommendation named for revisiting the question.
+The recommendation itself still stands as written: nothing has been measured on
+a device yet (this whole proposal doc is still unmeasured — see the status
+line), and fanning out `scanRoot`'s per-novel loop would need `onProgress` and
+`onNovelFolderSeen` to still behave correctly under concurrency, which is real
+design work, not a quick follow-on to F25's transaction batching. Revisit once a
+measured scan on a large library is shown to still be slow with F25 in place —
+not before.
 
 ### F28. The streak calculation builds ten years of date strings to read the first few
 
@@ -316,3 +365,16 @@ short-circuits only the empty case.
 one `Calendar` stepping back a day at a time) so the work is proportional to the
 streak. Keep the current "today may be unread, yesterday counts" rule exactly;
 there are no tests around it, so add one for that rule first.
+
+**Fixed in code.** `currentStreakDays` now walks one calendar day at a time with
+a local `Calendar` and a `nextKey()` closure, instead of calling
+`dayKeysBackwardFrom(today, 3650)` to build the full 10-year key list up front;
+the loop stops at the first missing day exactly as before, so the real cost is
+now proportional to the streak length rather than always 3,650 formatted dates.
+The 3650-day cap is preserved as a hard safety bound on the walk itself, not
+dropped. `dayKeysBackwardFrom` and `dayKeysBackward` are unchanged and still back
+`windowStartKey`, which only ever needs a small, caller-supplied day count, not
+the 3650-day case this finding was about. `ReadingStatsTest.kt` (new) covers the
+"today may be unread, yesterday counts" rule, a mid-streak gap, a month/year
+boundary crossing, and the 3650-day cap itself — none of which had any test
+coverage before this.

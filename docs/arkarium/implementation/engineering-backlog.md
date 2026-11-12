@@ -1,6 +1,6 @@
 # Engineering backlog: merged roadmap
 
-> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12 and 15 closed won't-fix (see below), 13, 16–18 queued · **Verified:** 2026-11-12 @ (this patch)
+> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12 and 15 closed won't-fix (see below), 19 done in code, unmeasured (see below), 13, 16–18 queued · **Verified:** 2026-11-13 @ (this patch; rung 19 only — the rest as of 2026-11-12)
 > **Origin:** a follow-up review pass over the open findings in
 > [`../proposal/engineering-review.md`](../proposal/engineering-review.md) and its
 > detail docs, the two open entries in [`../proposal/bugs/`](../proposal/bugs/README.md),
@@ -40,6 +40,7 @@ and point this row at that instead.
 | 16 | F12/F14/F17 — Kotlin 2.x / Compose BOM / Navigation upgrade (D4 decided: staged) | Large | queued — own ladder when started | [`../proposal/performance.md`](../proposal/performance.md) |
 | 17 | F13 — splash cold-start cost (D6 decided: policy) | Large | queued | [`../proposal/performance.md`](../proposal/performance.md) |
 | 18 | F15, F16, F19 — image crossfade, general animation, reader typography | Large | queued | [`../proposal/performance.md`](../proposal/performance.md), [`../proposal/animation-and-polish.md`](../proposal/animation-and-polish.md) |
+| 19 | F25, F26, F28 — scan transaction batching, redundant `listFiles()` calls, streak-calc eager date-key list (F27 reviewed, deferred — no code change; F24 still open, needs a migration) | Small | **done in code, unmeasured — see below** | [`../proposal/performance.md`](../proposal/performance.md) |
 
 **Not yet started at all, no decision made, not on this ladder:** EPUB/PDF
 ingestion, the ARKlight publisher pipeline, background sync beyond the
@@ -246,6 +247,53 @@ don't need the cutout-draw part, since the cutout is at the top there and the st
 already hidden - but now get the `setDecorFitsSystemWindows(false)` part same as landscape.
 Everything is restored on every exit path. Needs checking on a notched device, in both
 landscape directions and portrait.
+
+## Rung 19 — what changed
+
+Three independent, small fixes out of the four open findings in
+[`../proposal/performance.md`](../proposal/performance.md)'s F24–F28 batch, plus a
+documented decision not to build the fourth yet:
+
+- **F25:** `ScannerImpl.scanChaptersForNovel` now does every arc upsert, stale-arc
+  delete, chapter upsert, stale-chapter delete and the fingerprint save for one
+  novel's rescan inside a single `db.withTransaction { }`, instead of each DAO call
+  committing on its own. A rescan that fails partway through a novel no longer
+  leaves it half-written — it's retried whole on the next scan, consistent with
+  `onNovelFolderSeen` (fired earlier, in `scanRoot`, so unaffected by this change).
+- **F26:** every folder `ScannerImpl` touches more than once per novel — the novel
+  folder itself, each arc folder, and the `authors/` folder — is now listed with
+  `listFiles()` exactly once and that list is shared across every helper that reads
+  it (`findCoverUri`, `readLocalMetadata`, arc detection, `parseChaptersInFolder`,
+  and the per-author avatar lookups in `scanAuthorsFolder`), instead of each helper
+  independently re-listing the same folder. One duplicate listing remains per arc
+  folder on an actual rescan (`computeFingerprint`'s own directory walk has to run
+  before arc folders are listed for the arc-processing loop) — flagged in
+  `performance.md` rather than chased further, given this finding's own Low
+  severity and "opportunistic, not its own project" scope.
+- **F27:** reviewed, not built. The reviewer's own recommendation was to defer
+  until F25 landed and then revisit only if a measured scan on a large library was
+  still slow — F25 landing doesn't by itself satisfy that, since nothing in this
+  proposal has been measured on a device yet. No code change for this finding.
+- **F28:** `ReadingStats.currentStreakDays` now walks "yyyy-MM-dd" day keys
+  backward one at a time with a single `Calendar`, instead of calling
+  `dayKeysBackwardFrom(today, 3650)` to build all 3,650 up front before the loop
+  that (almost always) stops within days. Same 3650-day hard cap, same "today may
+  be unread, yesterday still counts" rule, now covered by a new
+  `ReadingStatsTest.kt` (there was no test for this rule before).
+
+**F24** (missing indexes on six foreign-key columns) is unchanged and still open —
+it needs a schema migration (`MIGRATION_14_15`, an exported `15.json`, and a
+`MigrationTestHelper` test per the F1/F2 rules in
+[`../proposal/data-safety.md`](../proposal/data-safety.md)), which is a different
+kind of change from the other three and wasn't part of this pass.
+
+**Not run on a device, same caveat as every other rung here:** this sandbox has no
+network path to `google()`/`mavenCentral()`, so nothing beyond the new JVM unit
+test could actually be executed. The `withTransaction` and shared-listing changes
+look correct against Room's and `DocumentFile`'s documented behavior, but "one
+commit instead of many" and "fewer `listFiles()` calls" are exactly the kind of
+claims that should be confirmed with a real library and (once the `:benchmark`
+module in rung 16 exists) a Macrobenchmark run, not just a code read.
 
 ## Rungs 12 and 15 — won't-fix
 
