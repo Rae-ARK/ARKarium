@@ -6,7 +6,12 @@ import android.content.ContextWrapper
 import android.os.Build
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -947,17 +952,33 @@ fun ReaderScreen(
     // matching a typical screenful of body text at the default font size.
     val estimatedTotalPages = remember(content) { (content.length / 2000).coerceAtLeast(1) }
 
-    val backgroundColor = when (readingMode.value) {
-        ReadingMode.LIGHT -> Color(0xFFFAF9F6)
-        ReadingMode.SEPIA -> Color(0xFFF5ECD9)
-        ReadingMode.DARK -> Color(0xFF1A1A1A)
-    }
+    // animateColorAsState (animation-and-polish.md F16: "Reading mode switch ... Snaps ->
+    // animateColorAsState on the background, ~200ms") - Light/Sepia/Dark used to replace
+    // backgroundColor/textColor outright on the same frame readingMode.value changed, a
+    // hard cut exactly where a reader's eyes are already focused. Animating both through
+    // the same 200ms tween keeps text legible (both colors cross-fade together, so
+    // contrast never dips mid-transition) without re-laying-out the chapter body - only
+    // the color, not font size or line spacing, animates, per F16's own rule about not
+    // animating anything that forces a relayout.
+    val backgroundColor by animateColorAsState(
+        targetValue = when (readingMode.value) {
+            ReadingMode.LIGHT -> Color(0xFFFAF9F6)
+            ReadingMode.SEPIA -> Color(0xFFF5ECD9)
+            ReadingMode.DARK -> Color(0xFF1A1A1A)
+        },
+        animationSpec = tween(200),
+        label = "readerBackgroundColor"
+    )
 
-    val textColor = when (readingMode.value) {
-        ReadingMode.LIGHT -> Color(0xFF2C2C2C)
-        ReadingMode.SEPIA -> Color(0xFF3E2C1C)
-        ReadingMode.DARK -> Color(0xFFF0F0F0)
-    }
+    val textColor by animateColorAsState(
+        targetValue = when (readingMode.value) {
+            ReadingMode.LIGHT -> Color(0xFF2C2C2C)
+            ReadingMode.SEPIA -> Color(0xFF3E2C1C)
+            ReadingMode.DARK -> Color(0xFFF0F0F0)
+        },
+        animationSpec = tween(200),
+        label = "readerTextColor"
+    )
 
     // The footer (progress readout + Reader Preferences pill) used to be a bare overlay
     // Box on top of the scrollable content, positioned with manual bottom-padding offsets
@@ -1069,7 +1090,19 @@ fun ReaderScreen(
                     }
                 )
         ) {
-            if (showControls.value) {
+            // AnimatedVisibility here only fades (fadeIn/fadeOut, no expand/shrink) -
+            // the outer Column's own .animateContentSize() above already owns the
+            // height/size part of this transition (see its comment). Layering
+            // AnimatedVisibility's default expandVertically/shrinkVertically on top of
+            // that would animate the same height change twice, at two different rates.
+            // Exit faster than enter, matching NavMotion's own rule (Material pairs a
+            // longer decelerate-entrance with a shorter accelerate-exit) - see
+            // animation-and-polish.md F16.
+            AnimatedVisibility(
+                visible = showControls.value,
+                enter = fadeIn(animationSpec = tween(210, delayMillis = 90)),
+                exit = fadeOut(animationSpec = tween(90))
+            ) {
                 TopAppBar(
                     title = { Text(chapter.title, maxLines = 1) },
                     navigationIcon = {
@@ -1632,7 +1665,14 @@ fun ReaderScreen(
             // scroll read is scoped to just that Text, and derivedStateOf means it
             // only actually recomposes when the rounded percent or page number
             // changes (at most ~100 times per chapter), not once per scroll tick.
-            if (showControls.value) {
+            // Fade only (see the matching AnimatedVisibility on the top bar above for
+            // why): this Column's own .animateContentSize() already owns the height
+            // change as the readout appears/disappears.
+            AnimatedVisibility(
+                visible = showControls.value,
+                enter = fadeIn(animationSpec = tween(210, delayMillis = 90)),
+                exit = fadeOut(animationSpec = tween(90))
+            ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()

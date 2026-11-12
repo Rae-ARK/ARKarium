@@ -1,50 +1,48 @@
 # Animation, platform readiness, and reading typography
 
-> **Kind:** proposal · **Status:** screen transitions, the reader's bottom-pill swap, and the display-cutout inset fix built; the rest open · **Verified:** 2026-11-13 @ 2c8ea3a
+> **Kind:** proposal · **Status:** F16 built in full; F17 and F19 still open · **Verified:** 2026-11-13 @ 99cb9ff
 > **Origin:** [`engineering-review.md`](engineering-review.md) F16, F17, F19.
 
-### F16. Almost no animation outside the splash
+### F16. Almost no animation outside the splash — built
 
 **Severity:** Low. **Tags:** V.
-**Where:** outside the splash, motion exists in `navigation/NavMotion.kt` (screen
-transitions), `ui/WaterRipple.kt` (the reader's bottom-pill swap) and one
-`animateContentSize()` on the reader's preferences panel.
+**Where:** `navigation/NavMotion.kt` (screen transitions), `ui/WaterRipple.kt`
+(the reader's bottom-pill swap), `ArkariumApp.kt` (shared `ImageLoader`,
+cover crossfade), `ui/NovelDetailScreen.kt` (chapter list placement
+animation), `ui/ReaderScreen.kt` (reading-mode color animation, chrome fade),
+`ui/SyncDialogs.kt` (sync status crossfade).
 
-List changes, sync progress updates, and the Light/Sepia/Dark theme switch
-still cut instantly, with no deliberate motion design outside the splash — which, per `performance.md` F13, is already the most expensive
-single thing in the app and arguably animated for too long, not too little.
-
-**Where animation would actually earn its keep** (effort roughly
-hours-to-a-day each, see `engineering-review.md`'s suggested order item 6/7):
+Every row below is now built:
 
 | Place | Today | Direction |
 |---|---|---|
 | Home → detail → reader nav | Material shared-axis X (300ms, ~30dp slide + fade-through) forward and back; a fade-through for Previous/Next chapter - `NavMotion` | A cover shared-element transition once the Compose/Navigation upgrade in F17 lands |
-| Chapter list changes (sync adds a chapter, a filter is applied) | Instant | `animateItem()` — the stable `key =` values `performance.md` F14 needed now exist on `NovelDetailScreen`'s lists; `animateItem()` itself still isn't added |
-| Cover load | Pops in | Crossfade via the shared `ImageLoader` in `performance.md` F15 |
-| Reading mode switch (Light/Sepia/Dark) | Snaps | `animateColorAsState` on the background, ~200ms |
-| Reader chrome, TTS controls | The bottom pill swaps Reader Preferences ↔ read-aloud controls with a water ripple; the top bar and progress readout still snap | `AnimatedVisibility` fade for the top bar and readout; a draw-phase TTS highlight once the chunk-highlight work in [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md) rung 5 lands (its prerequisite, `reader-playback.md` F10, is already done) |
-| Sync progress | Text swaps | `AnimatedContent` on the arc label; `animateFloatAsState` for a determinate progress bar |
+| Chapter list changes (sync adds a chapter, a filter is applied) | `Modifier.animateItemPlacement()` on each row (see `NovelDetailScreen.kt`'s `itemsIndexed` chapter list) | `animateItem()` once the Compose BOM bump in `performance.md` F12 lands - `animateItemPlacement()` is the version this project's current BOM (2023.10.01) actually has; `animateItem()` needs foundation 1.7.0+ |
+| Cover load | Crossfades in (200ms) via the shared Coil `ImageLoader` built in `ArkariumApp.newImageLoader()` (`ImageLoaderFactory`), with a 25%-of-memory and 2%-of-disk cache - every `AsyncImage` call picks it up automatically, no per-call-site change needed | Done; a `placeholder` per call-site is still open if a loading-state sketch is wanted later |
+| Reading mode switch (Light/Sepia/Dark) | `animateColorAsState` on both `backgroundColor` and `textColor`, 200ms tween, in `ReaderScreen.kt` | Done |
+| Reader chrome, TTS controls | The bottom pill swaps Reader Preferences ↔ read-aloud controls with a water ripple; the top bar and progress readout each fade via `AnimatedVisibility` (210ms in / 90ms out) layered on the existing `animateContentSize()` that already owns their height change | Done; a draw-phase TTS highlight once the chunk-highlight work in [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md) rung 5 lands (its prerequisite, `reader-playback.md` F10, is already done) |
+| Sync progress | `AnimatedContent` crossfades the one status line (arc name / result / error) in `SyncProgressDialog` | Done; no determinate progress bar - deliberate, see that composable's own doc comment on why there's no file-count signal to drive one from |
 
-**Rules to follow once this is built**, so animation doesn't cost frames or
-break accessibility settings:
+**Rules this was built to, so animation doesn't cost frames or break
+accessibility settings:**
 - Animate `alpha`/`scale`/`translation` through `graphicsLayer {}` or a
   lambda-based modifier (`offset {}`), not through a property that forces
   layout (animating a `Text`'s font size or line spacing re-lays-out the
   whole chapter every frame — a snap is the correct choice there, not an
   animation).
 - Exits should be faster than entrances (Material's motion tokens pair a
-  longer decelerate-entrance with a shorter accelerate-exit).
+  longer decelerate-entrance with a shorter accelerate-exit) - applied as
+  210ms-in/90ms-out throughout the new work above.
 - Compose's own animation APIs already respect the system's "remove
   animations" accessibility setting. Anything manual or time-based — the
   splash's chord audio in particular — does not get that for free and needs
   its own check against the animator duration scale setting.
-- The existing row-striping pattern (`index % 2` as the alternating-row
-  color source) will visibly flicker once `animateItem()` placement
-  animation is in play, since a moved item's *position* changes but this
-  derives its color from position rather than from the item's own stable
-  key. Derive striping from the key instead, or drop it, before adding
-  `animateItem()` to that list.
+- The old row-striping pattern (`index % 2` as the alternating-row color
+  source) would have visibly flickered once placement animation was in
+  play, since a moved item's *position* changes but that derived its color
+  from position rather than from the item's own stable key. Fixed alongside
+  `animateItemPlacement()` itself: striping in `NovelDetailScreen.kt` now
+  keys off `chapter.id.hashCode()`, not `index`.
 
 ### F17. Not ready for predictive back or edge-to-edge
 

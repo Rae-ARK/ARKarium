@@ -564,12 +564,26 @@ fun NovelDetailScreen(
             // fix from bugs.md Bug 2 visible/legible instead of just "correct but
             // silent" - a reader can now actually see why an interlude sorts where
             // it does relative to numbered chapters.
-            itemsIndexed(chaptersToShow, key = { _, chapter -> chapter.id }) { index, chapter ->
+            itemsIndexed(chaptersToShow, key = { _, chapter -> chapter.id }) { _, chapter ->
                 Column(
-                    modifier = Modifier.background(
-                        if (index % 2 == 1) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                        else MaterialTheme.colorScheme.surface
-                    )
+                    modifier = Modifier
+                        // animateItemPlacement() (below) animates this row sliding to its
+                        // new position whenever chaptersToShow's order changes (a sync adds
+                        // a chapter, the search filter narrows the list, sortTier re-sorts
+                        // bonus/extra chapters). Striping used to key off `index`, which is
+                        // exactly the value that moves during that animation - the color
+                        // would visibly flicker as a row animated past alternating
+                        // backgrounds it didn't own yet. Keying off the chapter's own stable
+                        // id instead means a row's color travels with it, not with the slot
+                        // it happens to be passing through. See animation-and-polish.md F16.
+                        .background(
+                            if (chapter.id.hashCode() and 1 == 1) {
+                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            }
+                        )
+                        .animateItemPlacement()
                 ) {
                     Row(
                         modifier = Modifier
