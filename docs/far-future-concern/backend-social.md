@@ -33,7 +33,7 @@ Walking the existing roadmap (the proposals in this folder) against that questio
   sidecar `progress.json` written into the library folder — synced by
   whatever folder-sync tool the user already runs — or an OPDS-Progression-
   shaped GET/PUT endpoint needs no backend `backend-social.md` is scoping
-  for here. See [`peer-app-survey.md`](peer-app-survey.md) Suggestion 3.
+  for here. See [`peer-app-survey.md`](../proposal/peer-app-survey.md) Suggestion 3.
   Worth having as a documented option alongside the Firebase plan below, not
   a replacement for it — it solves same-network/same-account devices, not
   "sync from an arbitrary new device with no prior setup," which is what the

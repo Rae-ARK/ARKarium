@@ -6,13 +6,8 @@ documented but **not being worked on**. This is the **future**.
 | Doc | Kind | Holds |
 |---|---|---|
 | [`ideas.md`](ideas.md) | backlog | Small features and gaps, one row each. |
-| [`tts-multivoice.md`](tts-multivoice.md) | feature | Character-aware multi-voice TTS (the planned differentiator). |
 | [`reader-settings.md`](reader-settings.md) | feature | A "Reader" settings page: which of a reference app's six reader switches fit ARKarium, and what must exist first. The cheap batch (defaults, font family, keep-screen-on, fullscreen, opt-in brightness slider) is built - see [`architecture.md`](../foundational/architecture.md)'s "Reading and local state"; this doc now covers what's left (multi-document, day/night button, volume slider, column count, bookmarks). |
-| [`relay-chain.md`](relay-chain.md) | feature | Multi-relay fallback. |
-| [`app-shortcuts.md`](app-shortcuts.md) | feature | Two more launcher-icon app shortcuts beyond the built "Continue Reading": pin a specific novel, and dynamic per-novel shortcuts for more than just the most-recent read. |
 | [`notice-board.md`](notice-board.md) | feature | A persistent "which fictions got new chapters" log screen, closing the gap left by today's transient-only notification; phase 2 (sketched, not designed) turns it into a launcher home-screen widget. |
-| [`landscape-tablet.md`](landscape-tablet.md) | feature | Nav rail in landscape, Home two-column layout + a new Home Settings page with tag shelves, the fiction page and reader split into panes, and the display-cutout letterboxing fix (built). |
-| [`backend-social.md`](backend-social.md) | feature | Gating, comments, ratings, position sync without owning a backend. |
 | [`bugs/`](bugs/README.md) | reports | Open bugs, split into `critical/` and `other/`. |
 | [`engineering-review.md`](engineering-review.md) | review | Findings index (F1–F28) from a code-plus-research review; links out to the detail docs below. |
 | [`data-safety.md`](data-safety.md) | review detail | F1, F3, F23: Room's destructive migration fallback, `novelId` identity, downgrade crash-loop. |

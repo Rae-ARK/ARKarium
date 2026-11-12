@@ -9,7 +9,7 @@
 > hard evidence of specific competitor `shortcuts.xml` contents (closed-source
 > apps don't publish one; the open-source Mihon-family apps and LNReader
 > this project already tracks - see
-> [`peer-app-survey.md`](peer-app-survey.md) - didn't turn up a public
+> [`peer-app-survey.md`](../proposal/peer-app-survey.md) - didn't turn up a public
 > shortcuts implementation either in the time spent). The two candidates
 > below lean instead on Android's own canonical shortcut patterns and one
 > concrete, unambiguous piece of reader demand - re-verify any competitor

@@ -24,7 +24,7 @@ static-files-plus-author-repo model (see `architecture.md`'s Sync section)
 satisfy fast/offline/privacy/longevity by construction — the explicit goal
 of "software that outlives any vendor backend" is a longevity bet, not just
 a slogan. The weak ideal is **multi-device**: today that structurally needs
-either the planned small backend ([`backend-social.md`](backend-social.md))
+either the planned small backend ([`backend-social.md`](../far-future-concern/backend-social.md))
 or a manual folder copy. That's a real gap, not a failure — most
 self-hosted/local-first software in this category grades the same way,
 multi-device being the one ideal that tends to need *something* server-side

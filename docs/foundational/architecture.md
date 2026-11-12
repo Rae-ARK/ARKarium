@@ -346,7 +346,7 @@ one language at a time, favorites starred first (`tts_voice_name`,
 `tts_favorite_voices`), applied the moment the engine reports ready so a
 choice made before init finishes is never dropped. A chunk that fails stops
 the session and reports why instead of silently advancing. Multi-voice,
-character-aware reading is **not built**: see [`../proposal/tts-multivoice.md`](../proposal/tts-multivoice.md).
+character-aware reading is **not built**: see [`../far-future-concern/tts-multivoice.md`](../far-future-concern/tts-multivoice.md).
 
 ## Micro-haptics
 

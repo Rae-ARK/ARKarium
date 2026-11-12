@@ -17,7 +17,7 @@ the version already stored on the novel; any other version — including one
 manifest itself — comes from the same relay. Hashing proves the files match
 what the manifest says, not that the manifest itself was produced by someone
 authorized to publish for that fiction. A relay (or a compromised/malicious
-mirror in the planned [`relay-chain.md`](relay-chain.md) design) can serve a
+mirror in the planned [`relay-chain.md`](../far-future-concern/relay-chain.md) design) can serve a
 self-consistent manifest plus matching files and every check here passes. The
 missing-version-ordering check means a malicious or just-stale relay can also
 roll a novel back to an older manifest version, since nothing rejects
@@ -58,7 +58,7 @@ details above.
   thing doing the signing is harder to compromise than the thing serving
   files. A relay or mirror that only ever serves already-signed static files
   needs no key at all — which also means a future mirror in
-  [`relay-chain.md`](relay-chain.md) can run with zero secrets.
+  [`relay-chain.md`](../far-future-concern/relay-chain.md) can run with zero secrets.
 - **Key stays offline** (on the author's own machine, used only at publish
   time), not loaded into any always-on service.
 - **A long `expires`, or none at first.** The freeze-attack protection
