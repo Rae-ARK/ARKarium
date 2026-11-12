@@ -1,6 +1,6 @@
 # Animation, platform readiness, and reading typography
 
-> **Kind:** proposal · **Status:** screen transitions and the reader's bottom-pill swap built; the rest open · **Verified:** 2026-11-07 @ a621542
+> **Kind:** proposal · **Status:** screen transitions, the reader's bottom-pill swap, and the display-cutout inset fix built; the rest open · **Verified:** 2026-11-13 @ 2c8ea3a
 > **Origin:** [`engineering-review.md`](engineering-review.md) F16, F17, F19.
 
 ### F16. Almost no animation outside the splash
@@ -52,17 +52,23 @@ break accessibility settings:
 version/API requirements (re-check against current Android docs before
 scheduling this).
 **Where:** `app/build.gradle.kts` (`navigation-compose:2.7.5`);
-`AndroidManifest.xml` (no `android:enableOnBackInvokedCallback`); no inset
-handling (`WindowInsets`, `systemBarsPadding`, etc.) anywhere under `ui/`.
+`AndroidManifest.xml` (no `android:enableOnBackInvokedCallback`);
+display-cutout inset handling now exists app-wide (`WindowInsets.displayCutout`,
+built per [`landscape-tablet.md`](landscape-tablet.md)'s cutout fix) plus
+Reader's own status-bar show/hide for its full-screen toggle, but no general
+system-bar edge-to-edge handling (`systemBarsPadding`, `safeDrawing`, etc.)
+anywhere under `ui/` — most screens zero out their `Scaffold`'s
+`windowInsets`/`contentWindowInsets` instead of consuming them.
 
 Predictive back in Navigation Compose needs `2.8.0-alpha06` or later plus the
 manifest flag; this project is on `2.7.5` with no flag, so it gets the plain
-back-stack pop with no predictive preview. Edge-to-edge: there's no inset
-handling anywhere in the UI layer today, and — not re-verified this pass,
-flagged **E** — targeting a newer API level is expected to make edge-to-edge
-mandatory rather than opt-in, which would break layouts that don't already
-account for system bar insets. Confirm the exact enforcement version against
-current Android docs before `compileSdk`/`targetSdk` is bumped past 34.
+back-stack pop with no predictive preview. Edge-to-edge: the display cutout is
+now handled app-wide, but general system-bar insets (status/navigation bars)
+still aren't formally handled, and — not re-verified this pass, flagged **E**
+— targeting a newer API level is expected to make edge-to-edge mandatory
+rather than opt-in, which would break layouts that don't already account for
+system bar insets. Confirm the exact enforcement version against current
+Android docs before `compileSdk`/`targetSdk` is bumped past 34.
 
 **Direction:** bundle with the Navigation upgrade in `performance.md` F12/D4
 (2.8+, the manifest flag) for predictive back. Edge-to-edge is a separate,
@@ -74,8 +80,9 @@ mandatory, not reactively after a bump breaks layouts.
 
 **Severity:** Low. **Tags:** V for `TextAlign.Justify`'s presence, I for the
 visual effect (rivers/line-length, not inspected on a device this pass).
-**Where:** `ui/ReaderScreen.kt:428`, the chapter body `Text`'s `textAlign =
-TextAlign.Justify`.
+**Where:** `ui/ReaderScreen.kt`, the paragraph-block `Text` in the chapter's
+`LazyColumn` (see `readerBlocks()`'s doc comment for the block split) — its
+`textAlign = TextAlign.Justify`.
 
 Justified text without hyphenation tends to produce visible "rivers" of
 whitespace on narrow phone widths, since the justifier can only stretch
