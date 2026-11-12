@@ -40,8 +40,9 @@ import androidx.compose.ui.unit.dp
 // button, and Rescan Library button originally moved here verbatim from the old
 // monolithic SettingsScreen.kt.
 //
-// Reworked per docs/arkarium/proposal/remove-saf-support.md ("accepted"): the
-// switch and folder picker are gone - there is nothing left to toggle or pick,
+// Reworked per the SAF-removal decision (see "Settled decisions" in
+// docs/arkarium/foundational/design-notes.md): the switch and folder picker
+// are gone - there is nothing left to toggle or pick,
 // since the library root is now the one fixed Android/media/com.arkarium.app/
 // folder (see data/LibraryScan.kt's resolveLibraryRoot). The "Use custom
 // folder" row stays on this screen, but it is now purely informational: tapping

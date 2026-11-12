@@ -77,7 +77,8 @@ class ScannerImpl(private val context: Context) {
         // over the app's one fixed Android/media/com.arkarium.app/ folder - see
         // data/LibraryScan.kt's resolveLibraryRoot. Used to also admit a SAF tree here
         // (DocumentFile.fromTreeUri, for a user-picked custom folder); that path was
-        // removed per docs/arkarium/proposal/remove-saf-support.md ("accepted"), but
+        // removed per the SAF-removal decision (see "Settled decisions" in
+        // docs/arkarium/foundational/design-notes.md), but
         // nothing below this line ever depended on which kind of root it was handed -
         // both expose the identical DocumentFile API.
         root: DocumentFile,
@@ -139,7 +140,7 @@ class ScannerImpl(private val context: Context) {
         // SecurityException or other I/O errors (app data partially wiped, an OEM
         // storage quirk, etc) even now that the library root is a single fixed
         // Android/media folder rather than a user-revocable SAF grant - see
-        // docs/arkarium/proposal/remove-saf-support.md ("accepted"). This scan runs
+        // "Settled decisions" in docs/arkarium/foundational/design-notes.md. This scan runs
         // unattended on every app launch (see MainActivity's auto-scan), so an uncaught
         // exception here previously crashed the app on startup with no way to recover
         // short of clearing app data. Fail soft instead: surface it as a status message

@@ -182,8 +182,8 @@ enum class Theme {
 interface SettingsPreferences {
     val theme: Flow<Theme>
     val systemDefaultLightVariant: Flow<Theme>
-    // One-time "custom folder support was removed" notice - see
-    // docs/arkarium/proposal/remove-saf-support.md ("accepted"). True exactly once,
+    // One-time "custom folder support was removed" notice - see "Settled
+    // decisions" in docs/arkarium/foundational/design-notes.md. True exactly once,
     // for an install that had USE_CUSTOM_FOLDER_KEY set before the toggle was
     // removed, until dismissSafRemovedNotice() is called.
     val shouldShowSafRemovedNotice: Flow<Boolean>
@@ -202,7 +202,8 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         // lose whichever daytime look the user last chose.
         private val SYSTEM_DEFAULT_LIGHT_VARIANT_KEY = stringPreferencesKey("system_default_light_variant")
         private val DEFAULT_PAGE_SIZE_KEY = intPreferencesKey("default_page_size")
-        // Retired per docs/arkarium/proposal/remove-saf-support.md ("accepted"): the
+        // Retired per the SAF-removal decision (see "Settled decisions" in
+        // docs/arkarium/foundational/design-notes.md): the
         // opt-in flag for pointing the scanner at a user-picked SAF folder, and the URI
         // it pointed at. Neither key is written anymore - the library root is now the
         // single fixed Android/media/com.arkarium.app/ folder (see

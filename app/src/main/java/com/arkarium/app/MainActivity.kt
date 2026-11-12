@@ -135,8 +135,8 @@ import java.util.UUID
 // docs/arkarium/foundational/design-notes.md). Every read site below (`currentTheme.value`,
 // etc.) is unchanged, since settingsViewModel's StateFlows are collected under those
 // same local names. The old useCustomFolder/savedUri pair (once a per-composition
-// collectAsState() local) is gone with SAF support itself - see
-// docs/arkarium/proposal/remove-saf-support.md ("accepted") - replaced by
+// collectAsState() local) is gone with SAF support itself - see "Settled
+// decisions" in docs/arkarium/foundational/design-notes.md - replaced by
 // settingsViewModel.shouldShowSafRemovedNotice, collected the same way.
 //
 // metadataSearchState/addFictionState and fetchMetadataFor/applyMetadata formerly
@@ -296,8 +296,9 @@ class MainActivity : ComponentActivity() {
     }
 
     // pickFolder (the SAF ACTION_OPEN_DOCUMENT_TREE launcher, plus the persisted
-    // URI-permission grant/release logic around it) was removed per
-    // docs/arkarium/proposal/remove-saf-support.md ("accepted") - there is no folder
+    // URI-permission grant/release logic around it) was removed per the
+    // SAF-removal decision (see "Settled decisions" in
+    // docs/arkarium/foundational/design-notes.md) - there is no folder
     // left to pick, since the library root is now the one fixed
     // Android/media/com.arkarium.app/ folder resolveLibraryRoot always returns.
 
@@ -745,7 +746,7 @@ class MainActivity : ComponentActivity() {
 
         // Auto-scan on every cold launch, before the user has touched anything. The
         // library root is now the one fixed Android/media/com.arkarium.app/ folder (see
-        // docs/arkarium/proposal/remove-saf-support.md, "accepted"), so this always
+        // "Settled decisions" in docs/arkarium/foundational/design-notes.md), so this always
         // resolves and runs, populating the library with zero user interaction ever
         // required - there's no longer an "unconfigured" state to wait on, so this is a
         // one-shot call rather than collecting a Flow of preference changes.
@@ -1842,7 +1843,7 @@ class MainActivity : ComponentActivity() {
                         // composable in shape - just terminating on this screen
                         // instead of the index. The switch/folder-picker callbacks that
                         // used to live here (onUseCustomFolderToggle, onSelectFolderClick)
-                        // are gone per docs/arkarium/proposal/remove-saf-support.md
+                        // are gone per docs/arkarium/foundational/design-notes.md
                         // ("accepted") - LibrarySettingsScreen now only needs the
                         // one-time migration-notice plumbing plus Rescan.
                         LibrarySettingsScreen(
