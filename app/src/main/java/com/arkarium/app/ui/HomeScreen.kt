@@ -273,7 +273,7 @@ fun HomeScreen(
                             .fillMaxWidth()
                             .padding(bottom = 16.dp)
                     ) {
-                        items(trendingNovels) { novel ->
+                        items(trendingNovels, key = { it.id }) { novel ->
                             NovelCardVertical(
                                 novel = novel,
                                 onClick = { onNovelClick(novel) },
@@ -299,7 +299,7 @@ fun HomeScreen(
                             .fillMaxWidth()
                             .padding(bottom = 16.dp)
                     ) {
-                        items(newReleases) { novel ->
+                        items(newReleases, key = { it.id }) { novel ->
                             NovelCardVertical(
                                 novel = novel,
                                 onClick = { onNovelClick(novel) },

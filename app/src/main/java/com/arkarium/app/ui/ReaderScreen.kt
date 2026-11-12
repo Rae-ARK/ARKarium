@@ -56,7 +56,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -91,6 +90,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
@@ -459,7 +459,7 @@ fun ReaderScreen(
         }
     }
     val prefsManager = remember { PreferencesManager(context) }
-    val keepScreenOnEnabled by prefsManager.ttsKeepScreenOn.collectAsState(initial = false)
+    val keepScreenOnEnabled by prefsManager.ttsKeepScreenOn.collectAsStateWithLifecycle(initialValue = false)
     // reader-settings.md's Screen on section: a second, reader-level
     // keep-screen-on, independent of the TTS one above. The two combine
     // ("reader option on, or read-aloud speaking with its own option on")
@@ -468,7 +468,7 @@ fun ReaderScreen(
     // false. Plain FLAG_KEEP_SCREEN_ON, not the idle-timer variant the doc
     // flagged as the better-but-bigger option for someone who falls asleep
     // reading - the owner picked the plain flag for this pass.
-    val readerKeepScreenOnEnabled by prefsManager.readerKeepScreenOn.collectAsState(initial = false)
+    val readerKeepScreenOnEnabled by prefsManager.readerKeepScreenOn.collectAsStateWithLifecycle(initialValue = false)
     DisposableEffect(keepScreenOnEnabled, readerKeepScreenOnEnabled, tts.isSpeaking) {
         val window = context.findActivity()?.window
         if (readerKeepScreenOnEnabled || (keepScreenOnEnabled && tts.isSpeaking)) {
@@ -488,9 +488,9 @@ fun ReaderScreen(
     // needs showControls, which isn't declared until below (Kotlin requires
     // declaration-before-use in this linear composable body) - see that
     // val's own doc comment for where the effect actually lives.
-    val fullscreenEnabled by prefsManager.readerFullscreen.collectAsState(initial = false)
+    val fullscreenEnabled by prefsManager.readerFullscreen.collectAsStateWithLifecycle(initialValue = false)
     // Whether bare "***"-style lines are chapter breaks; both parses below key on it.
-    val breakLinesEnabled by prefsManager.readerBreakLines.collectAsState(initial = true)
+    val breakLinesEnabled by prefsManager.readerBreakLines.collectAsStateWithLifecycle(initialValue = true)
 
     // reader-settings.md's Brightness section, as amended by the owner: a
     // window-level screenBrightness override for the reader's lifetime, restoring
@@ -498,8 +498,8 @@ fun ReaderScreen(
     // opt-in and the level are set on the Reader settings page now (the in-reader
     // pill panel that used to hold a session-only slider is gone), so this just
     // applies whatever's stored while the reader is open and clears it on exit.
-    val brightnessOverrideEnabled by prefsManager.readerBrightnessSliderEnabled.collectAsState(initial = false)
-    val brightnessLevel by prefsManager.readerBrightness.collectAsState(initial = -1f)
+    val brightnessOverrideEnabled by prefsManager.readerBrightnessSliderEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val brightnessLevel by prefsManager.readerBrightness.collectAsStateWithLifecycle(initialValue = -1f)
     DisposableEffect(Unit) {
         onDispose {
             context.findActivity()?.window?.let { window ->

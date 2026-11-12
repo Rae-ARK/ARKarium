@@ -9,7 +9,6 @@ import android.speech.tts.Voice
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -18,6 +17,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.playback.TtsPlaybackService
 import com.arkarium.app.playback.ttsErrorMessage
@@ -303,10 +303,13 @@ fun rememberChapterTts(): ChapterTtsState {
 
     // Stage 3.4 (see docs/arkarium/foundational/design-notes.md). Deliberately not a
     // one-shot .first() read - auto-continue is checked every time a chapter finishes,
-    // not just once, so it's kept live via collectAsState() and pushed onto the
-    // attached service (via ChapterTtsState.autoContinueEnabled's setter above)
-    // whenever it changes.
-    val autoContinue by prefsManager.ttsAutoContinue.collectAsState(initial = false)
+    // not just once, so it's kept live via collectAsStateWithLifecycle() and pushed onto
+    // the attached service (via ChapterTtsState.autoContinueEnabled's setter above)
+    // whenever it changes. Lifecycle-aware so this stops collecting (and this
+    // composable's LaunchedEffect stops firing) while the screen is backgrounded,
+    // rather than collecting from DataStore for the lifetime of the composition
+    // regardless of visibility (engineering-review.md F14).
+    val autoContinue by prefsManager.ttsAutoContinue.collectAsStateWithLifecycle(initialValue = false)
     LaunchedEffect(autoContinue) {
         state.autoContinueEnabled = autoContinue
     }
