@@ -9,14 +9,14 @@ on the crash screens, so it's never hand-typed a second time in code).
 Features
 - One fixed library folder (`Android/media/com.arkarium.app/`, visible to file
   managers and over USB) - no folder picker or permission grant to manage; see
-  "Library scan" in `docs/arkarium/foundational/architecture.md` and
-  "Settled decisions" in `docs/arkarium/foundational/design-notes.md` for why
+  "Library scan" in `docs/foundational/architecture.md` and
+  "Settled decisions" in `docs/foundational/design-notes.md` for why
   the old SAF-based custom-folder picker was removed
 - Progressive folder scanning that discovers novels, arcs, and chapters
 - Diff-based incremental rescan: unchanged novels are skipped by fingerprint,
   changed ones are upserted in place (manual chapter overrides survive), and
   novels whose folder is genuinely gone are removed - see "Library scan" in
-  `docs/arkarium/foundational/architecture.md`
+  `docs/foundational/architecture.md`
 - Room-based indexing of novels, arcs, chapters, and authors
 - Library screen showing discovered novels
 - Novel detail screen: tabbed "All Chapters" + per-arc view, chapter search,
@@ -41,7 +41,7 @@ How to build and run
 
 Known limitations
 - EPUB/PDF support not yet implemented - tracked in
-  `docs/arkarium/proposal/ideas.md`.
+  `docs/proposal/ideas.md`.
 - Library-wide search matches title/author only; it doesn't search chapter contents.
 
 Architecture notes

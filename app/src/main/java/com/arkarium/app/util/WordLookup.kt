@@ -4,7 +4,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 
-// Tap-a-word lookup (see docs/arkarium/foundational/architecture.md's "Reading and
+// Tap-a-word lookup (see docs/foundational/architecture.md's "Reading and
 // local state"). Deliberately not a bundled dictionary: ACTION_PROCESS_TEXT is the
 // same intent TextView's own long-press selection toolbar uses to offer installed
 // dictionary/translate apps (Google Dictionary, GBoard's translate, etc.) - handing a

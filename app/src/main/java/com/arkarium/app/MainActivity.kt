@@ -103,12 +103,12 @@ import kotlinx.coroutines.withContext
 // The *SearchState/*State dialog-driving sealed classes formerly declared here now live
 // in navigation/AppState.kt; the color-scheme helpers (warmPaperColorScheme,
 // colorSchemeFor, resolveTheme) formerly declared here now live in ui/theme/AppTheme.kt -
-// see docs/arkarium/foundational/design-notes.md. Only the imports above changed; every call site
+// see docs/foundational/design-notes.md. Only the imports above changed; every call site
 // below is unchanged since the types/functions kept their names.
 //
 // Screen (navigation destinations) and this Activity's own currentScreen field - along
 // with the "legacy" NavHost destination and the now-fully-dead `when (currentScreen.value)`
-// branch inside it - were deleted in Stage 3.5 (see docs/arkarium/foundational/design-notes.md).
+// branch inside it - were deleted in Stage 3.5 (see docs/foundational/design-notes.md).
 // Stages 3.1-3.4 had already migrated every real destination onto its own NavController
 // route ("home", "novelDetail/{novelId}", "reader/{novelId}/{chapterId}", etc.); by the
 // end of Stage 3.4 nothing constructed a Screen or read currentScreen.value to decide
@@ -121,27 +121,27 @@ import kotlinx.coroutines.withContext
 //
 // currentTheme/currentSystemDefaultLightVariant formerly lived here as an Activity
 // mutableStateOf field, now come from settingsViewModel (Stage 2.2 of Phase 2, see
-// docs/arkarium/foundational/design-notes.md). Every read site below (`currentTheme.value`,
+// docs/foundational/design-notes.md). Every read site below (`currentTheme.value`,
 // etc.) is unchanged, since settingsViewModel's StateFlows are collected under those
 // same local names. The old useCustomFolder/savedUri pair (once a per-composition
 // collectAsState() local) is gone with SAF support itself - see "Settled
-// decisions" in docs/arkarium/foundational/design-notes.md - replaced by
+// decisions" in docs/foundational/design-notes.md - replaced by
 // settingsViewModel.shouldShowSafRemovedNotice, collected the same way.
 //
 // metadataSearchState/addFictionState and fetchMetadataFor/applyMetadata formerly
 // lived here too - all four now come from metadataViewModel (Stage 2.4 of Phase 2,
-// see docs/arkarium/foundational/design-notes.md).
+// see docs/foundational/design-notes.md).
 //
 // syncAllState/syncCheckState/syncResolutionState and the sync/resolution logic
 // against SyncManager - scanSingleSyncedNovel, addFictionByName, syncAllRaeArkNovels,
 // checkForUpdates, and the three resolveXxx actions - formerly lived here too. All of
 // it now comes from syncViewModel (Stage 2.5 of Phase 2, the last of the four
-// ViewModels the plan calls for - see docs/arkarium/foundational/design-notes.md and
+// ViewModels the plan calls for - see docs/foundational/design-notes.md and
 // SyncViewModel's own doc comment for why addFictionByName moved here rather than
 // staying with the addFictionState it writes). Every place this file used to patch
 // currentScreen directly inside one of those functions used to do it via an
 // onApplied/onUpdated callback passed to metadataViewModel/syncViewModel instead;
-// Stage 3.3 of Phase 3 (see docs/arkarium/foundational/design-notes.md) removed all of those
+// Stage 3.3 of Phase 3 (see docs/foundational/design-notes.md) removed all of those
 // callbacks once NovelDetail became a "novelDetail/{novelId}" route that resolves its
 // own NovelEntity from libraryViewModel.novels, making the currentScreen patch each one
 // existed for unnecessary.
@@ -151,7 +151,7 @@ class MainActivity : ComponentActivity() {
     // novels/chapters/arcs/recentlyRead/inProgressNovels/overriddenChapterIds/
     // arcStartChapterIds/scanProgress/scanMessage formerly lived here as Activity
     // mutableStateOf/mutableStateListOf fields - all now come from libraryViewModel
-    // (Stage 2.3 of Phase 2, see docs/arkarium/foundational/design-notes.md). Every read site
+    // (Stage 2.3 of Phase 2, see docs/foundational/design-notes.md). Every read site
     // below is unchanged except for the `libraryViewModel.` prefix, since the fields
     // kept their names.
     // readerAuthor - the author of the fiction open in the reader - moved to
@@ -200,22 +200,22 @@ class MainActivity : ComponentActivity() {
     private lateinit var scanner: ScannerImpl
     private lateinit var prefsManager: PreferencesManager
     private lateinit var syncManager: SyncManager
-    // Stage 2.2 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the first ViewModel
+    // Stage 2.2 of Phase 2 (docs/foundational/design-notes.md) - the first ViewModel
     // pulled out of MainActivity. Constructed in onCreate right after prefsManager
     // (its only dependency), same lateinit-set-in-onCreate pattern as the services
     // above, rather than as a `by viewModels { }` property delegate - prefsManager
     // isn't constructed yet at property-initializer time, before onCreate runs.
     private lateinit var settingsViewModel: SettingsViewModel
-    // Stage 2.3 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the second ViewModel
+    // Stage 2.3 of Phase 2 (docs/foundational/design-notes.md) - the second ViewModel
     // pulled out of MainActivity. Constructed in onCreate right after db/scanner
     // (its two dependencies), same pattern as settingsViewModel above.
     private lateinit var libraryViewModel: LibraryViewModel
-    // Stage 2.4 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the third ViewModel
+    // Stage 2.4 of Phase 2 (docs/foundational/design-notes.md) - the third ViewModel
     // pulled out of MainActivity. Constructed in onCreate right after libraryViewModel
     // (one of its two dependencies, alongside db), same pattern as libraryViewModel
     // itself.
     private lateinit var metadataViewModel: MetadataViewModel
-    // Stage 2.5 of Phase 2 (docs/arkarium/foundational/design-notes.md) - the fourth and last
+    // Stage 2.5 of Phase 2 (docs/foundational/design-notes.md) - the fourth and last
     // ViewModel pulled out of MainActivity. Constructed in onCreate right after
     // metadataViewModel (one of its dependencies, alongside db/scanner/syncManager/
     // libraryViewModel), same pattern as the other three.
@@ -249,7 +249,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Rung 4 fix (docs/arkarium/implementation/tts-playback-controls.md): wired to
+    // Rung 4 fix (docs/implementation/tts-playback-controls.md): wired to
     // ReaderScreen's onRequestNotificationPermission, called right alongside
     // tts.speak() whenever read-aloud actually starts a new session. Without this, the
     // only runtime request for POST_NOTIFICATIONS was the "Notify new chapters" toggle
@@ -281,25 +281,25 @@ class MainActivity : ComponentActivity() {
     // pickFolder (the SAF ACTION_OPEN_DOCUMENT_TREE launcher, plus the persisted
     // URI-permission grant/release logic around it) was removed per the
     // SAF-removal decision (see "Settled decisions" in
-    // docs/arkarium/foundational/design-notes.md) - there is no folder
+    // docs/foundational/design-notes.md) - there is no folder
     // left to pick, since the library root is now the one fixed
     // Android/media/com.arkarium.app/ folder resolveLibraryRoot always returns.
 
     // resolveLibraryRoot and mergeNovelForRescan formerly declared here now live in
     // data/LibraryScan.kt as plain top-level functions (Stage 2.1 of Phase 2 - see
-    // docs/arkarium/foundational/design-notes.md). Every call site below passes
+    // docs/foundational/design-notes.md). Every call site below passes
     // `this@MainActivity` as resolveLibraryRoot's explicit `context` parameter
     // (several call sites are inside `lifecycleScope.launch { }`/Composable lambdas,
     // where a bare `this` would resolve to the wrong receiver). It no longer takes
     // useCustomFolder/savedUri parameters - see the proposal doc above.
 
-    // scanSingleSyncedNovel formerly lived here too (see docs/arkarium/foundational/architecture.md,
+    // scanSingleSyncedNovel formerly lived here too (see docs/foundational/architecture.md,
     // Sync invariants S8) - it now lives on syncViewModel alongside syncAllRaeArkNovels, its only
-    // caller (Stage 2.5 of Phase 2, see docs/arkarium/foundational/design-notes.md).
+    // caller (Stage 2.5 of Phase 2, see docs/foundational/design-notes.md).
 
     // startScan, loadNovelDetails, and refreshRecentlyRead formerly lived here as
     // Activity-private methods - all three now live on libraryViewModel (Stage 2.3 of
-    // Phase 2, see docs/arkarium/foundational/design-notes.md), unchanged in body except for the
+    // Phase 2, see docs/foundational/design-notes.md), unchanged in body except for the
     // fields they read/write resolving to that class's own novels/chapters/arcs/
     // recentlyRead/inProgressNovels/scanProgress/scanMessage instead of the
     // Activity's. Every call site below (`startScan(...)`, `loadNovelDetails(...)`,
@@ -314,7 +314,7 @@ class MainActivity : ComponentActivity() {
     // navigation-only helper with no db access of its own ("Navigation is NavController
     // only", design-notes.md). addFictionByName, syncAllRaeArkNovels, and
     // checkForUpdates live on syncViewModel (Stage 2.5 of Phase 2, see
-    // docs/arkarium/foundational/design-notes.md and SyncViewModel's own doc comment).
+    // docs/foundational/design-notes.md and SyncViewModel's own doc comment).
 
     // Pure navigation, no db access - the other half of what used to be
     // navigateToLastReadChapterOrDetail (see libraryViewModel.resolveLastReadChapterId's
@@ -375,9 +375,9 @@ class MainActivity : ComponentActivity() {
     // resolveMissingFolderBySyncing/resolveByRemovingFromLibrary/
     // resolveSourceGoneByUnlinking - the three resolution actions SyncResolutionDialog
     // offers once checkForUpdates hits a MissingLocalFolderException or
-    // SourceGoneException (see docs/arkarium/foundational/architecture.md, Sync invariants S6) - formerly lived here
+    // SourceGoneException (see docs/foundational/architecture.md, Sync invariants S6) - formerly lived here
     // too. All three now live on syncViewModel alongside the syncResolutionState they
-    // drive (Stage 2.5 of Phase 2, see docs/arkarium/foundational/design-notes.md), each now
+    // drive (Stage 2.5 of Phase 2, see docs/foundational/design-notes.md), each now
     // taking an `onUpdated`/`onRemoved` callback where it used to patch currentScreen
     // directly - see SyncResolutionDialog's call site below for how each is wired.
 
@@ -508,7 +508,7 @@ class MainActivity : ComponentActivity() {
             readerViewModel = ViewModelProvider(this, ReaderViewModel.factory(db, contentRepo))
                 .get(ReaderViewModel::class.java)
         } catch (e: DatabaseDowngradeException) {
-            // See F23 in docs/arkarium/proposal/data-safety.md - this is Room
+            // See F23 in docs/proposal/data-safety.md - this is Room
             // refusing to open a database written by a newer version of the app, not
             // the "crashed before drawing a single frame" failure the catch-all below
             // is for. The message is already user-facing (AppDatabase.create()), so
@@ -522,7 +522,7 @@ class MainActivity : ComponentActivity() {
 
         // Schedules (or, on every launch after the first, no-ops against - see
         // ExistingPeriodicWorkPolicy.KEEP) the periodic background "new chapter" check
-        // (see docs/arkarium/foundational/architecture.md, Sync: entry points). Safe to call unconditionally on every
+        // (see docs/foundational/architecture.md, Sync: entry points). Safe to call unconditionally on every
         // cold launch regardless of whether any novel currently has notifications
         // turned on - the worker itself queries notifyEnabledSynced() and returns
         // immediately if that's empty, so scheduling it eagerly here just means it's
@@ -563,7 +563,7 @@ class MainActivity : ComponentActivity() {
 
         // Auto-scan on every cold launch, before the user has touched anything. The
         // library root is now the one fixed Android/media/com.arkarium.app/ folder (see
-        // "Settled decisions" in docs/arkarium/foundational/design-notes.md), so this always
+        // "Settled decisions" in docs/foundational/design-notes.md), so this always
         // resolves and runs, populating the library with zero user interaction ever
         // required - there's no longer an "unconfigured" state to wait on, so this is a
         // one-shot call rather than collecting a Flow of preference changes.
@@ -583,7 +583,7 @@ class MainActivity : ComponentActivity() {
 
         // Theme and its System Default sub-preference are no longer watched here -
         // settingsViewModel's currentTheme/currentSystemDefaultLightVariant StateFlows
-        // (Stage 2.2 of Phase 2, see docs/arkarium/foundational/design-notes.md) already collect
+        // (Stage 2.2 of Phase 2, see docs/foundational/design-notes.md) already collect
         // prefsManager.theme/systemDefaultLightVariant themselves, scoped to
         // viewModelScope instead of lifecycleScope.
 
@@ -638,7 +638,7 @@ class MainActivity : ComponentActivity() {
                 // contrast background - both unreadable. Recompute on every theme change
                 // instead of once, since currentTheme can change at runtime.
                 val view = LocalView.current
-                // Stage 3.1 (see docs/arkarium/foundational/design-notes.md): a single NavController
+                // Stage 3.1 (see docs/foundational/design-notes.md): a single NavController
                 // hoisted here, at the top of the composable tree, same placement
                 // "Migrate Jetpack Navigation to Navigation Compose" recommends for the
                 // top-level App composable. Every destination below routes through it as
@@ -655,7 +655,7 @@ class MainActivity : ComponentActivity() {
                 // above, and both default to true to match PreferencesManager's own default.
                 val splashAnimationEnabled = prefsManager.splashAnimationEnabled.collectAsState(initial = true)
                 val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = true)
-                // TTS default-settings state (see docs/arkarium/foundational/design-notes.md, Stage
+                // TTS default-settings state (see docs/foundational/design-notes.md, Stage
                 // 3.2) - collected here too, same reasoning as shouldShowSafRemovedNotice
                 // above. Initial values match PreferencesManager's own fallbacks (see
                 // ttsDefaultRate/ttsPitch/ttsAutoContinue/ttsKeepScreenOn) so the
@@ -713,7 +713,7 @@ class MainActivity : ComponentActivity() {
                     if (showSplash.value) return@LaunchedEffect
                     val novelId = pendingNotificationNovelId.value ?: return@LaunchedEffect
                     val target = libraryViewModel.novels.firstOrNull { it.id == novelId } ?: return@LaunchedEffect
-                    // Stage 3.3 (see docs/arkarium/foundational/design-notes.md): NovelDetail is now
+                    // Stage 3.3 (see docs/foundational/design-notes.md): NovelDetail is now
                     // its own "novelDetail/{novelId}" route rather than "legacy" - a cold
                     // start from a notification tap begins on "home" (the NavHost's
                     // startDestination), so without this the NavHost would stay parked on
@@ -858,7 +858,7 @@ class MainActivity : ComponentActivity() {
                 // file doesn't have it.
                 val currentBackStackEntry = navController.currentBackStackEntryAsState()
                 val currentRoute = currentBackStackEntry.value?.destination?.route
-                // Bug 4 fix (docs/arkarium/proposal/bugs/other/uiux-bugs.md): metadataSearchState
+                // Bug 4 fix (docs/proposal/bugs/other/uiux-bugs.md): metadataSearchState
                 // is a single app-wide ViewModel field, not scoped to whichever
                 // "novelDetail/{novelId}" route was on screen when fetchMetadataFor was
                 // called - without this, a "Fetch info" result that resolves after the user
@@ -946,13 +946,13 @@ class MainActivity : ComponentActivity() {
                     color = colorScheme.background,
                     contentColor = colorScheme.onBackground
                 ) {
-                // Stage 3.1-3.4 (see docs/arkarium/foundational/design-notes.md): every destination
+                // Stage 3.1-3.4 (see docs/foundational/design-notes.md): every destination
                 // now routes through NavHost - the manual currentScreen/Screen `when`
                 // block, and the "legacy" destination that wrapped it, were removed in
                 // Stage 3.5.
                 NavHost(
                     navController = navController,
-                    // Stage 3.2 (see docs/arkarium/foundational/design-notes.md): Home is the
+                    // Stage 3.2 (see docs/foundational/design-notes.md): Home is the
                     // NavHost's own startDestination - the thing that actually decides
                     // what's on screen first.
                     startDestination = "home",
@@ -979,7 +979,7 @@ class MainActivity : ComponentActivity() {
                             onNovelClick = { novel ->
                                 lifecycleScope.launch {
                                     libraryViewModel.loadNovelDetails(novel)
-                                    // Stage 3.3 (see docs/arkarium/foundational/design-notes.md):
+                                    // Stage 3.3 (see docs/foundational/design-notes.md):
                                     // NovelDetail is now its own route, keyed by novelId -
                                     // launchSingleTop avoids piling up a new back-stack
                                     // entry every time Home is revisited and a novel is
@@ -989,7 +989,7 @@ class MainActivity : ComponentActivity() {
                             },
                             onContinueReading = { novel ->
                                 lifecycleScope.launch {
-                                    // Stage 3.4 (see docs/arkarium/foundational/design-notes.md):
+                                    // Stage 3.4 (see docs/foundational/design-notes.md):
                                     // Reader is its own "reader/{novelId}/{chapterId}" route -
                                     // readerAuthor resolution and the chapter body fetch both
                                     // happen in that composable's own LaunchedEffects, keyed
@@ -1047,7 +1047,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // Stage 3.3 (see docs/arkarium/foundational/design-notes.md): the first stage that
+                // Stage 3.3 (see docs/foundational/design-notes.md): the first stage that
                 // changes a Screen case's shape instead of just relocating it - NovelDetail
                 // and ChapterEditor now take a novelId route argument (same
                 // "fictionBrowse?initialQuery={initialQuery}" pattern Stage 3.2 already
@@ -1110,7 +1110,7 @@ class MainActivity : ComponentActivity() {
                                     lifecycleScope.launch {
                                         // Mark novel as IN_PROGRESS when starting to read
                                         libraryViewModel.markNovelInProgress(novel.id)
-                                        // Stage 3.4 (see docs/arkarium/foundational/design-notes.md):
+                                        // Stage 3.4 (see docs/foundational/design-notes.md):
                                         // Reader is now its own "reader/{novelId}/
                                         // {chapterId}" route - readerAuthor resolution and
                                         // the chapter body fetch both move into that
@@ -1131,7 +1131,7 @@ class MainActivity : ComponentActivity() {
                                 onAuthorClick = {
                                     val authorId = novel.authorId
                                     if (authorId != null) {
-                                        // Stage 3.4 (see docs/arkarium/foundational/design-notes.md):
+                                        // Stage 3.4 (see docs/foundational/design-notes.md):
                                         // Author is now its own "author/{authorId}" route -
                                         // no more `from` payload to carry, since
                                         // NavController's own back stack already knows to
@@ -1199,7 +1199,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // Stage 3.4 (see docs/arkarium/foundational/design-notes.md): the last stage of the
+                // Stage 3.4 (see docs/foundational/design-notes.md): the last stage of the
                 // Screen-case migration, and the only one that actually needs
                 // NavController's own back-stack handling rather than just its routing -
                 // see this route's onPrevious/onNext (replace, not push) and the
@@ -1280,7 +1280,7 @@ class MainActivity : ComponentActivity() {
                         // ReadingProgressEntity is one row per novel - but defensive here
                         // costs nothing).
                         //
-                        // Was (see docs/arkarium/proposal/bugs/other/
+                        // Was (see docs/proposal/bugs/other/
                         // legacy-percentage-position-lost-on-upgrade.md, now fixed and
                         // deleted): a PERCENTAGE row - any row written before rung 14, which
                         // for an existing install means every chapter the reader was
@@ -1457,7 +1457,7 @@ class MainActivity : ComponentActivity() {
                                     // The "Reader Preferences" pill: one place for reader
                                     // settings. Forward nav so Back returns to this reader.
                                     onOpenReaderSettings = { navController.navigate("settings/reader") },
-                                    // Rung 4 fix (docs/arkarium/implementation/tts-playback-controls.md):
+                                    // Rung 4 fix (docs/implementation/tts-playback-controls.md):
                                     // the only existing POST_NOTIFICATIONS request was wired to the
                                     // "Notify new chapters" toggle, so a reader who starts read-aloud
                                     // without ever touching that toggle was never asked - on API 33+ that
@@ -1537,7 +1537,7 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // Stage 3.4 (see docs/arkarium/foundational/design-notes.md): `from` is dropped from
+                // Stage 3.4 (see docs/foundational/design-notes.md): `from` is dropped from
                 // what used to be Screen.Author - onBack is now a plain
                 // navController.popBackStack(), since NavController's own back stack
                 // already knows whether the previous entry was "novelDetail/{novelId}"
@@ -1576,7 +1576,7 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 1 (see docs/arkarium/foundational/design-notes.md): SettingsScreen
+                        // Stage 1 (see docs/foundational/design-notes.md): SettingsScreen
                         // is now a pure index/menu - it no longer takes
                         // currentTheme/splash* state or their setter
                         // callbacks, just navigation into each row's own destination.
@@ -1609,7 +1609,7 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/theme") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 2 (see docs/arkarium/foundational/design-notes.md): the Theme radio
+                        // Stage 2 (see docs/foundational/design-notes.md): the Theme radio
                         // group's callback wiring, unchanged from the old "settings"
                         // composable - just terminating on this screen instead of the
                         // index. See that composable's own history for why these route
@@ -1628,12 +1628,12 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/library") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 2 (see docs/arkarium/foundational/design-notes.md): the Library
+                        // Stage 2 (see docs/foundational/design-notes.md): the Library
                         // screen's callback wiring, unchanged from the old "settings"
                         // composable in shape - just terminating on this screen
                         // instead of the index. The switch/folder-picker callbacks that
                         // used to live here (onUseCustomFolderToggle, onSelectFolderClick)
-                        // are gone per docs/arkarium/foundational/design-notes.md
+                        // are gone per docs/foundational/design-notes.md
                         // ("accepted") - LibrarySettingsScreen now only needs the
                         // one-time migration-notice plumbing plus Rescan.
                         LibrarySettingsScreen(
@@ -1667,7 +1667,7 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/splash") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 2 (see docs/arkarium/foundational/design-notes.md): the Splash
+                        // Stage 2 (see docs/foundational/design-notes.md): the Splash
                         // switches' callback wiring, unchanged from the old "settings"
                         // composable - just terminating on this screen instead of the
                         // index.
@@ -1742,7 +1742,7 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/tts") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 3.2 (see docs/arkarium/foundational/design-notes.md): direct
+                        // Stage 3.2 (see docs/foundational/design-notes.md): direct
                         // PreferencesManager access hoisted at the Activity, same
                         // pattern settings/splash above already uses - no
                         // TtsSettingsViewModel. Stages 3.3-3.5 and the voice
@@ -1870,7 +1870,7 @@ class MainActivity : ComponentActivity() {
                 } // closes Surface
                 } // closes Scaffold
 
-                // Phase A, rung A1 of docs/arkarium/implementation/ui-layer-reorg.md: the
+                // Phase A, rung A1 of docs/implementation/ui-layer-reorg.md: the
                 // five metadata/sync dialog `when` blocks that used to be written out
                 // inline here now live in AppDialogHost, called once as the Scaffold's
                 // sibling - same position, same five dialogs, same state/callbacks.

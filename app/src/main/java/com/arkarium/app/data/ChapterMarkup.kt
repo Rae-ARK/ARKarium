@@ -198,7 +198,7 @@ fun parseChapterSegments(raw: String, detectBreakLines: Boolean = true): List<Ch
     return segments
 }
 
-// Rung 14 (F9, docs/arkarium/proposal/reader-playback.md): pairs each Paragraph
+// Rung 14 (F9, docs/proposal/reader-playback.md): pairs each Paragraph
 // segment parseChapterSegments() would produce with the offset in `raw` where its
 // text begins, so ReaderScreen can anchor a saved reading position to a point in the
 // chapter's own text (CHAR_OFFSET, see data/Entities.kt's ReadingProgressEntity doc
@@ -310,7 +310,7 @@ fun paragraphContaining(offsets: List<ParagraphOffset>, charOffset: Int): Paragr
 // block instead - see readerBlocks()'s own CRLF test for the symptom this caused).
 private val BLANK_LINE_SPLIT = Regex("\r?\n[ \t]*(?:\r?\n[ \t]*)+")
 
-// Rung 6 of docs/arkarium/implementation/tts-playback-controls.md (paragraph-highlight
+// Rung 6 of docs/implementation/tts-playback-controls.md (paragraph-highlight
 // variant - see that doc for why it replaced the originally-planned word-level
 // enhancement): paragraphOffsets() above finds one block per markup-delimited stretch
 // of plain text, which the reader draws as a single Text - usually the whole chapter

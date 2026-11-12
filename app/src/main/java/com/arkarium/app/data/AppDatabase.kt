@@ -10,7 +10,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 // Thrown by AppDatabase.create() instead of Room's own IllegalStateException
 // specifically when the unhandled version Room hit is a downgrade (the running app's
 // migration list only goes up to some version lower than what's already on disk) -
-// see F23 in docs/arkarium/proposal/data-safety.md. Kept as an IllegalStateException
+// see F23 in docs/proposal/data-safety.md. Kept as an IllegalStateException
 // subtype so anything that already catches IllegalStateException around
 // AppDatabase.create() still catches this; callers that want the friendlier message
 // specifically (MainActivity.onCreate) catch this subtype first.
@@ -200,7 +200,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // Migration from v8 to v9: adds sync relay tracking (see docs/arkarium/foundational/architecture.md, Sync).
+        // Migration from v8 to v9: adds sync relay tracking (see docs/foundational/architecture.md, Sync).
         // Three new nullable columns on novels (sync_source_url/sync_source_version/
         // last_synced_at - all null = "purely local", same backfill-friendly pattern
         // as MIGRATION_5_6's metadata columns) plus the new synced_files table, which
@@ -224,7 +224,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // Migration from v9 to v10: adds sync_status to novels (see docs/arkarium/foundational/architecture.md,
+        // Migration from v9 to v10: adds sync_status to novels (see docs/foundational/architecture.md,
         // Sync invariants S6 - "no graceful handling when a synced novel's folder disappears"). Backfills
         // to 'ACTIVE' for every existing row, synced or not; the column is simply unused
         // for a purely-local novel (syncSourceUrl == null).
@@ -235,7 +235,7 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         // Migration from v10 to v11: adds sync_folder_name to novels (see
-        // docs/arkarium/foundational/architecture.md, Sync invariants S9 and Entities.kt's doc comment on the column). Null-
+        // docs/foundational/architecture.md, Sync invariants S9 and Entities.kt's doc comment on the column). Null-
         // backfilled for every existing row, synced or not; a synced novel created by an
         // older build picks up a real value the next time it successfully syncs (see
         // SyncManager.sync's folder-relocation fallback chain), a purely-local novel
@@ -256,7 +256,7 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         // Migration from v11 to v12: adds notify_new_chapters to novels (see
-        // Entities.kt's doc comment on the column and docs/arkarium/foundational/architecture.md, Sync: entry points).
+        // Entities.kt's doc comment on the column and docs/foundational/architecture.md, Sync: entry points).
         // Backfills to 0 (off) for every existing row, synced or not - nobody is
         // opted into background notifications by a version bump they didn't ask for.
         val MIGRATION_11_12 = object : Migration(11, 12) {
@@ -289,7 +289,7 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         // Migration from v13 to v14: adds the position_snippet column reading_progress
-        // needs for rung 14 (F9, docs/arkarium/proposal/reader-playback.md -
+        // needs for rung 14 (F9, docs/proposal/reader-playback.md -
         // ReaderPosition.kt). Purely additive, nullable, no default to backfill - every
         // existing row is positionType PERCENTAGE and stays that way; it just gets a
         // null snippet, same as any future PERCENTAGE row would. Nothing re-anchors an

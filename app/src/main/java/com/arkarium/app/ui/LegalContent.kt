@@ -41,12 +41,12 @@ data class LegalSection(
 // Content here is deliberately scoped to what ARKarium's code actually does
 // (see MainActivity/ScannerImpl/SyncManager/NovelMetadataProvider/PreferencesManager)
 // rather than generic boilerplate - and, as importantly, scoped to what ARKarium
-// IS: a direct author-to-reader sync client (see docs/arkarium/foundational/what-is-arkarium.md),
+// IS: a direct author-to-reader sync client (see docs/foundational/what-is-arkarium.md),
 // not just a local file browser. ARKarium makes network requests in the normal
 // course of being used, not only as an edge-case opt-in - see "Content sync"
 // below. That's a real difference from ARKster/ARKium (offline-only local
 // readers this project grew out of; see "Relationship to sibling projects" in
-// docs/arkarium/foundational/what-is-arkarium.md), and this file
+// docs/foundational/what-is-arkarium.md), and this file
 // must not describe ARKarium as if it still only reads files you already have
 // lying around on disk. Keep this file in sync if the app's actual network/data
 // behavior changes (a new network call, a new local data store, etc.).

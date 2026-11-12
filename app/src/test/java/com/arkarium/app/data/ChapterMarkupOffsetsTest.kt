@@ -5,7 +5,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-// Rung 14 (F9, docs/arkarium/proposal/reader-playback.md): paragraphOffsets() has to
+// Rung 14 (F9, docs/proposal/reader-playback.md): paragraphOffsets() has to
 // stay in lockstep with parseChapterSegments() - same Paragraph entries, same order -
 // since ReaderScreen zips the two by position rather than by any shared key. These
 // tests check that invariant directly (not just paragraphOffsets in isolation), plus

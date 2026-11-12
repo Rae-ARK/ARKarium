@@ -5,7 +5,7 @@ import androidx.datastore.preferences.core.mutablePreferencesOf
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
-// Covers the "Rung 4: remaining work" gap docs/arkarium/foundational/design-notes.md
+// Covers the "Rung 4: remaining work" gap docs/foundational/design-notes.md
 // flagged for the tts_* preference reads/writes: PreferencesManager itself still takes
 // a real Context, and this project deliberately has no Robolectric/instrumented test
 // infra (see design-notes.md's testing strategy), so these keys can't be exercised

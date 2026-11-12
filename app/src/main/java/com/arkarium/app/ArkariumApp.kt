@@ -14,7 +14,7 @@ import androidx.core.graphics.drawable.IconCompat
 // from Thread's static default handler (a leak), and one crash wrote the crash record
 // once per wrapper. The handler is process-wide state, so it lives here.
 //
-// Ownership map (one authority per thing - see docs/arkarium/foundational/architecture.md,
+// Ownership map (one authority per thing - see docs/foundational/architecture.md,
 // "Lifecycle ownership"):
 //   process (this class)    crash recorder, AppScope (data/AppScope.kt), AppDatabase singleton
 //   Activity (MainActivity) UI + one-shot intent routing only

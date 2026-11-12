@@ -1,6 +1,6 @@
 package com.arkarium.app.data
 
-// Rung 14 (F9, docs/arkarium/proposal/reader-playback.md): the anchor ReaderScreen
+// Rung 14 (F9, docs/proposal/reader-playback.md): the anchor ReaderScreen
 // saves/restores a reading position with, instead of a scroll-pixel fraction.
 // `charOffset` is an index into the chapter's raw text (always the start of some
 // paragraph - see ChapterMarkup.kt's paragraphOffsets/paragraphForCharOffset, which

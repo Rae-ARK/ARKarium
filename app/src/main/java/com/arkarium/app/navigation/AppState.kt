@@ -1,7 +1,7 @@
 package com.arkarium.app.navigation
 
 // Extracted from MainActivity.kt as part of the MainActivity slim-down (see
-// docs/arkarium/foundational/design-notes.md). These sealed classes describe *what* the app can be
+// docs/foundational/design-notes.md). These sealed classes describe *what* the app can be
 // showing at any given moment; MainActivity.kt (and eventually a MainViewModel) still
 // own *when* each state changes. Splitting the destination/state contracts into their
 // own file makes them independently readable and testable without pulling in the
@@ -11,7 +11,7 @@ import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.NovelMetadataCandidate
 
 // The Screen sealed class (navigation destinations) that used to live here was removed
-// in Stage 3.5 (see docs/arkarium/foundational/design-notes.md) - Stages 3.1-3.4 migrated every
+// in Stage 3.5 (see docs/foundational/design-notes.md) - Stages 3.1-3.4 migrated every
 // destination onto NavController-based routes ("home", "novelDetail/{novelId}", etc.),
 // after which Screen, MainActivity's currentScreen field, and the "legacy" NavHost
 // destination that switched on it were only reachable via a dead `when` branch. Only the
@@ -27,7 +27,7 @@ sealed class MetadataSearchState {
     data class Error(val novel: NovelEntity, val message: String) : MetadataSearchState()
 }
 
-// Drives the "Add fiction" dialog from the home screen icon (see docs/arkarium/foundational/architecture.md, Sync,
+// Drives the "Add fiction" dialog from the home screen icon (see docs/foundational/architecture.md, Sync,
 // Stage 3, and the later move to single-origin name lookup via FictionLut). Hidden =
 // dialog not shown at all; EnteringName = dialog shown with an empty field and nothing
 // in flight yet.
@@ -38,7 +38,7 @@ sealed class AddFictionState {
     data class Error(val message: String) : AddFictionState()
 }
 
-// Drives "Sync all Rae ARK's novels" (see docs/arkarium/foundational/architecture.md, Sync: entry points, and
+// Drives "Sync all Rae ARK's novels" (see docs/foundational/architecture.md, Sync: entry points, and
 // EmptyLibraryPrompt in HomeScreen.kt). Idle = dialog hidden. Reuses SyncProgressDialog
 // (originally built for one novel's "check for updates" pass) by treating the whole
 // batch as a single progress stream - it's the same shape (loading -> done/error), just
@@ -58,7 +58,7 @@ sealed class SyncAllState {
 }
 
 // Drives the "Check for updates" progress dialog from NovelDetailScreen (see
-// docs/arkarium/foundational/architecture.md, Sync: entry points). Idle = dialog hidden.
+// docs/foundational/architecture.md, Sync: entry points). Idle = dialog hidden.
 sealed class SyncCheckState {
     object Idle : SyncCheckState()
     data class InProgress(val novel: NovelEntity, val message: String) : SyncCheckState()
@@ -66,7 +66,7 @@ sealed class SyncCheckState {
     data class Error(val novel: NovelEntity, val message: String) : SyncCheckState()
 }
 
-// See docs/arkarium/foundational/architecture.md, Sync invariants S6. Drives SyncResolutionDialog, shown when checkForUpdates
+// See docs/foundational/architecture.md, Sync invariants S6. Drives SyncResolutionDialog, shown when checkForUpdates
 // hits a situation that shouldn't be resolved silently in either direction: the
 // synced novel's local folder is gone (MISSING_LOCALLY - resolved by resyncing or
 // removing the novel) or the relay no longer serves it (SOURCE_GONE - resolved by

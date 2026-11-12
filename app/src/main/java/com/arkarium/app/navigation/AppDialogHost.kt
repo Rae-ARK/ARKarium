@@ -1,6 +1,6 @@
 package com.arkarium.app.navigation
 
-// Phase A, rung A1 of docs/arkarium/implementation/ui-layer-reorg.md - the metadata/sync
+// Phase A, rung A1 of docs/implementation/ui-layer-reorg.md - the metadata/sync
 // dialog `when` blocks that used to sit inline at the end of MainActivity's
 // renderMainContent(), as five siblings of the top-level Scaffold. Pure extraction: same
 // five `when` blocks, same state reads, same callbacks, just gathered into one
@@ -25,7 +25,7 @@ import com.arkarium.app.viewmodel.SyncViewModel
 // same shape every other extracted route in this ladder takes its data as parameters
 // rather than reaching back into an Activity. useCustomFolder/savedUri params removed
 // per the SAF-removal decision (see "Settled decisions" in
-// docs/arkarium/foundational/design-notes.md) - resolveLibraryRoot
+// docs/foundational/design-notes.md) - resolveLibraryRoot
 // no longer takes them, it always resolves the one fixed library folder.
 @Composable
 fun AppDialogHost(
@@ -64,7 +64,7 @@ fun AppDialogHost(
                     // The currently-open "novelDetail/{novelId}" route (if this is
                     // the novel it's showing) picks up the new info on its own,
                     // via the libraryViewModel.novels patch applyMetadata already
-                    // does - Stage 3.3 (see docs/arkarium/foundational/design-notes.md) dropped
+                    // does - Stage 3.3 (see docs/foundational/design-notes.md) dropped
                     // the onApplied callback this call site used to pass to also
                     // patch currentScreen for the same reason.
                     onCandidateSelected = { candidate ->
@@ -101,7 +101,7 @@ fun AppDialogHost(
     }
 
     // "Add fiction" (home screen icon) and "Check for updates"
-    // (NovelDetailScreen) - see docs/arkarium/foundational/architecture.md, Sync: entry points, and the later
+    // (NovelDetailScreen) - see docs/foundational/architecture.md, Sync: entry points, and the later
     // move to single-origin name lookup via FictionLut.
     when (val state = metadataViewModel.addFictionState.value) {
         AddFictionState.Hidden -> {}
@@ -230,13 +230,13 @@ fun AppDialogHost(
         }
     }
 
-    // See docs/arkarium/foundational/architecture.md, Sync invariants S6 - offered whenever checkForUpdates hits a
+    // See docs/foundational/architecture.md, Sync invariants S6 - offered whenever checkForUpdates hits a
     // missing-local-folder or source-gone situation, in place of silently
     // resolving either one.
     when (val state = syncViewModel.syncResolutionState.value) {
         SyncResolutionState.Idle -> {}
         is SyncResolutionState.NeedsResolution -> {
-            // Stage 3.3 (see docs/arkarium/foundational/design-notes.md) dropped all three
+            // Stage 3.3 (see docs/foundational/design-notes.md) dropped all three
             // onUpdated/onRemoved callbacks these three resolve* calls used to
             // take: the "novelDetail/{novelId}" route this dialog can fire on
             // top of resolves its novel from libraryViewModel.novels on every

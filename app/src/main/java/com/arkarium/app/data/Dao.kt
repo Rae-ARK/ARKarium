@@ -85,7 +85,7 @@ interface NovelDao {
 
     // Written once after "Add fiction from URL"'s first sync (once the library scan
     // has discovered the synced folder and assigned it a real novel id - see
-    // docs/arkarium/foundational/architecture.md, Sync: scan reuse), and again after every subsequent successful re-sync. A
+    // docs/foundational/architecture.md, Sync: scan reuse), and again after every subsequent successful re-sync. A
     // plain UPDATE, same rationale as updateMetadata above - this patches an
     // already-existing row rather than upserting a partial entity.
     //
@@ -104,14 +104,14 @@ interface NovelDao {
     """)
     suspend fun updateSyncState(novelId: String, sourceUrl: String, sourceVersion: Int, syncedAt: Long, folderName: String)
 
-    // See docs/arkarium/foundational/architecture.md, Sync invariants S6 / Entities.kt SyncStatus. Set to MISSING_LOCALLY when a
+    // See docs/foundational/architecture.md, Sync invariants S6 / Entities.kt SyncStatus. Set to MISSING_LOCALLY when a
     // synced novel's on-disk folder is discovered gone by a scan, or to SOURCE_GONE when
     // its relay 404s on manifest.json - either way this deliberately never deletes the
     // row itself (see startScan's stale-removal in MainActivity.kt).
     @Query("UPDATE novels SET sync_status = :status WHERE id = :novelId")
     suspend fun updateSyncStatus(novelId: String, status: String)
 
-    // "Unlink" resolution for a SOURCE_GONE novel (see docs/arkarium/foundational/architecture.md, Sync invariants S6): drops the
+    // "Unlink" resolution for a SOURCE_GONE novel (see docs/foundational/architecture.md, Sync invariants S6): drops the
     // sync relationship entirely and reverts this novel to a plain local one. Local
     // content is untouched - only the sync bookkeeping columns are cleared. Caller is
     // still responsible for clearing this novel's SyncedFileEntity rows if desired;
@@ -138,7 +138,7 @@ interface NovelDao {
     suspend fun unlinkSyncSource(novelId: String)
 
     // Backs NovelDetailScreen's "Notify me when new chapters are available" toggle
-    // (see docs/arkarium/foundational/architecture.md, Sync: entry points). A plain UPDATE, same rationale as
+    // (see docs/foundational/architecture.md, Sync: entry points). A plain UPDATE, same rationale as
     // updatePageSize/updateReadingStatus above.
     @Query("UPDATE novels SET notify_new_chapters = :enabled WHERE id = :novelId")
     suspend fun updateNotifyNewChapters(novelId: String, enabled: Boolean)

@@ -3,7 +3,7 @@
 
 Checks (see docs/README.md, "No-drift rule"):
   1. Relative markdown links in README.md, app/README.md and docs/ resolve.
-  2. Every docs/arkarium/** folder has a README.md that links every sibling doc.
+  2. Every docs/** folder has a README.md that links every sibling doc.
   3. Every `docs/<path>.md` path cited in source, workflows or tools exists.
   4. Every lifecycle doc has a `Verified: YYYY-MM-DD` line; warns when it is old.
 
@@ -16,7 +16,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
-LIFECYCLE = DOCS / "arkarium"
 STALE_DAYS = 45
 
 LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
@@ -55,7 +54,7 @@ def check_links():
 
 
 def check_indexes():
-    for folder in [LIFECYCLE, *sorted(p for p in LIFECYCLE.rglob("*") if p.is_dir())]:
+    for folder in [DOCS, *sorted(p for p in DOCS.rglob("*") if p.is_dir())]:
         readme = folder / "README.md"
         if not readme.exists():
             errors.append(f"{rel(folder)}: missing README.md index")
@@ -67,9 +66,6 @@ def check_indexes():
         for sub in sorted(p for p in folder.iterdir() if p.is_dir()):
             if f"{sub.name}/" not in text:
                 errors.append(f"{rel(readme)}: does not index folder {sub.name}/")
-    for folder in sorted(p for p in DOCS.iterdir() if p.is_dir()):
-        if not (folder / "README.md").exists():
-            errors.append(f"{rel(folder)}: missing README.md index")
 
 
 def check_code_pointers():
@@ -88,7 +84,7 @@ def check_code_pointers():
 
 def check_verified():
     today = date.today()
-    for f in sorted(LIFECYCLE.rglob("*.md")):
+    for f in sorted(DOCS.rglob("*.md")):
         if f.name == "README.md":
             continue
         m = VERIFIED.search(f.read_text(encoding="utf-8"))

@@ -15,7 +15,7 @@ import org.junit.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verifyNoInteractions
 
-// Rung 4.2 of docs/arkarium/implementation/test-coverage.md. Deliberately narrow: of
+// Rung 4.2 of docs/implementation/test-coverage.md. Deliberately narrow: of
 // LibraryViewModel's whole public surface, only reportScanSetupError is covered here.
 //
 // Why not more:

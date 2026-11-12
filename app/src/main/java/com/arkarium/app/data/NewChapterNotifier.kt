@@ -13,7 +13,7 @@ import com.arkarium.app.R
 
 // Posts the local notification NewChapterCheckWorker's background pass triggers when
 // a synced novel with notifications enabled turns out to have new chapters (see
-// docs/arkarium/foundational/architecture.md, Sync: entry points). Deliberately its own small object rather than
+// docs/foundational/architecture.md, Sync: entry points). Deliberately its own small object rather than
 // folded into the worker itself - channel creation and PendingIntent-building are
 // pure Android plumbing with no sync/DB logic in them, easy to keep separately
 // readable (and, if it's ever needed, callable from somewhere other than the worker).

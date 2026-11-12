@@ -106,7 +106,7 @@ fun NovelDetailScreen(
     // Non-null only offered to the caller when novel.syncSourceUrl is set - a purely
     // local novel (the common case) has nothing to check for updates against, so the
     // action is left off the app bar entirely rather than shown disabled (see
-    // docs/arkarium/foundational/architecture.md, Sync: entry points).
+    // docs/foundational/architecture.md, Sync: entry points).
     onSyncClick: (() -> Unit)? = null,
     // Current value of NovelEntity.notifyNewChapters - passed in rather than read off
     // `novel` directly so the caller can reflect an in-flight permission-request flow
@@ -322,7 +322,7 @@ fun NovelDetailScreen(
             // meaningful for a synced novel (onToggleNotify null for a purely local
             // one, same gating as onSyncClick in the app bar above: there's nothing to
             // check for updates against, so nothing to notify about either - see
-            // docs/arkarium/foundational/architecture.md, Sync: entry points and
+            // docs/foundational/architecture.md, Sync: entry points and
             // NewChapterCheckWorker, which is what actually acts on this once it's on).
             //
             // The row itself, though, always renders (see bugs.md - "toggle not

@@ -79,7 +79,7 @@ class ScannerImpl(private val context: Context) {
         // data/LibraryScan.kt's resolveLibraryRoot. Used to also admit a SAF tree here
         // (DocumentFile.fromTreeUri, for a user-picked custom folder); that path was
         // removed per the SAF-removal decision (see "Settled decisions" in
-        // docs/arkarium/foundational/design-notes.md), but
+        // docs/foundational/design-notes.md), but
         // nothing below this line ever depended on which kind of root it was handed -
         // both expose the identical DocumentFile API.
         root: DocumentFile,
@@ -117,7 +117,7 @@ class ScannerImpl(private val context: Context) {
         // upserting any of them later succeeded. A caller doing stale-reconcile should
         // treat `false` here as "this listing may have failed" rather than "the
         // library now has zero novels" - see
-        // docs/arkarium/implementation/engineering-backlog.md Rung 1 (Mechanism 2): a
+        // docs/implementation/engineering-backlog.md Rung 1 (Mechanism 2): a
         // SAF provider can return a cursor representing a subset (including an empty one)
         // while still fetching results, with nothing in listFiles()'s return value to
         // tell that apart from a folder that genuinely has no children.
@@ -130,7 +130,7 @@ class ScannerImpl(private val context: Context) {
         // novelIdFor() - see that function's doc comment. This exists so a caller can
         // mark the folder "seen" the instant it's found rather than only after its
         // whole per-novel pipeline succeeds - see
-        // docs/arkarium/implementation/engineering-backlog.md Rung 1 (Mechanism 1):
+        // docs/implementation/engineering-backlog.md Rung 1 (Mechanism 1):
         // without this, a novel that throws anywhere downstream of being found is
         // indistinguishable, at onScanCompleted, from a novel whose folder was
         // genuinely deleted.
@@ -141,7 +141,7 @@ class ScannerImpl(private val context: Context) {
         // SecurityException or other I/O errors (app data partially wiped, an OEM
         // storage quirk, etc) even now that the library root is a single fixed
         // Android/media folder rather than a user-revocable SAF grant - see
-        // "Settled decisions" in docs/arkarium/foundational/design-notes.md. This scan runs
+        // "Settled decisions" in docs/foundational/design-notes.md. This scan runs
         // unattended on every app launch (see MainActivity's auto-scan), so an uncaught
         // exception here previously crashed the app on startup with no way to recover
         // short of clearing app data. Fail soft instead: surface it as a status message
@@ -221,7 +221,7 @@ class ScannerImpl(private val context: Context) {
 
     // Builds the NovelEntity for a single already-located novel folder, without
     // touching Room or scanning any other folder. Pulled out of scanRoot's per-child
-    // loop above so it can also back scanSingleNovel below (see docs/arkarium/foundational/architecture.md, Sync invariants S8)
+    // loop above so it can also back scanSingleNovel below (see docs/foundational/architecture.md, Sync invariants S8)
     // - both call sites need exactly this construction, just with `authorsById`/
     // `authorIdByNormalizedName` sourced differently (a full-library scan's one shared
     // authors/ pass vs. a scoped single-novel scan's own smaller one).
@@ -259,9 +259,9 @@ class ScannerImpl(private val context: Context) {
         // really is one of Rae ARK's own is scanned as indistinguishable from a purely
         // local one, which is exactly what left the "Notify me" toggle disabled and
         // "Check for updates" missing on NovelDetailScreen for it - see
-        // docs/arkarium/implementation/engineering-backlog.md Rung 11 ("a second,
+        // docs/implementation/engineering-backlog.md Rung 11 ("a second,
         // different bug in the sync-detection path itself") and sync invariant S10 in
-        // docs/arkarium/foundational/architecture.md.
+        // docs/foundational/architecture.md.
         // Recognize it the same way "Add fiction" does: FictionLut's own exact,
         // normalized match (Sync invariants S7) against the resolved title. A match
         // here only ever fills in what mergeNovelForRescan finds missing - it can't
@@ -285,7 +285,7 @@ class ScannerImpl(private val context: Context) {
 
     // Scoped counterpart to scanRoot: discovers/builds just the one novel folder the
     // caller already knows about, instead of listing and considering every folder
-    // under root. Built for the sync batch path (see docs/arkarium/foundational/architecture.md, Sync invariants S8) -
+    // under root. Built for the sync batch path (see docs/foundational/architecture.md, Sync invariants S8) -
     // `syncAllRaeArkNovels` used to call the full scanRoot() once per fiction in its
     // loop, which re-listed and re-fingerprinted every *already-synced* novel on every
     // single iteration (O(M x N) SAF directory listings for M fictions being synced
