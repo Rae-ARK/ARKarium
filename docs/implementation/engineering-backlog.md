@@ -1,6 +1,6 @@
 # Engineering backlog: merged roadmap
 
-> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12 and 15 closed won't-fix (see below), 19 done in code, unmeasured (see below), 18 done in code for F15/F16, unmeasured, F19 still open (see below), 13, 16, 17 queued · **Verified:** 2026-11-13 @ 56c19c4 (rung 18's F15/F16 portion only — rung 19 as of the prior patch, the rest as of 2026-11-12)
+> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12 and 15 closed won't-fix (see below), 19 done in code, unmeasured, F24 now also done and dusted (see below), 18 done in code for F15/F16, unmeasured, F19 still open (see below), 13, 16, 17 queued · **Verified:** 2026-11-13 @ b315244 (rung 19's F24 portion as of this patch — rung 18's F15/F16 portion as of the prior patch, rung 19's F25/F26/F28 portion as of the patch before that, the rest as of 2026-11-12)
 > **Origin:** a follow-up review pass over the open findings in
 > [`../proposal/engineering-review.md`](../proposal/engineering-review.md) and its
 > detail docs, the two open entries in [`../proposal/bugs/`](../proposal/bugs/README.md),
@@ -40,7 +40,7 @@ and point this row at that instead.
 | 16 | F12/F14/F17 — Kotlin 2.x / Compose BOM / Navigation upgrade (D4 decided: staged) | Large | queued — own ladder when started | [`../proposal/performance.md`](../proposal/performance.md) |
 | 17 | F13 — splash cold-start cost (D6 decided: policy) | Large | queued | [`../proposal/performance.md`](../proposal/performance.md) |
 | 18 | F15, F16, F19 — image crossfade, general animation, reader typography | Large | **F15 and F16 done in code, unmeasured; F19 still queued** | [`../proposal/performance.md`](../proposal/performance.md), [`../proposal/animation-and-polish.md`](../proposal/animation-and-polish.md) |
-| 19 | F25, F26, F28 — scan transaction batching, redundant `listFiles()` calls, streak-calc eager date-key list (F27 reviewed, deferred — no code change; F24 still open, needs a migration) | Small | **done in code, unmeasured — see below** | [`../proposal/performance.md`](../proposal/performance.md) |
+| 19 | F24, F25, F26, F28 — missing FK indexes, scan transaction batching, redundant `listFiles()` calls, streak-calc eager date-key list (F27 reviewed, deferred — no code change) | Small | **done in code, unmeasured — see below** | [`../proposal/performance.md`](../proposal/performance.md) |
 
 **Not yet started at all, no decision made, not on this ladder:** EPUB/PDF
 ingestion, the ARKlight publisher pipeline, background sync beyond the
@@ -252,8 +252,21 @@ landscape directions and portrait.
 
 Three independent, small fixes out of the four open findings in
 [`../proposal/performance.md`](../proposal/performance.md)'s F24–F28 batch, plus a
-documented decision not to build the fourth yet:
+documented decision not to build the fourth yet; F24 itself landed in a later
+patch the same day and is folded into this rung below rather than given its
+own row.
 
+- **F24 (later patch, same day):** done and dusted. The six missing
+  foreign-key indices now exist — `indices = [Index(...)]` on the affected
+  `@Entity` declarations in `Entities.kt`, a `MIGRATION_14_15` in
+  `AppDatabase.kt` that runs the matching `CREATE INDEX IF NOT EXISTS`
+  statements, `APP_DATABASE_VERSION` bumped to 15, and
+  `app/schemas/com.arkarium.app.data.AppDatabase/15.json` committed, per the
+  F1/F2 rules in [`../proposal/data-safety.md`](../proposal/data-safety.md).
+  `MigrationChainTest` and the instrumented `MigrationTest` cover it
+  generically (no migration-specific test needed — see
+  [`../proposal/performance.md`](../proposal/performance.md) F24). Same
+  unmeasured caveat as the rest of this rung.
 - **F25:** `ScannerImpl.scanChaptersForNovel` now does every arc upsert, stale-arc
   delete, chapter upsert, stale-chapter delete and the fingerprint save for one
   novel's rescan inside a single `db.withTransaction { }`, instead of each DAO call
@@ -281,11 +294,10 @@ documented decision not to build the fourth yet:
   be unread, yesterday still counts" rule, now covered by a new
   `ReadingStatsTest.kt` (there was no test for this rule before).
 
-**F24** (missing indexes on six foreign-key columns) is unchanged and still open —
-it needs a schema migration (`MIGRATION_14_15`, an exported `15.json`, and a
-`MigrationTestHelper` test per the F1/F2 rules in
-[`../proposal/data-safety.md`](../proposal/data-safety.md)), which is a different
-kind of change from the other three and wasn't part of this pass.
+**F24** (missing indexes on six foreign-key columns) was a different kind of
+change from the other three and wasn't part of this pass at the time — it
+needed a schema migration rather than an in-place code change. It landed
+separately in a later patch the same day; see the F24 bullet above.
 
 **Not run on a device, same caveat as every other rung here:** this sandbox has no
 network path to `google()`/`mavenCentral()`, so nothing beyond the new JVM unit

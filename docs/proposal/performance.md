@@ -1,6 +1,6 @@
 # Performance: SAF I/O, build/startup, recomposition, images, database and scan cost
 
-> **Kind:** proposal · **Status:** F14, F15, F25, F26 and F28 fixed in code (all unmeasured — no device/benchmark run); F27 reviewed and deferred, no code change (see below); F24 and everything else not yet built; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-13 @ 56c19c4 (F15's shared `ImageLoader` only — F25/F26/F28 fixes and F27's deferral as of the prior patch, F24 and the rest as of 2026-11-12, the F14 additions/closure as of that same pass)
+> **Kind:** proposal · **Status:** F14, F15, F24, F25, F26 and F28 fixed in code (all unmeasured — no device/benchmark run); F27 reviewed and deferred, no code change (see below); everything else not yet built; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-13 @ b315244 (F24's migration, entity indices and exported `15.json` schema as of this patch — F15's shared `ImageLoader` and F25/F26/F28 fixes and F27's deferral as of the prior patch, the F14 additions/closure as of that same pass, everything else as of 2026-11-12)
 > **Origin:** [`engineering-review.md`](engineering-review.md) F5, F12–F15, F24–F28.
 
 ### F5. SAF scan and sync cost several provider queries per file
@@ -245,14 +245,23 @@ it. A rescan that removes several stale novels does this several times over,
 and nearly every screen open runs one of the per-novel queries above. It is
 invisible at tens of novels and grows linearly with chapter count.
 
-**Direction:** add `indices = [Index("novel_id")]` and the other columns in the
-table to the matching `@Entity` declarations. This is a schema change, so it
-follows the F1/F2 rules in [`data-safety.md`](data-safety.md): a new version
-(`APP_DATABASE_VERSION` is 14 today), an explicit `MIGRATION_14_15` that runs
-`CREATE INDEX`, the exported schema committed, and a `MigrationTestHelper`
-test for it. No destructive fallback. Measure first if a number is wanted: an
-`EXPLAIN QUERY PLAN` on `chapters WHERE novel_id = ?` shows `SCAN` today and
-`SEARCH ... USING INDEX` after.
+**Built:** each affected `@Entity` in `Entities.kt` now declares
+`indices = [Index("novel_id")]` (and `Index("arc_id")` on `chapters`, which has
+both) for the six columns in the table above. `APP_DATABASE_VERSION` is 15;
+`MIGRATION_14_15` in `AppDatabase.kt` runs the matching six `CREATE INDEX IF
+NOT EXISTS` statements (index names follow Room's own
+`index_<table>_<column>` convention so the migration's SQL and the entity
+declarations agree), and `app/schemas/com.arkarium.app.data.AppDatabase/15.json`
+is committed. No destructive fallback, per the F1/F2 rules in
+[`data-safety.md`](data-safety.md). Covered generically rather than by a
+migration-specific test: `MigrationChainTest` (JVM) checks the step is a
+contiguous, single-version link to `APP_DATABASE_VERSION`, and `MigrationTest`
+(instrumented) replays every committed schema — now including `15.json` —
+through `ALL_MIGRATIONS` and validates the result against what the entities
+declare. Still open: nothing measured on a device, so there's no before/after
+`EXPLAIN QUERY PLAN` (`chapters WHERE novel_id = ?` should move from `SCAN` to
+`SEARCH ... USING INDEX`) — covered by this doc's standing "unmeasured"
+caveat, not a reason to leave this finding open.
 
 ### F25. The scan writes one row per transaction
 
