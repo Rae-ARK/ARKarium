@@ -136,21 +136,30 @@ fun NovelDetailScreen(
     // list change rather than re-filtering per tab on every recomposition.
     val chapterCountByArcId = remember(chapters) { chapters.groupingBy { it.arcId }.eachCount() }
 
-    val chaptersInArc = when (selectedTabIndex.intValue) {
-        0 -> chapters
-        else -> {
-            val arcId = arcs.getOrNull(selectedTabIndex.intValue - 1)?.id
-            chapters.filter { it.arcId == arcId }
+    // Keyed on (chapters, selectedTabIndex) only, so unrelated state reads
+    // elsewhere in this composable (descriptionExpanded, searchQuery, pageSize,
+    // etc.) don't force this filter to redo its work on every recomposition -
+    // see performance.md F14.
+    val chaptersInArc = remember(chapters, selectedTabIndex.intValue) {
+        when (selectedTabIndex.intValue) {
+            0 -> chapters
+            else -> {
+                val arcId = arcs.getOrNull(selectedTabIndex.intValue - 1)?.id
+                chapters.filter { it.arcId == arcId }
+            }
         }
     }
     // Search narrows within whatever's already picked by the arc tab - matching
     // Royal Road's ToC search, which filters the visible list rather than the
     // whole fiction. Title-only match (chapter numbers aren't meaningful search
-    // terms here), case-insensitive.
-    val chaptersInTab = if (searchQuery.isBlank()) {
-        chaptersInArc
-    } else {
-        chaptersInArc.filter { it.title.contains(searchQuery, ignoreCase = true) }
+    // terms here), case-insensitive. Keyed on (chaptersInArc, searchQuery) for
+    // the same reason as chaptersInArc above (performance.md F14).
+    val chaptersInTab = remember(chaptersInArc, searchQuery) {
+        if (searchQuery.isBlank()) {
+            chaptersInArc
+        } else {
+            chaptersInArc.filter { it.title.contains(searchQuery, ignoreCase = true) }
+        }
     }
 
     // Switching tabs, resizing, or searching changes the item count under the
