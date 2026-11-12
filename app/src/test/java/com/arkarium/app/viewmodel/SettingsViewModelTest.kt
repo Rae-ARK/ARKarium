@@ -21,21 +21,22 @@ import org.junit.Test
 // specifically so it can be driven here by a fake backed by plain MutableStateFlows,
 // with no DataStore, Context, or Robolectric involved. See docs/arkarium/foundational/design-notes.md
 // Stage 2.2.
+//
+// useCustomFolder/libraryUri were dropped from SettingsPreferences by
+// docs/arkarium/proposal/remove-saf-support.md ("accepted") - shouldShowSafRemovedNotice/
+// dismissSafRemovedNotice() took their place, so this fake and the tests below follow suit.
 private class FakeSettingsPreferences(
     initialTheme: Theme = Theme.LIGHT,
     initialSystemDefaultLightVariant: Theme = Theme.LIGHT,
-    initialUseCustomFolder: Boolean = false,
-    initialLibraryUri: String? = null
+    initialShouldShowSafRemovedNotice: Boolean = false
 ) : SettingsPreferences {
     private val themeFlow = MutableStateFlow(initialTheme)
     private val systemDefaultLightVariantFlow = MutableStateFlow(initialSystemDefaultLightVariant)
-    private val useCustomFolderFlow = MutableStateFlow(initialUseCustomFolder)
-    private val libraryUriFlow = MutableStateFlow(initialLibraryUri)
+    private val shouldShowSafRemovedNoticeFlow = MutableStateFlow(initialShouldShowSafRemovedNotice)
 
     override val theme: Flow<Theme> get() = themeFlow
     override val systemDefaultLightVariant: Flow<Theme> get() = systemDefaultLightVariantFlow
-    override val useCustomFolder: Flow<Boolean> get() = useCustomFolderFlow
-    override val libraryUri: Flow<String?> get() = libraryUriFlow
+    override val shouldShowSafRemovedNotice: Flow<Boolean> get() = shouldShowSafRemovedNoticeFlow
 
     override suspend fun setTheme(theme: Theme) {
         themeFlow.value = theme
@@ -45,12 +46,8 @@ private class FakeSettingsPreferences(
         systemDefaultLightVariantFlow.value = variant
     }
 
-    override suspend fun setUseCustomFolder(enabled: Boolean) {
-        useCustomFolderFlow.value = enabled
-    }
-
-    override suspend fun setLibraryUri(uri: String) {
-        libraryUriFlow.value = uri
+    override suspend fun dismissSafRemovedNotice() {
+        shouldShowSafRemovedNoticeFlow.value = false
     }
 }
 
@@ -82,8 +79,7 @@ class SettingsViewModelTest {
     private fun subscribeToAll(viewModel: SettingsViewModel, scope: kotlinx.coroutines.CoroutineScope) {
         scope.launch { viewModel.currentTheme.collect {} }
         scope.launch { viewModel.currentSystemDefaultLightVariant.collect {} }
-        scope.launch { viewModel.useCustomFolder.collect {} }
-        scope.launch { viewModel.savedUri.collect {} }
+        scope.launch { viewModel.shouldShowSafRemovedNotice.collect {} }
     }
 
     @Test
@@ -91,8 +87,7 @@ class SettingsViewModelTest {
         val prefs = FakeSettingsPreferences(
             initialTheme = Theme.DARK,
             initialSystemDefaultLightVariant = Theme.WARM_PAPER,
-            initialUseCustomFolder = true,
-            initialLibraryUri = "content://tree/abc"
+            initialShouldShowSafRemovedNotice = true
         )
         val viewModel = SettingsViewModel(prefs)
         subscribeToAll(viewModel, backgroundScope)
@@ -100,8 +95,7 @@ class SettingsViewModelTest {
 
         assertEquals(Theme.DARK, viewModel.currentTheme.value)
         assertEquals(Theme.WARM_PAPER, viewModel.currentSystemDefaultLightVariant.value)
-        assertEquals(true, viewModel.useCustomFolder.value)
-        assertEquals("content://tree/abc", viewModel.savedUri.value)
+        assertEquals(true, viewModel.shouldShowSafRemovedNotice.value)
     }
 
     @Test
@@ -131,28 +125,17 @@ class SettingsViewModelTest {
     }
 
     @Test
-    fun `setUseCustomFolder forwards to SettingsPreferences`() = runTest(testDispatcher) {
-        val prefs = FakeSettingsPreferences()
+    fun `dismissSafRemovedNotice forwards to SettingsPreferences`() = runTest(testDispatcher) {
+        val prefs = FakeSettingsPreferences(initialShouldShowSafRemovedNotice = true)
         val viewModel = SettingsViewModel(prefs)
         subscribeToAll(viewModel, backgroundScope)
         advanceUntilIdle()
 
-        viewModel.setUseCustomFolder(true)
+        assertEquals(true, viewModel.shouldShowSafRemovedNotice.value)
+
+        viewModel.dismissSafRemovedNotice()
         advanceUntilIdle()
 
-        assertEquals(true, viewModel.useCustomFolder.value)
-    }
-
-    @Test
-    fun `setLibraryUri forwards to SettingsPreferences`() = runTest(testDispatcher) {
-        val prefs = FakeSettingsPreferences()
-        val viewModel = SettingsViewModel(prefs)
-        subscribeToAll(viewModel, backgroundScope)
-        advanceUntilIdle()
-
-        viewModel.setLibraryUri("content://tree/new-folder")
-        advanceUntilIdle()
-
-        assertEquals("content://tree/new-folder", viewModel.savedUri.value)
+        assertEquals(false, viewModel.shouldShowSafRemovedNotice.value)
     }
 }
