@@ -87,9 +87,9 @@ fun HomeScreen(
     // Opens the "Add fiction by name" dialog (see SyncDialogs.kt
     // AddFictionByNameDialog). Lives on the top bar next to Settings. The SAF
     // folder-picker entry point this used to sit next to (and EmptyLibraryPrompt's
-    // own "set up your own folder" shortcut to it) is gone - see
-    // docs/arkarium/proposal/remove-saf-support.md - so this is Home's one
-    // top-bar action now, not a replacement for a removed one.
+    // own "set up your own folder" shortcut to it) is gone - see "Settled
+    // decisions" in docs/arkarium/foundational/design-notes.md - so this is Home's
+    // one top-bar action now, not a replacement for a removed one.
     onAddFictionClick: () -> Unit = {},
     // Primary action on the empty-library first-run screen: syncs every fiction
     // FictionLut knows about in one go (see FictionLut.allEntries / MainActivity's
@@ -357,8 +357,9 @@ fun EmptyLibraryPrompt(
                 Text("Sync all Rae ARK's novels", modifier = Modifier.padding(start = 8.dp))
             }
             // The secondary "or set up your own folder in Settings" button that used to
-            // sit here pointed at the SAF folder picker, which
-            // docs/arkarium/proposal/remove-saf-support.md removed - the library now
+            // sit here pointed at the SAF folder picker, which the SAF-removal
+            // decision (see "Settled decisions" in
+            // docs/arkarium/foundational/design-notes.md) removed - the library now
             // always lives at the one fixed Android/media/com.arkarium.app/ location, so
             // there is no folder left to set up. Deleted rather than reworded, since
             // Sync All above and the top bar's "Add fiction" action already cover
