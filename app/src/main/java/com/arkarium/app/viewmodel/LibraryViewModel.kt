@@ -15,6 +15,7 @@ import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.ChapterOverrideEntity
 import com.arkarium.app.data.ChapterReadEventEntity
 import com.arkarium.app.data.NovelEntity
+import com.arkarium.app.data.NovelStatus
 import com.arkarium.app.data.ReaderPosition
 import com.arkarium.app.data.ReadingProgressEntity
 import com.arkarium.app.data.ReadingStats
@@ -63,6 +64,20 @@ import java.util.UUID
 // same behavior (rule 4). SettingsViewModel's StateFlow-of-scalars is a different
 // shape of state entirely (independent single values sourced from DataStore Flows),
 // not a template that fits a shared, incrementally-updated list.
+// Outcome of LibraryViewModel.restoreMissingChapter - tells the reader route which way
+// to navigate without the route itself touching the database. Navigation stays in
+// MainActivity ("Navigation is NavController only", design-notes.md); this only says
+// which destination applies.
+sealed class ChapterRestore {
+    // The chapter exists and its novel's chapters are loaded again - the route
+    // recomposes with a non-null chapter on its own, nothing to navigate.
+    object Restored : ChapterRestore()
+    // The chapter is gone but its novel still exists.
+    data class FallbackToNovel(val novelId: String) : ChapterRestore()
+    // Neither the chapter nor its novel exist.
+    object FallbackToHome : ChapterRestore()
+}
+
 class LibraryViewModel(
     private val db: AppDatabase,
     private val scanner: ScannerImpl
@@ -512,6 +527,38 @@ class LibraryViewModel(
             val idx = novels.indexOfFirst { it.id == updated.id }
             if (idx >= 0) novels[idx] = updated
         }
+    }
+
+    // Moved from MainActivity's Continue Reading shortcut effect: the id of the novel
+    // the reader was last in, or null if there's no reading history at all.
+    suspend fun lastReadNovelId(): String? = db.readingProgressDao().recentNovelIds(1).firstOrNull()
+
+    // Moved from NovelDetail's onChapterSelected in MainActivity: starting a chapter
+    // marks the novel IN_PROGRESS and refreshes Home's recently-read row.
+    suspend fun markNovelInProgress(novelId: String) {
+        db.novelDao().updateReadingStatus(novelId, NovelStatus.IN_PROGRESS.name)
+        refreshRecentlyRead()
+    }
+
+    // Moved from NovelDetail's onResizePages in MainActivity.
+    suspend fun setPageSize(novelId: String, pageSize: Int) {
+        db.novelDao().updatePageSize(novelId, pageSize)
+    }
+
+    // Moved from the "reader/{novelId}/{chapterId}" route's missing-chapter effect in
+    // MainActivity. `chapters` is only a cache of whichever novel was loaded last; the
+    // database is the authority on whether a chapter exists (after process death the
+    // cache is simply empty). If the chapter and its novel are really there, reload the
+    // novel's chapters so the route recomposes with the chapter - otherwise tell the
+    // caller where to fall back to. Same decision order as the inline version had.
+    suspend fun restoreMissingChapter(novelId: String, chapterId: String): ChapterRestore {
+        val dbChapter = db.chapterDao().findById(chapterId)
+        val dbNovel = db.novelDao().findById(novelId)
+        if (dbChapter != null && dbNovel != null && dbChapter.novelId == dbNovel.id) {
+            loadNovelDetails(dbNovel)
+            if (chapters.any { it.id == chapterId }) return ChapterRestore.Restored
+        }
+        return if (dbNovel != null) ChapterRestore.FallbackToNovel(dbNovel.id) else ChapterRestore.FallbackToHome
     }
 
     companion object {
