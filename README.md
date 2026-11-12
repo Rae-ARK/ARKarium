@@ -12,11 +12,17 @@ Content is published as files in a relay and synchronized to the reader's local 
 
 <table>
   <tr>
-    <td width="50%"><img src="assets/Home.jpg" alt="Home page" /></td>
-    <td width="50%"><img src="assets/Fiction-Page.jpg" alt="Fiction Page" /></td>
+    <td width="100%"><img src="assets/Home.jpg" alt="Home page" /></td>
   </tr>
   <tr>
     <td align="center"><sub>Home</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="assets/Fiction-Browse.jpg" alt="Browsing page" /></td>
+    <td width="50%"><img src="assets/Fiction-Page.jpg" alt="Fiction Page" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Browse</sub></td>
     <td align="center"><sub>Fictions</sub></td>
   </tr>
   <tr>
