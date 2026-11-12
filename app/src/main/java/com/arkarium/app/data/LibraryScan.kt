@@ -13,7 +13,8 @@ import androidx.documentfile.provider.DocumentFile
 
 // Resolves the one fixed DocumentFile root the scanner always reads from:
 // Android/media/com.arkarium.app/, via getExternalMediaDirs()[0]. No longer
-// user-choosable - see docs/arkarium/proposal/remove-saf-support.md ("accepted"):
+// user-choosable - see "Settled decisions" in
+// docs/arkarium/foundational/design-notes.md:
 // a SAF-backed custom folder used to be available as an opt-in, but that path is
 // gone, along with the folder-identity and SAF-performance problems it caused.
 // Visible to file managers and PCs via USB the same way Android/data used to be

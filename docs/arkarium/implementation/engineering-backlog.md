@@ -33,10 +33,10 @@ and point this row at that instead.
 | 9 | F1/F2 remainder — commit Room schema, add migration tests, move KAPT → KSP | Medium | **done** (see below) | [`../proposal/data-safety.md`](../proposal/data-safety.md) |
 | 10 | F22 — TTS audio focus, `MediaSession`, `ACTION_AUDIO_BECOMING_NOISY` | Medium | **done** | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
 | 11 | "Notify me" toggle bug, remaining steps - confirmed on-device, which surfaced a real sync-detection bug in place of the original remaining steps (see below) | Medium | **done** | [Rung 11 — what changed](#rung-11--what-changed), below (origin bug report deleted per [`../proposal/bugs/README.md`](../proposal/bugs/README.md)'s rule; the sync-detection fix is also sync invariant S10 in [`../foundational/architecture.md`](../foundational/architecture.md)) |
-| 12 | F3 — novel identity tied to SAF URI (D3 decided: opaque id, re-link-with-confirmation) | Large | **won't-fix — SAF support removed instead, see below** | [`../proposal/remove-saf-support.md`](../proposal/remove-saf-support.md) |
+| 12 | F3 — novel identity tied to SAF URI (D3 decided: opaque id, re-link-with-confirmation) | Large | **won't-fix — SAF support removed instead, see below** | [`../foundational/design-notes.md`](../foundational/design-notes.md) ("Settled decisions") |
 | 13 | F4 — manifest signing (D5 decided: key custody; ECDSA vs Ed25519 still open) | Large | queued — own ladder when started | [`../proposal/manifest-signing.md`](../proposal/manifest-signing.md) |
 | 14 | F9 — reading position drifts (scroll fraction → offset-based anchor; bundled with TTS controls/highlight) | Large | **done in code, at paragraph granularity - on-device verification still open, see below** | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
-| 15 | F5 — SAF scan does ~3 provider queries per file (per-directory cache) | Large | **won't-fix — SAF support removed instead, see below** | [`../proposal/remove-saf-support.md`](../proposal/remove-saf-support.md) |
+| 15 | F5 — SAF scan does ~3 provider queries per file (per-directory cache) | Large | **won't-fix — SAF support removed instead, see below** | [`../foundational/design-notes.md`](../foundational/design-notes.md) ("Settled decisions") |
 | 16 | F12/F14/F17 — Kotlin 2.x / Compose BOM / Navigation upgrade (D4 decided: staged) | Large | queued — own ladder when started | [`../proposal/performance.md`](../proposal/performance.md) |
 | 17 | F13 — splash cold-start cost (D6 decided: policy) | Large | queued | [`../proposal/performance.md`](../proposal/performance.md) |
 | 18 | F15, F16, F19 — image crossfade, general animation, reader typography | Large | queued | [`../proposal/performance.md`](../proposal/performance.md), [`../proposal/animation-and-polish.md`](../proposal/animation-and-polish.md) |
@@ -249,8 +249,8 @@ landscape directions and portrait.
 
 ## Rungs 12 and 15 — won't-fix
 
-Both closed outright rather than implemented, per
-[`../proposal/remove-saf-support.md`](../proposal/remove-saf-support.md) ("accepted"):
+Both closed outright rather than implemented, per the SAF-removal decision
+(see "Settled decisions" in [`../foundational/design-notes.md`](../foundational/design-notes.md)):
 instead of giving `novelId` a stable opaque identity (F3) and then caching per-directory
 SAF listings to cut the ~3-provider-query-per-file cost (F5, which depended on F3 landing
 first), SAF support itself was removed. The library root is now always the one fixed

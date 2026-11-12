@@ -46,6 +46,7 @@ the rule above:
   left off") — see `other/README.md`'s own note on it, and `MainActivity.kt`'s
   `initialReaderPosition` effect.
 - First-run empty-library screen's "set up your own folder" button pointing
-  at a SAF folder picker `remove-saf-support.md` had already removed — see
-  `other/README.md`'s own note on it, and `HomeScreen.kt`'s
+  at a SAF folder picker already removed (see "Settled decisions" in
+  [`../../foundational/design-notes.md`](../../foundational/design-notes.md))
+  — see `other/README.md`'s own note on it, and `HomeScreen.kt`'s
   `EmptyLibraryPrompt`.

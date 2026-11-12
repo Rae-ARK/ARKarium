@@ -24,7 +24,8 @@ import com.arkarium.app.viewmodel.SyncViewModel
 // for the two Bug-4-fix "is this dialog's novel actually the one on screen" checks) -
 // same shape every other extracted route in this ladder takes its data as parameters
 // rather than reaching back into an Activity. useCustomFolder/savedUri params removed
-// per docs/arkarium/proposal/remove-saf-support.md ("accepted") - resolveLibraryRoot
+// per the SAF-removal decision (see "Settled decisions" in
+// docs/arkarium/foundational/design-notes.md) - resolveLibraryRoot
 // no longer takes them, it always resolves the one fixed library folder.
 @Composable
 fun AppDialogHost(

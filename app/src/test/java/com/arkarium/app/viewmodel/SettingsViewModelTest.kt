@@ -22,8 +22,9 @@ import org.junit.Test
 // with no DataStore, Context, or Robolectric involved. See docs/arkarium/foundational/design-notes.md
 // Stage 2.2.
 //
-// useCustomFolder/libraryUri were dropped from SettingsPreferences by
-// docs/arkarium/proposal/remove-saf-support.md ("accepted") - shouldShowSafRemovedNotice/
+// useCustomFolder/libraryUri were dropped from SettingsPreferences by the
+// SAF-removal decision (see "Settled decisions" in
+// docs/arkarium/foundational/design-notes.md) - shouldShowSafRemovedNotice/
 // dismissSafRemovedNotice() took their place, so this fake and the tests below follow suit.
 private class FakeSettingsPreferences(
     initialTheme: Theme = Theme.LIGHT,
