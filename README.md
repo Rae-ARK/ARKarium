@@ -1,30 +1,34 @@
 # ARKarium
 
-A native reading experience for independently published fiction.
+A native reading experience for Rae ARK's published fiction.
 
 ## What it is
 
-ARKarium is built around direct distribution from Rae ARK *author* to his reader.
+ARKarium is built around direct distribution from Rae ARK to his reader.
 
-Content is published as static files and synchronized to the reader's local library. The client handles the reading experience, rather than requiring a permanent platform backend.
+Content is published as files in a relay and synchronized to the reader's local library. The client handles the reading experience, rather than requiring a permanent platform backend.
 
 ## Highlights
 
 - Local-first reading
-- Direct author-to-reader distribution
+- Direct Rae-ARK-to-readers distribution
 - Incremental content synchronization
 - Static content and simple distribution
-- Android clients
+- Android client
 
 ### At a Future Point
 
 - Character-aware text-to-speech
 - Multi-voice reading
-- Designed for rich fiction experiences
+- Designed for rich fiction experience
+- Desktop Client 
 
 ## Status
 
-Early development.
+Early development. Beta Stage.
+
+The current release app itself works fine, and it can be used for reading. 
+The V1 isn't done yet. Bugs are normal. 
 
 ## License
 
