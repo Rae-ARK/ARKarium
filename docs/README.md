@@ -7,6 +7,7 @@ because it still matters).
 | Folder | Time | Holds |
 |---|---|---|
 | [`proposal/`](proposal/README.md) | future | Documented but untouched: ideas, features, bug reports, UI/UX issues. |
+| [`far-future-concern/`](far-future-concern/README.md) | future, not near-term | Proposals that are interesting but not a candidate for any near-future work. |
 | [`implementation/`](implementation/README.md) | present | Work in progress as a staged rung ladder. |
 | [`foundational/`](foundational/README.md) | past, permanent | What ARKarium is, how it is built, why. |
 

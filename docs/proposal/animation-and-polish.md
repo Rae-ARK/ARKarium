@@ -54,7 +54,7 @@ scheduling this).
 **Where:** `app/build.gradle.kts` (`navigation-compose:2.7.5`);
 `AndroidManifest.xml` (no `android:enableOnBackInvokedCallback`);
 display-cutout inset handling now exists app-wide (`WindowInsets.displayCutout`,
-built per [`landscape-tablet.md`](landscape-tablet.md)'s cutout fix) plus
+built per [`landscape-tablet.md`](../far-future-concern/landscape-tablet.md)'s cutout fix) plus
 Reader's own status-bar show/hide for its full-screen toggle, but no general
 system-bar edge-to-edge handling (`systemBarsPadding`, `safeDrawing`, etc.)
 anywhere under `ui/` — most screens zero out their `Scaffold`'s

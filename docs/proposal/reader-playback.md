@@ -20,7 +20,7 @@ better than the one value currently written).
 the text happened to render at. Font size, line spacing, screen width, and
 non-uniform line heights (a centered scene break, a callout box) all change
 where a given fraction actually lands. The planned backend position-sync
-proposal ([`backend-social.md`](backend-social.md)) means this fraction would
+proposal ([`backend-social.md`](../far-future-concern/backend-social.md)) means this fraction would
 need to resolve to a sensible place on a *different* device's layout, which
 compounds the drift.
 
@@ -100,7 +100,7 @@ now has pause/resume/skip and a controls bar in the reader itself (see
 [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md),
 rungs 1-2), and the foreground notification now has transport actions too
 (that ladder's rung 4, in code, not yet verified on a device). The
-multi-voice segment list in [`tts-multivoice.md`](tts-multivoice.md) can also
+multi-voice segment list in [`tts-multivoice.md`](../far-future-concern/tts-multivoice.md) can also
 now build on `TtsPlaybackService` rather than needing its own service, but
 isn't built yet. Also not yet verified on a device (see this doc's commit message):
 whether the service's process genuinely survives a config change on real
