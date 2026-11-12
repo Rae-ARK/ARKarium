@@ -214,7 +214,7 @@ fun AuthorPageScreen(
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
                     )
                 }
-                items(novels) { novel ->
+                items(novels, key = { it.id }) { novel ->
                     Column {
                         Row(
                             modifier = Modifier

@@ -233,7 +233,7 @@ fun HomeScreen(
                                 .fillMaxWidth()
                                 .padding(bottom = 16.dp)
                         ) {
-                            items(continueReadingNovels.take(4)) { novel ->
+                            items(continueReadingNovels.take(4), key = { it.id }) { novel ->
                                 NovelContinueCard(
                                     novel = novel,
                                     onContinue = { onContinueReading(novel) },
