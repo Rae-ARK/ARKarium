@@ -10,10 +10,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -21,44 +21,58 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Switch
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
 // Stage 2 (see docs/arkarium/foundational/design-notes.md, "mechanical extraction, no
 // behavior change") - the "Use custom folder" switch, Select/Change Folder
-// button, and Rescan Library button move here verbatim from the old
-// monolithic SettingsScreen.kt. MainActivity's "settings/library" composable
-// wires useCustomFolder/hasCustomFolderSelected and the three callbacks the
-// same way its old "settings" composable did.
+// button, and Rescan Library button originally moved here verbatim from the old
+// monolithic SettingsScreen.kt.
 //
-// Beautification pass: the same header badge used on settings/theme now
-// opens this page too, the "Use custom folder" switch row moves into a
-// surfaceVariant card (matching AuthorPageScreen's card idiom), and Rescan
-// Library is styled as a secondary OutlinedButton with a refresh icon so it
-// doesn't visually compete with Select/Change Folder as the primary action
-// on this page. No callback, param, or behavior changed.
+// Reworked per docs/arkarium/proposal/remove-saf-support.md ("accepted"): the
+// switch and folder picker are gone - there is nothing left to toggle or pick,
+// since the library root is now the one fixed Android/media/com.arkarium.app/
+// folder (see data/LibraryScan.kt's resolveLibraryRoot). The "Use custom
+// folder" row stays on this screen, but it is now purely informational: tapping
+// its info icon opens a dialog explaining that custom folders were removed and
+// where the library lives now, instead of doing anything to the scanner. The
+// same dialog opens automatically, once, for anyone upgrading from a build
+// where they'd actually turned the old switch on (shouldShowMigrationNotice,
+// backed by PreferencesManager.shouldShowSafRemovedNotice) so they aren't left
+// wondering where their novels went.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LibrarySettingsScreen(
-    // Whether the scanner reads from a user-picked SAF folder (true) or the app's own
-    // private storage (false, the default - see MainActivity.resolveLibraryRoot). This
-    // replaces the old `hasLibrary` flag: the library now always "exists" in the default
-    // case (there's always a folder to scan), so the meaningful question isn't "is a
-    // library configured" anymore, it's "which source is active."
-    useCustomFolder: Boolean,
-    // Whether a custom folder has actually been picked yet - only consulted while
-    // useCustomFolder is true, to decide between "Select Folder" and "Change Folder".
-    hasCustomFolderSelected: Boolean = false,
-    onUseCustomFolderToggle: (Boolean) -> Unit,
-    onSelectFolderClick: () -> Unit,
+    // True exactly once, for an install that had the old "Use custom folder" switch
+    // on - see PreferencesManager.shouldShowSafRemovedNotice's doc comment. Drives
+    // showing SafRemovedDialog automatically on first composition.
+    shouldShowMigrationNotice: Boolean,
+    onMigrationNoticeDismissed: () -> Unit,
     onRescan: () -> Unit,
     onBack: () -> Unit
 ) {
+    // Manual trigger (the info icon below) - independent of shouldShowMigrationNotice,
+    // which only ever fires once automatically. Someone can reopen the same
+    // explanation at any time by tapping the icon again.
+    var showDeprecatedDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(shouldShowMigrationNotice) {
+        if (shouldShowMigrationNotice) {
+            showDeprecatedDialog = true
+        }
+    }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         TopAppBar(
             windowInsets = WindowInsets(0, 0, 0, 0),
@@ -73,8 +87,9 @@ fun LibrarySettingsScreen(
         Column(modifier = Modifier.padding(16.dp)) {
             SettingsHeaderBadge(
                 icon = Icons.Filled.LibraryBooks,
-                caption = "Choose where ARKarium reads your novels from, and " +
-                    "rescan whenever files change on disk."
+                caption = "ARKarium reads your novels from its own Android/media " +
+                    "folder. Drop novel folders in there, and rescan whenever " +
+                    "files change on disk."
             )
 
             Card(
@@ -92,9 +107,9 @@ fun LibrarySettingsScreen(
                         // Row is measured with loose (unbounded) width, so this description text -
                         // long enough to need wrapping - never actually wraps against the space
                         // left for it. It just claims however much width it wants and pushes the
-                        // Switch out past the screen edge instead of sitting next to it. Weighting
-                        // the Column forces it to share the Row with the Switch and wrap within
-                        // its share, which is what makes the Switch reliably visible/tappable.
+                        // info icon out past the screen edge instead of sitting next to it.
+                        // Weighting the Column forces it to share the Row with the icon and wrap
+                        // within its share.
                         Column(
                             modifier = Modifier
                                 .weight(1f)
@@ -102,28 +117,13 @@ fun LibrarySettingsScreen(
                         ) {
                             Text("Use custom folder", style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                if (useCustomFolder) {
-                                    "Reading from a folder you picked."
-                                } else {
-                                    "Reading from ARKarium's own storage. Drop novel " +
-                                        "folders into the app's Android/data folder, or " +
-                                        "turn this on to pick a folder yourself."
-                                },
+                                "No longer supported - tap the info icon to see why.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
                         }
-                        Switch(checked = useCustomFolder, onCheckedChange = onUseCustomFolderToggle)
-                    }
-
-                    if (useCustomFolder) {
-                        Button(
-                            onClick = onSelectFolderClick,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(top = 14.dp)
-                        ) {
-                            Text(if (hasCustomFolderSelected) "Change Folder" else "Select Folder")
+                        IconButton(onClick = { showDeprecatedDialog = true }) {
+                            Icon(Icons.Filled.Info, contentDescription = "Why custom folder was removed")
                         }
                     }
                 }
@@ -147,4 +147,41 @@ fun LibrarySettingsScreen(
             }
         }
     }
+
+    if (showDeprecatedDialog) {
+        SafRemovedDialog(
+            onDismiss = {
+                showDeprecatedDialog = false
+                if (shouldShowMigrationNotice) {
+                    onMigrationNoticeDismissed()
+                }
+            }
+        )
+    }
+}
+
+// Pulled out of LibrarySettingsScreen's body only so its text has one place to live -
+// both the automatic (migration) and manual (info icon) triggers above show the exact
+// same dialog.
+@Composable
+private fun SafRemovedDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Custom folder removed") },
+        text = {
+            Text(
+                "ARKarium no longer reads from a folder you pick. It now always " +
+                    "reads from its own Android/media folder, which any file " +
+                    "manager or PC can see and write to directly - just drag novel " +
+                    "folders in there and rescan. If you had a custom folder set, " +
+                    "your novels are still exactly where you left them; ARKarium " +
+                    "just doesn't point at that folder anymore."
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Got it")
+            }
+        }
+    )
 }

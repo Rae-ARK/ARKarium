@@ -23,11 +23,11 @@ import java.util.concurrent.TimeUnit
 // MainActivity.onCreate) rather than anything tied to the Activity's own lifecycle -
 // this needs to keep working whether or not ARKarium is currently open.
 //
-// Deliberately constructs its own AppDatabase/PreferencesManager/ScannerImpl/
-// SyncManager instances rather than reusing MainActivity's - a CoroutineWorker can run
-// long after (or without ever) the Activity existing in this process, so it can't
-// depend on anything Activity-scoped. AppDatabase.create() and PreferencesManager both
-// already work off nothing but an application Context, same as any other caller.
+// Deliberately constructs its own AppDatabase/ScannerImpl/SyncManager instances
+// rather than reusing MainActivity's - a CoroutineWorker can run long after (or
+// without ever) the Activity existing in this process, so it can't depend on
+// anything Activity-scoped. AppDatabase.create() works off nothing but an
+// application Context, same as resolveLibraryRoot (data/LibraryScan.kt) below.
 //
 // Each per-novel check mirrors MainActivity.checkForUpdates + scanSingleSyncedNovel's
 // sync-then-rescan sequence, but headless (no UI state to update) and additionally
@@ -43,14 +43,11 @@ class NewChapterCheckWorker(
 
     override suspend fun doWork(): Result {
         val db = AppDatabase.create(applicationContext)
-        val prefsManager = PreferencesManager(applicationContext)
         val scanner = ScannerImpl(applicationContext)
         val syncManager = SyncManager(applicationContext)
 
-        val libraryRoot = resolveLibraryRoot(
-            useCustomFolder = prefsManager.useCustomFolder.first(),
-            savedUri = prefsManager.libraryUri.first()
-        ) ?: return Result.success()  // no folder picked yet - nothing to check
+        val libraryRoot = resolveLibraryRoot(applicationContext)
+            ?: return Result.success()  // shared storage not available right now - nothing to check
 
         val candidates = db.novelDao().notifyEnabledSynced()
         if (candidates.isEmpty()) return Result.success()
@@ -144,20 +141,6 @@ class NewChapterCheckWorker(
         // notification when there's more than one.
         val latest = newChapters.maxByOrNull { it.number ?: Int.MIN_VALUE } ?: newChapters.last()
         NewChapterNotifier.notify(applicationContext, novel, newChapters.size, latest.title)
-    }
-
-    // Mirrors MainActivity.resolveLibraryRoot exactly (see its own doc comment) - kept
-    // as a private duplicate rather than a shared extracted function since the two
-    // callers need genuinely different Context types (Activity vs. applicationContext)
-    // and pulling this into a shared file for two three-line call sites isn't worth
-    // the indirection.
-    private fun resolveLibraryRoot(useCustomFolder: Boolean, savedUri: String?): DocumentFile? {
-        if (useCustomFolder) {
-            val uri = savedUri?.let { android.net.Uri.parse(it) } ?: return null
-            return DocumentFile.fromTreeUri(applicationContext, uri)
-        }
-        val defaultDir = (applicationContext.getExternalFilesDir(null) ?: applicationContext.filesDir).also { it.mkdirs() }
-        return DocumentFile.fromFile(defaultDir)
     }
 
     companion object {
