@@ -11,7 +11,6 @@ package com.arkarium.app.navigation
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.State
 import com.arkarium.app.data.resolveLibraryRoot
 import com.arkarium.app.ui.AddFictionByNameDialog
 import com.arkarium.app.ui.MetadataSearchDialog
@@ -21,18 +20,17 @@ import com.arkarium.app.viewmodel.MetadataViewModel
 import com.arkarium.app.viewmodel.SyncViewModel
 
 // Takes the two ViewModels these dialogs drive off, plus the handful of fields the
-// dialogs' own callbacks need (context for resolveLibraryRoot, useCustomFolder/savedUri
-// for the library root it resolves against, currentNovelDetailId for the two Bug-4-fix
-// "is this dialog's novel actually the one on screen" checks) - same shape every other
-// extracted route in this ladder takes its data as parameters rather than reaching back
-// into an Activity.
+// dialogs' own callbacks need (context for resolveLibraryRoot, currentNovelDetailId
+// for the two Bug-4-fix "is this dialog's novel actually the one on screen" checks) -
+// same shape every other extracted route in this ladder takes its data as parameters
+// rather than reaching back into an Activity. useCustomFolder/savedUri params removed
+// per docs/arkarium/proposal/remove-saf-support.md ("accepted") - resolveLibraryRoot
+// no longer takes them, it always resolves the one fixed library folder.
 @Composable
 fun AppDialogHost(
     metadataViewModel: MetadataViewModel,
     syncViewModel: SyncViewModel,
     currentNovelDetailId: String?,
-    useCustomFolder: State<Boolean>,
-    savedUri: State<String?>,
     context: Context
 ) {
     when (val state = metadataViewModel.metadataSearchState.value) {
@@ -112,7 +110,7 @@ fun AppDialogHost(
                 progressMessage = "",
                 errorMessage = null,
                 onConfirm = { name ->
-                    val root = resolveLibraryRoot(context, useCustomFolder.value, savedUri.value)
+                    val root = resolveLibraryRoot(context)
                     if (root != null) {
                         syncViewModel.addFictionByName(name, root)
                     } else {
@@ -138,7 +136,7 @@ fun AppDialogHost(
                 progressMessage = "",
                 errorMessage = state.message,
                 onConfirm = { name ->
-                    val root = resolveLibraryRoot(context, useCustomFolder.value, savedUri.value)
+                    val root = resolveLibraryRoot(context)
                     if (root != null) {
                         syncViewModel.addFictionByName(name, root)
                     } else {
@@ -248,7 +246,7 @@ fun AppDialogHost(
                 novelTitle = state.novel.title,
                 isMissingLocally = state.reason == SyncResolutionReason.MISSING_LOCALLY,
                 onSyncAgain = {
-                    resolveLibraryRoot(context, useCustomFolder.value, savedUri.value)?.let { root ->
+                    resolveLibraryRoot(context)?.let { root ->
                         syncViewModel.resolveMissingFolderBySyncing(state.novel, root)
                     }
                 },

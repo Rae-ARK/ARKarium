@@ -36,7 +36,6 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import androidx.core.view.WindowCompat
-import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavHostController
@@ -108,8 +107,6 @@ import com.arkarium.app.viewmodel.SettingsViewModel
 import com.arkarium.app.viewmodel.SyncViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -805,7 +802,7 @@ class MainActivity : ComponentActivity() {
             // app". Still resets on process death same as before; that's fine, a cold
             // process restart showing the splash once is the intended case.
             val showSplash = rememberSaveable { mutableStateOf(true) }
-            // Read here (rather than down with savedUri/useCustomFolder below) since
+            // Read here (rather than down with shouldShowSafRemovedNotice below) since
             // resolvedTheme, computed immediately below, needs them before
             // MaterialTheme{} even opens.
             val currentTheme = settingsViewModel.currentTheme.collectAsState()
@@ -831,19 +828,17 @@ class MainActivity : ComponentActivity() {
                 // this comment used to describe.
                 val navController = rememberNavController()
                 // Hoisted above the splash/Surface split (rather than declared inside the
-                // Column below, where they used to live) so the sync dialogs further down -
-                // which are siblings of Surface{}, not descendants of that Column - can also
-                // resolve a library root for "Add fiction from URL" / "Check for updates"
-                // without re-collecting these flows a second time.
-                val savedUri = settingsViewModel.savedUri.collectAsState()
-                val useCustomFolder = settingsViewModel.useCustomFolder.collectAsState()
+                // Column below, where they used to live) so settings/library further down
+                // can show its one-time migration dialog without re-collecting this flow a
+                // second time.
+                val shouldShowSafRemovedNotice = settingsViewModel.shouldShowSafRemovedNotice.collectAsState()
                 // Splash-screen behavior toggles (see SettingsScreen's "Splash Screen"
-                // section) - collected here too, same reasoning as savedUri/useCustomFolder
+                // section) - collected here too, same reasoning as shouldShowSafRemovedNotice
                 // above, and both default to true to match PreferencesManager's own default.
                 val splashAnimationEnabled = prefsManager.splashAnimationEnabled.collectAsState(initial = true)
                 val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = true)
                 // TTS default-settings state (see docs/arkarium/foundational/design-notes.md, Stage
-                // 3.2) - collected here too, same reasoning as savedUri/useCustomFolder
+                // 3.2) - collected here too, same reasoning as shouldShowSafRemovedNotice
                 // above. Initial values match PreferencesManager's own fallbacks (see
                 // ttsDefaultRate/ttsPitch/ttsAutoContinue/ttsKeepScreenOn) so the
                 // settings/tts screen doesn't flash a different value on first
@@ -1037,7 +1032,7 @@ class MainActivity : ComponentActivity() {
                 // see that function's own doc comment).
                 // .value, not `by` - this file never imports androidx.compose.runtime.getValue
                 // and uses the explicit-.value style for every other collectAsState()/
-                // mutableStateOf() read above (savedUri.value, useCustomFolder.value, etc.);
+                // mutableStateOf() read above (shouldShowSafRemovedNotice.value, etc.);
                 // matching that here instead of introducing the only `by` delegate in the
                 // file is what the build log from the previous patch's attempted build
                 // caught - `by` needs that import's getValue/setValue operators and this
@@ -1197,22 +1192,21 @@ class MainActivity : ComponentActivity() {
                                     navController.navigate("fictionBrowse?initialQuery=${Uri.encode(query)}")
                                 }
                             },
-                            // The library now works out of the box against the app's
-                            // default private storage folder (see resolveLibraryRoot),
-                            // so this no longer needs to be a first-run dead-end fix -
-                            // it just routes to Settings, the single place "Use custom
-                            // folder" and the SAF picker now live.
+                            // The library always works out of the box against the app's
+                            // one fixed Android/media folder (see resolveLibraryRoot) -
+                            // there's no folder left to pick, so this just routes to
+                            // Settings, same destination as before.
                             onSelectFolderClick = {
                                 navController.navigate("settings")
                             },
                             onAddFictionClick = { metadataViewModel.addFictionState.value = AddFictionState.EnteringName },
                             onSyncAllClick = {
-                                val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
+                                val root = resolveLibraryRoot(this@MainActivity)
                                 if (root != null) {
                                     syncViewModel.syncAllRaeArkNovels(root)
                                 } else {
                                     syncViewModel.syncAllState.value =
-                                        SyncAllState.Error("No library folder is set up yet - pick one in Settings first.")
+                                        SyncAllState.Error("Couldn't reach the library folder - try again in a moment.")
                                 }
                             }
                         )
@@ -1335,7 +1329,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onSyncClick = if (novel.syncSourceUrl != null) {
                                     {
-                                        resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)?.let { root ->
+                                        resolveLibraryRoot(this@MainActivity)?.let { root ->
                                             syncViewModel.checkForUpdates(novel, root)
                                         }
                                     }
@@ -1550,7 +1544,7 @@ class MainActivity : ComponentActivity() {
                             initialPositionResolved.value = true
                         }
                         if (loadResult is ChapterLoadResult.Failed) {
-                            // Lost SAF permission, provider hiccup, file moved/deleted
+                            // Provider hiccup, file moved/deleted
                             // underneath us, etc. - a real error screen with a retry rather
                             // than error text standing in for the chapter body (which
                             // read-aloud would have read out loud).
@@ -1800,12 +1794,11 @@ class MainActivity : ComponentActivity() {
                     Column(modifier = Modifier.fillMaxSize()) {
                         // Stage 1 (see docs/arkarium/foundational/design-notes.md): SettingsScreen
                         // is now a pure index/menu - it no longer takes
-                        // currentTheme/useCustomFolder/splash* state or their setter
+                        // currentTheme/splash* state or their setter
                         // callbacks, just navigation into each row's own destination.
                         // The Theme/Library/Splash control code + the
                         // settingsViewModel/prefsManager wiring that used to sit right
-                        // here (onThemeSelected, onUseCustomFolderToggle,
-                        // onSelectFolderClick, onRescan, onSplashAnimationToggle,
+                        // here (onThemeSelected, onRescan, onSplashAnimationToggle,
                         // onSplashMusicToggle) now lives on each sub-screen's own call
                         // site as of Stage 2 - see the "settings/theme"/"settings/library"/
                         // "settings/splash" composables below.
@@ -1852,33 +1845,16 @@ class MainActivity : ComponentActivity() {
                 composable("settings/library") {
                     Column(modifier = Modifier.fillMaxSize()) {
                         // Stage 2 (see docs/arkarium/foundational/design-notes.md): the Library
-                        // switch/buttons' callback wiring, unchanged from the old
-                        // "settings" composable - just terminating on this screen
-                        // instead of the index.
+                        // screen's callback wiring, unchanged from the old "settings"
+                        // composable in shape - just terminating on this screen
+                        // instead of the index. The switch/folder-picker callbacks that
+                        // used to live here (onUseCustomFolderToggle, onSelectFolderClick)
+                        // are gone per docs/arkarium/proposal/remove-saf-support.md
+                        // ("accepted") - LibrarySettingsScreen now only needs the
+                        // one-time migration-notice plumbing plus Rescan.
                         LibrarySettingsScreen(
-                            useCustomFolder = useCustomFolder.value,
-                            hasCustomFolderSelected = savedUri.value != null,
-                            onUseCustomFolderToggle = { enabled ->
-                                settingsViewModel.setUseCustomFolder(enabled)
-                                // Switching sources mints different novel IDs (see
-                                // ScannerImpl's id hash, keyed off root.uri) - clear
-                                // first so the old source's novels don't linger
-                                // alongside the new source's until the next scan's
-                                // reconciliation pass catches up. Kept on lifecycleScope
-                                // (not settingsViewModel, which owns no novel state) -
-                                // novels/startScan now live on libraryViewModel (Stage
-                                // 2.3, see docs/arkarium/foundational/design-notes.md).
-                                lifecycleScope.launch {
-                                    libraryViewModel.novels.clear()
-                                    // Turning custom folder ON with nothing picked yet
-                                    // resolves to null here by design - leave the
-                                    // library empty and let the "Select Folder" button
-                                    // below (or EmptyLibraryPrompt on Home) start the
-                                    // picker instead of scanning anything.
-                                    resolveLibraryRoot(this@MainActivity, enabled, savedUri.value)?.let { libraryViewModel.startScan(it) }
-                                }
-                            },
-                            onSelectFolderClick = { pickFolder.launch(null) },
+                            shouldShowMigrationNotice = shouldShowSafRemovedNotice.value,
+                            onMigrationNoticeDismissed = { settingsViewModel.dismissSafRemovedNotice() },
                             onRescan = {
                                 lifecycleScope.launch {
                                     // No novels.clear() here - see bugs.md Bug 4.
@@ -1887,14 +1863,16 @@ class MainActivity : ComponentActivity() {
                                     // actually finishes, instead of blanking the
                                     // visible library up front and hoping the scan
                                     // fully repopulates it.
-                                    val root = resolveLibraryRoot(this@MainActivity, useCustomFolder.value, savedUri.value)
+                                    val root = resolveLibraryRoot(this@MainActivity)
                                     if (root != null) {
                                         libraryViewModel.startScan(root)
                                     } else {
-                                        // Custom folder is on but nothing's been picked
-                                        // yet - "Rescan" would otherwise silently do
-                                        // nothing here. Send the user to the picker.
-                                        pickFolder.launch(null)
+                                        // Shared storage genuinely isn't available right
+                                        // now (see resolveLibraryRoot's doc comment) -
+                                        // nothing to rescan against yet.
+                                        libraryViewModel.reportScanSetupError(
+                                            "Couldn't reach the library folder - try again in a moment."
+                                        )
                                     }
                                 }
                             },
@@ -2116,8 +2094,6 @@ class MainActivity : ComponentActivity() {
                     metadataViewModel = metadataViewModel,
                     syncViewModel = syncViewModel,
                     currentNovelDetailId = currentNovelDetailId,
-                    useCustomFolder = useCustomFolder,
-                    savedUri = savedUri,
                     context = this@MainActivity
                 )
             }
