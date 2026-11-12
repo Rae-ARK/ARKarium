@@ -20,7 +20,9 @@ Fixed and deleted per the rule in `../README.md`:
   `initialReaderPosition` effect.
 - `empty-library-dead-folder-button.md` — the first-run empty-library screen's
   "or set up your own folder in Settings" button pointed at the SAF folder
-  picker `remove-saf-support.md` had already removed. Fixed by deleting the
+  picker the SAF-removal decision (see "Settled decisions" in
+  [`../../../foundational/design-notes.md`](../../../foundational/design-notes.md))
+  had already removed. Fixed by deleting the
   button (and `HomeScreen`'s now-unused `onSelectFolderClick` param and its
   `MainActivity.kt` wiring) rather than rewording it, since Sync All and the
   top bar's "Add fiction" action already cover first-run entry points.

@@ -10,8 +10,8 @@ Features
 - One fixed library folder (`Android/media/com.arkarium.app/`, visible to file
   managers and over USB) - no folder picker or permission grant to manage; see
   "Library scan" in `docs/arkarium/foundational/architecture.md` and
-  `docs/arkarium/proposal/remove-saf-support.md` for why the old SAF-based
-  custom-folder picker was removed
+  "Settled decisions" in `docs/arkarium/foundational/design-notes.md` for why
+  the old SAF-based custom-folder picker was removed
 - Progressive folder scanning that discovers novels, arcs, and chapters
 - Diff-based incremental rescan: unchanged novels are skipped by fingerprint,
   changed ones are upserted in place (manual chapter overrides survive), and
