@@ -3,7 +3,7 @@
 > **Kind:** proposal · **Status:** **partially decided** — F1, F6, F7, F8, F10, F11, F18, F20, F22, F23 fixed in code; F3, F5 won't-fix (SAF support removed instead, see below); F9 done in code at paragraph granularity (narrower than this doc's own direction, on-device verification still open); D2, D3, D4, D5, D6 decided (see each); D1 (the per-finding accept/defer/reject table below) still open · **Verified:** 2026-11-12 @ (this patch)
 > **Origin:** notes from a separate review session (code read plus web research), not an authoritative audit.
 > **Checked since:** each finding was re-read against the code on 2026-11-07. External guidance (library, platform, vendor behavior) was **not** re-checked except where a finding below says otherwise. The detail docs this file links to did not exist when this table was first written; they were filled in and F3 was corrected (see C3/C4) on the same date. A follow-up pass the same day added F22/F23 and recorded D2–D6; see each linked detail doc for what was re-verified for those.
-> **Correction (2026-11-12):** F3 and F5 below still read "Open" as of the SAF-removal commits (`de4ab98`, `2323b66`) landing — this table was never updated alongside [`remove-saf-support.md`](remove-saf-support.md) and [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) (rungs 12/15), which both correctly show won't-fix. Fixed here to match.
+> **Correction (2026-11-12):** F3 and F5 below still read "Open" as of the SAF-removal commits (`de4ab98`, `2323b66`) landing — this table was never updated alongside the SAF-removal decision (now "Settled decisions" in [`../foundational/design-notes.md`](../foundational/design-notes.md)) and [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) (rungs 12/15), which both correctly show won't-fix. Fixed here to match.
 
 Nothing here is decided or built. This file is the review entry point: it lists
 every finding, how well it is established, and what the owner must decide.
@@ -26,9 +26,9 @@ Severity is the reviewer's judgment of impact if left alone.
 |---|---|---|---|---|
 | F1 | Room wipes all user data when a migration is missing (`fallbackToDestructiveMigration`) | High | V | **Fixed** (fallback removed 5426a3d; schema export + migration tests done, backlog rung 9) — [`data-safety.md`](data-safety.md) |
 | F2 | No exported schema, no migration tests, KAPT instead of KSP | High | V, E | **Fixed** (backlog rung 9) — [`data-safety.md`](data-safety.md) |
-| F3 | `novelId` depends on SAF URIs for every novel, synced included; re-picking the folder deletes local novels' history and duplicates synced ones (corrected, see C3) | Med | V, I | **Won't-fix** — SAF support removed instead, see [`remove-saf-support.md`](remove-saf-support.md); detail in [`data-safety.md`](data-safety.md) |
+| F3 | `novelId` depends on SAF URIs for every novel, synced included; re-picking the folder deletes local novels' history and duplicates synced ones (corrected, see C3) | Med | V, I | **Won't-fix** — SAF support removed instead, see "Settled decisions" in [`../foundational/design-notes.md`](../foundational/design-notes.md); detail in [`data-safety.md`](data-safety.md) |
 | F4 | Manifest proves integrity, not authenticity; no rollback or freeze protection | Med | V, E | Open — [`manifest-signing.md`](manifest-signing.md) |
-| F5 | SAF scan and sync cost several provider queries per file | Med | V, E | **Won't-fix** — SAF support removed instead, see [`remove-saf-support.md`](remove-saf-support.md); detail in [`performance.md`](performance.md) |
+| F5 | SAF scan and sync cost several provider queries per file | Med | V, E | **Won't-fix** — SAF support removed instead, see "Settled decisions" in [`../foundational/design-notes.md`](../foundational/design-notes.md); detail in [`performance.md`](performance.md) |
 | F6 | Cancellation swallowed in the new-chapter worker | Med | V | **Fixed** (5426a3d) |
 | F7 | Unreadable chapter is shown as an empty chapter | Med | V | **Fixed** (5426a3d, then sealed result type + retry screen) — [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) rung 7 |
 | F8 | Two code paths create separate `AppDatabase` instances | Low | V, E | **Fixed** — [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) rung 3 |
@@ -89,7 +89,7 @@ Hash-verified sync, invariants S1–S9, incremental fingerprinting, the docs che
 1. F1 + F2: remove the global fallback, export schemas, add migration tests. Hours; prevents the worst failure.
 2. F6 + F7: small diffs. Rotation bug in [`bugs/`](bugs/README.md) alongside.
 3. Start the measurement track: Compose compiler reports and a Macrobenchmark (F12, F14), so later performance work is data-driven.
-4. ~~F5: SAF directory listing, after measuring on a real custom-folder library.~~ Moot — SAF support was removed instead ([`remove-saf-support.md`](remove-saf-support.md)); there is no SAF directory listing left to measure or optimize.
+4. ~~F5: SAF directory listing, after measuring on a real custom-folder library.~~ Moot — SAF support was removed instead (see "Settled decisions" in [`../foundational/design-notes.md`](../foundational/design-notes.md)); there is no SAF directory listing left to measure or optimize.
 5. F4: signing, before building the relay chain.
 6. F10 is fixed (service-based playback, 823c914). F9 + the TTS controls issue (originally `uiux.md`, since deleted - promoted into [`../implementation/tts-playback-controls.md`](../implementation/tts-playback-controls.md)) remain one coordinated change, now buildable on top of that service. F22 (audio focus/becoming-noisy/`MediaSession`) builds on the same service and can land independently of F9.
 7. F13, F15–F17, F19: polish, in whatever order the D4 and D6 decisions (now recorded above) allow.

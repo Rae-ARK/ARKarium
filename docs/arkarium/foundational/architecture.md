@@ -56,9 +56,8 @@ on — this convention is ARKarium's own to maintain going forward.)
 
 `ScannerImpl.scanRoot` walks the library root — the one fixed
 `Android/media/com.arkarium.app/` folder, via `resolveLibraryRoot`; there is
-no user-picked folder anymore, see
-[`../proposal/remove-saf-support.md`](../proposal/remove-saf-support.md). It
-is incremental and diff-based:
+no user-picked folder anymore, see "Settled decisions" in
+[`design-notes.md`](design-notes.md). It is incremental and diff-based:
 
 - Per-novel fingerprints (`scan_fingerprints`) skip unchanged novels.
 - Changed novels are upserted in place, so `chapter_overrides` (manual
@@ -323,9 +322,9 @@ Rules this table encodes:
 - Third-party lifecycle (Room, DataStore, `TextToSpeech`, Navigation's restored back
   stack) is treated as "may be gone or stale at any time": a restored route
   re-resolves what it needs from the database instead of trusting an in-memory cache.
-  (Before [`../proposal/remove-saf-support.md`](../proposal/remove-saf-support.md),
-  this list also included SAF grants on a user-picked folder; the library root is
-  now fixed, so there is no such grant to go stale.)
+  (The library root used to be a user-pickable SAF tree, whose grant could go
+  stale; see "Settled decisions" in [`design-notes.md`](design-notes.md) - the
+  root is now fixed, so there is no such grant anymore.)
 - A position is only ever *reported* once it is real. `ReaderScreen.currentAnchor()`
   returns the saved position, not the top of the chapter, until that position has been
   applied or the reader has taken over by dragging.

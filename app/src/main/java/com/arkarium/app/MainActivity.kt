@@ -1192,13 +1192,6 @@ class MainActivity : ComponentActivity() {
                                     navController.navigate("fictionBrowse?initialQuery=${Uri.encode(query)}")
                                 }
                             },
-                            // The library always works out of the box against the app's
-                            // one fixed Android/media folder (see resolveLibraryRoot) -
-                            // there's no folder left to pick, so this just routes to
-                            // Settings, same destination as before.
-                            onSelectFolderClick = {
-                                navController.navigate("settings")
-                            },
                             onAddFictionClick = { metadataViewModel.addFictionState.value = AddFictionState.EnteringName },
                             onSyncAllClick = {
                                 val root = resolveLibraryRoot(this@MainActivity)

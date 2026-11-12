@@ -18,3 +18,9 @@ Fixed and deleted per the rule in `../README.md`:
   converting a legacy `PERCENTAGE` row to `CHAR_OFFSET` the first time it's
   read, instead of restoring it to null — see `MainActivity.kt`'s
   `initialReaderPosition` effect.
+- `empty-library-dead-folder-button.md` — the first-run empty-library screen's
+  "or set up your own folder in Settings" button pointed at the SAF folder
+  picker `remove-saf-support.md` had already removed. Fixed by deleting the
+  button (and `HomeScreen`'s now-unused `onSelectFolderClick` param and its
+  `MainActivity.kt` wiring) rather than rewording it, since Sync All and the
+  top bar's "Add fiction" action already cover first-run entry points.

@@ -21,7 +21,6 @@ documented but **not being worked on**. This is the **future**.
 | [`reader-playback.md`](reader-playback.md) | review detail | F9, F10, F22: reading-position storage, TTS's composable-scoped lifecycle, audio focus/`MediaSession`. |
 | [`animation-and-polish.md`](animation-and-polish.md) | review detail | F16–F17, F19: animation, predictive back/edge-to-edge, reading typography. |
 | [`peer-app-survey.md`](peer-app-survey.md) | review | Feature/UX survey of peer reading apps (Mihon family, Readest, KOReader/OPDS, itch.io) against ARKarium's own stated principles. |
-| [`remove-saf-support.md`](remove-saf-support.md) | feature — **accepted, implemented** | Removed the SAF custom-folder opt-in; the library always reads from `Android/media/com.arkarium.app/`. Closes F3/F5 (rungs 12/15 in [`engineering-backlog.md`](../implementation/engineering-backlog.md)) won't-fix. |
 
 **Rules for this folder**
 

@@ -33,7 +33,7 @@ pages) are tracked here like any other ARKarium bug if they resurface.
 | [`other/scrolling-bug.md`](other/scrolling-bug.md) | other — reader scrolling reported not smooth with controls visible; unconfirmed, no device measurements yet |
 | [`other/uiux-bugs.md`](other/uiux-bugs.md) | open — all 10 fixed in source, most awaiting an on-device pass; #10 is a fix-on-a-fix, found by re-reading forward from #9's own change rather than a separate owner repro |
 
-The three previously tracked here are all fixed and their files deleted per
+The four previously tracked here are all fixed and their files deleted per
 the rule above:
 
 - Scan reconcile cascade-deleting a novel's history on an ordinary scan —
@@ -45,3 +45,7 @@ the rule above:
   to the top (owner-reported as "Continue Reading doesn't take me to where I
   left off") — see `other/README.md`'s own note on it, and `MainActivity.kt`'s
   `initialReaderPosition` effect.
+- First-run empty-library screen's "set up your own folder" button pointing
+  at a SAF folder picker `remove-saf-support.md` had already removed — see
+  `other/README.md`'s own note on it, and `HomeScreen.kt`'s
+  `EmptyLibraryPrompt`.
