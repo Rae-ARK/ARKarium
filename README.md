@@ -12,7 +12,7 @@ Content is published as files in a relay and synchronized to the reader's local 
 
 <table>
   <tr>
-    <td width="100%"><img src="assets/Home.jpg" alt="Home page" /></td>
+    <td><img src="assets/Home.jpg" alt="Home page" /></td>
   </tr>
   <tr>
     <td align="center"><sub>Home</sub></td>
