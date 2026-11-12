@@ -92,11 +92,9 @@ fun ThemeSettingsScreen(
                 Spacer(modifier = Modifier.height(10.dp))
 
                 // System Default's own daytime-look sub-choice - indented under its
-                // parent option, same "reveal on select" pattern useCustomFolder's
-                // Select/Change Folder button (now on settings/library) uses. Only
-                // shown right under SYSTEM_DEFAULT's own row (not e.g. after every
-                // row) so it reads as belonging to that one option rather than
-                // floating loose.
+                // parent option, a "reveal on select" pattern. Only shown right under
+                // SYSTEM_DEFAULT's own row (not e.g. after every row) so it reads as
+                // belonging to that one option rather than floating loose.
                 if (theme == Theme.SYSTEM_DEFAULT && currentTheme == Theme.SYSTEM_DEFAULT) {
                     Column(modifier = Modifier.padding(start = 16.dp, bottom = 4.dp)) {
                         Text(

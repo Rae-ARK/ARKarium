@@ -1,6 +1,6 @@
 # Data safety: Room migrations and novel identity
 
-> **Kind:** proposal · **Status:** F1, F2 and F23 fixed; F3 open (D3 decided, not yet built) · **Verified:** 2026-11-08 @ (this patch)
+> **Kind:** proposal · **Status:** F1, F2 and F23 fixed; F3 won't-fix (SAF support removed instead - see below) · **Verified:** 2026-11-12 @ (this patch)
 > **Origin:** [`engineering-review.md`](engineering-review.md) F1–F3, F23.
 
 ### F1. Room wiped all user data when a migration was missing

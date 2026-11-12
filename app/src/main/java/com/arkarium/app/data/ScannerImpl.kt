@@ -73,11 +73,13 @@ class ScannerImpl(private val context: Context) {
     }
 
     suspend fun scanRoot(
-        // Root of the library. Either a SAF tree (DocumentFile.fromTreeUri, when the user
-        // has opted into a custom folder in Settings) or a plain-file-backed DocumentFile
-        // (DocumentFile.fromFile, the default app-private storage folder) - both expose
-        // the identical DocumentFile API, so nothing below this line needs to know or
-        // care which kind of root it was handed. See MainActivity.resolveLibraryRoot.
+        // Root of the library: a plain-file-backed DocumentFile (DocumentFile.fromFile)
+        // over the app's one fixed Android/media/com.arkarium.app/ folder - see
+        // data/LibraryScan.kt's resolveLibraryRoot. Used to also admit a SAF tree here
+        // (DocumentFile.fromTreeUri, for a user-picked custom folder); that path was
+        // removed per docs/arkarium/proposal/remove-saf-support.md ("accepted"), but
+        // nothing below this line ever depended on which kind of root it was handed -
+        // both expose the identical DocumentFile API.
         root: DocumentFile,
         // Hands back the DocumentFile for the novel's own folder alongside the entity,
         // so callers (e.g. to then scan its chapters/arcs) don't need to re-list the
@@ -133,14 +135,16 @@ class ScannerImpl(private val context: Context) {
         onNovelFolderSeen: suspend (novelId: String) -> Unit = {},
         onProgress: suspend (current: Int, total: Int, message: String) -> Unit = { _, _, _ -> }
     ) = withContext(Dispatchers.IO) {
-        // Everything below touches the Storage Access Framework, which throws
-        // SecurityException the moment a persisted grant is no longer valid (folder
-        // moved/deleted, permission revoked by the system, app data partially wiped,
-        // etc). This scan runs unattended on every app launch once a library has been
-        // picked once (see MainActivity's libraryUri.collect), so an uncaught exception
-        // here previously crashed the app on startup with no way to recover short of
-        // clearing app data. Fail soft instead: surface it as a status message and stop
-        // the scan for this call, rather than propagating and taking the whole app down.
+        // Everything below touches the DocumentFile API, which can still throw
+        // SecurityException or other I/O errors (app data partially wiped, an OEM
+        // storage quirk, etc) even now that the library root is a single fixed
+        // Android/media folder rather than a user-revocable SAF grant - see
+        // docs/arkarium/proposal/remove-saf-support.md ("accepted"). This scan runs
+        // unattended on every app launch (see MainActivity's auto-scan), so an uncaught
+        // exception here previously crashed the app on startup with no way to recover
+        // short of clearing app data. Fail soft instead: surface it as a status message
+        // and stop the scan for this call, rather than propagating and taking the whole
+        // app down.
         try {
             if (!root.canRead()) {
                 onProgress(0, 0, "Library folder permission was revoked")
