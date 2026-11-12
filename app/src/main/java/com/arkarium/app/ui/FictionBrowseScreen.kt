@@ -177,7 +177,7 @@ fun FictionBrowseScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(filtered) { novel ->
+            items(filtered, key = { it.id }) { novel ->
                 EnhancedNovelCard(
                     novel = novel,
                     onClick = { onNovelSelected(novel) }
