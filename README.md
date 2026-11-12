@@ -21,7 +21,7 @@ Content is published as files in a relay and synchronized to the reader's local 
   </tr>
   <tr>
     <td width="50%"><img src="assets/Author-Page.jpg" alt="Author Page" /></td>
-    <td width="50%"><img src="docs/screenshots/settings.png" alt="Settings page" /></td>
+    <td width="50%"><img src="assets/settings.jpg" alt="Settings page" /></td>
   </tr>
   <tr>
     <td align="center"><sub>Rae ARK</sub></td>
