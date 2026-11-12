@@ -1,6 +1,6 @@
 # Engineering review: findings and proposed work
 
-> **Kind:** proposal · **Status:** **partially decided** — F1, F6, F7, F8, F10, F11, F18, F20, F22, F23 fixed in code; F3, F5 won't-fix (SAF support removed instead, see below); F9 done in code at paragraph granularity (narrower than this doc's own direction, on-device verification still open); D2, D3, D4, D5, D6 decided (see each); D1 (the per-finding accept/defer/reject table below) still open · **Verified:** 2026-11-12 @ (this patch)
+> **Kind:** proposal · **Status:** **partially decided** — F1, F6, F7, F8, F10, F11, F18, F20, F22, F23 fixed in code; F3, F5 won't-fix (SAF support removed instead, see below); F9 done in code at paragraph granularity (narrower than this doc's own direction, on-device verification still open); D2, D3, D4, D5, D6 decided (see each); D1 (the per-finding accept/defer/reject table below) still open; F24–F28 added 2026-11-12, all open · **Verified:** 2026-11-12 @ (this patch)
 > **Origin:** notes from a separate review session (code read plus web research), not an authoritative audit.
 > **Checked since:** each finding was re-read against the code on 2026-11-07. External guidance (library, platform, vendor behavior) was **not** re-checked except where a finding below says otherwise. The detail docs this file links to did not exist when this table was first written; they were filled in and F3 was corrected (see C3/C4) on the same date. A follow-up pass the same day added F22/F23 and recorded D2–D6; see each linked detail doc for what was re-verified for those.
 > **Correction (2026-11-12):** F3 and F5 below still read "Open" as of the SAF-removal commits (`de4ab98`, `2323b66`) landing — this table was never updated alongside the SAF-removal decision (now "Settled decisions" in [`../foundational/design-notes.md`](../foundational/design-notes.md)) and [`../implementation/engineering-backlog.md`](../implementation/engineering-backlog.md) (rungs 12/15), which both correctly show won't-fix. Fixed here to match.
@@ -47,6 +47,11 @@ Severity is the reviewer's judgment of impact if left alone.
 | F21 | Functional gaps: read state on rows, single-scroll chapter list, sleep timer, immersive mode, full-text search | n/a | V | [`ideas.md`](ideas.md) |
 | F22 | `TtsPlaybackService` requests no audio focus, doesn't handle `ACTION_AUDIO_BECOMING_NOISY`, has no `MediaSession` | Med | V | **Fixed** (backlog rung 10; notification transport buttons since added, tts-playback-controls rung 4) — [`reader-playback.md`](reader-playback.md) |
 | F23 | Room throws uncaught on a version **downgrade** (older APK over newer data); only recovery shown to the user is a crash, and clearing app data to recover destroys the same data F1's fix was meant to protect | Med | V | **Fixed** (backlog rung 2) — [`data-safety.md`](data-safety.md) |
+| F24 | Six foreign-key columns have no index (`chapters.novel_id`, `chapters.arc_id`, `arcs.novel_id`, `chapter_overrides.chapter_id`, `reading_progress.chapter_id`, `scan_fingerprints.novel_id`), so per-novel lookups and `ON DELETE CASCADE` are table scans (corrected, see C5) | Med | V, I | Open; needs a migration — [`performance.md`](performance.md) |
+| F25 | The scan commits one row per transaction (no `withTransaction` anywhere) | Low–Med | V, I | Open — [`performance.md`](performance.md) |
+| F26 | The same novel folder is listed several times per scan (constant factor; not IPC since SAF removal, see C5) | Low | V, I | Open, opportunistic — [`performance.md`](performance.md) |
+| F27 | The scan is sequential across novels | Low | V, I | Open, recommend defer until after F25 — [`performance.md`](performance.md) |
+| F28 | `currentStreakDays` builds 3,650 date strings to read the first few | Low | V | Open — [`performance.md`](performance.md) |
 
 A related but separate finding from the same follow-up pass — a scan could
 cascade-delete a local novel's history on an *ordinary* scan (no folder
@@ -62,6 +67,7 @@ question. It's fixed; see
 - **C2.** The review noted a source claiming `catch (e: Exception)` does not catch coroutine cancellation. That source is wrong; on the JVM `CancellationException` is an `IllegalStateException`, so it is caught. F6 stands.
 - **C3.** F3 assumed a synced novel's id is stable (derived from the relay slug) and only a local novel's id depends on the SAF URI. Re-reading `ScannerImpl.buildNovelEntity()` shows every novel's id — synced included — is `UUID.nameUUIDFromBytes(root.uri + ":" + child.uri)`; the relay slug only names the on-disk folder, not the Room row. Re-picking the library root therefore affects synced novels too, and `LibraryViewModel.startScan`'s stale-row handling makes the practical effect worse than "orphaned": a stale **local** novel is cascade-deleted (real data loss), a stale **synced** novel is kept at `MISSING_LOCALLY` while a duplicate fresh row is created under the new id. See [`data-safety.md`](data-safety.md) F3 for the corrected writeup.
 - **C4.** D3 below referred to "bug 5 in `bugs.md`". No such entry exists — `bugs/` currently holds one open bug, not about local-folder identity. There never was a bug 5; the decision this review needs is answered directly in [`data-safety.md`](data-safety.md) F3 instead, see D3's corrected wording.
+- **C5.** F24–F28 came from a separate local review pass and were re-read against the code on 2026-11-12 before being recorded. Two claims did not survive: the index finding first listed every foreign-key table, but `reading_progress`, `chapter_read_events` and `synced_files` are already covered by their primary keys (F24 now lists only the six that aren't); and the repeated-`listFiles()` finding argued each call is a binder round-trip through a `DocumentsProvider`, which stopped being true when SAF support was removed (the root is `DocumentFile.fromFile`, plain `java.io.File`), so F26 is a tidiness item, not a scan-time win. The Compose findings from that pass (unremembered chapter filtering, unkeyed lazy lists) are not new findings: they are F14, which now carries the extra detail. The reader screen is not affected by either; see [`bugs/other/scrolling-bug.md`](bugs/other/scrolling-bug.md).
 
 ## What the review judged sound (no action)
 
@@ -82,7 +88,7 @@ Hash-verified sync, invariants S1–S9, incremental fingerprinting, the docs che
 
 | Finding | Decision | Date |
 |---|---|---|
-| F1–F23 | — (per-finding accept/defer/reject still open — see D1) | — |
+| F1–F28 | — (per-finding accept/defer/reject still open — see D1) | — |
 
 ## Suggested order (reviewer's, adjusted after verification)
 
