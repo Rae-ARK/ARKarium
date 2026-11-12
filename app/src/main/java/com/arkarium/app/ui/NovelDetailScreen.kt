@@ -279,7 +279,7 @@ fun NovelDetailScreen(
                             .fillMaxWidth()
                             .padding(horizontal = 16.dp, vertical = 4.dp)
                     ) {
-                        items(genreList) { genre ->
+                        items(genreList, key = { it }) { genre ->
                             AssistChip(
                                 onClick = {},
                                 label = { Text(genre, fontSize = 12.sp) },
@@ -468,7 +468,7 @@ fun NovelDetailScreen(
                                     onDiscoveryInteracted = onCoverEnlargeHintDismissed
                                 )
                             }
-                            itemsIndexed(arcs) { index, arc ->
+                            itemsIndexed(arcs, key = { _, arc -> arc.id }) { index, arc ->
                                 ArcTabCard(
                                     // Arc cover first; if this arc's folder had no cover.* file,
                                     // fall back to the fiction's own cover rather than dropping
@@ -564,7 +564,7 @@ fun NovelDetailScreen(
             // fix from bugs.md Bug 2 visible/legible instead of just "correct but
             // silent" - a reader can now actually see why an interlude sorts where
             // it does relative to numbered chapters.
-            itemsIndexed(chaptersToShow) { index, chapter ->
+            itemsIndexed(chaptersToShow, key = { _, chapter -> chapter.id }) { index, chapter ->
                 Column(
                     modifier = Modifier.background(
                         if (index % 2 == 1) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
