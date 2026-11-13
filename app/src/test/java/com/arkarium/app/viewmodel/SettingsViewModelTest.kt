@@ -29,13 +29,16 @@ import org.junit.Test
 // surface SettingsPreferences actually has left.
 private class FakeSettingsPreferences(
     initialTheme: Theme = Theme.LIGHT,
-    initialSystemDefaultLightVariant: Theme = Theme.LIGHT
+    initialSystemDefaultLightVariant: Theme = Theme.LIGHT,
+    initialAmoledModeEnabled: Boolean = false
 ) : SettingsPreferences {
     private val themeFlow = MutableStateFlow(initialTheme)
     private val systemDefaultLightVariantFlow = MutableStateFlow(initialSystemDefaultLightVariant)
+    private val amoledModeEnabledFlow = MutableStateFlow(initialAmoledModeEnabled)
 
     override val theme: Flow<Theme> get() = themeFlow
     override val systemDefaultLightVariant: Flow<Theme> get() = systemDefaultLightVariantFlow
+    override val amoledModeEnabled: Flow<Boolean> get() = amoledModeEnabledFlow
 
     override suspend fun setTheme(theme: Theme) {
         themeFlow.value = theme
@@ -43,6 +46,10 @@ private class FakeSettingsPreferences(
 
     override suspend fun setSystemDefaultLightVariant(variant: Theme) {
         systemDefaultLightVariantFlow.value = variant
+    }
+
+    override suspend fun setAmoledModeEnabled(enabled: Boolean) {
+        amoledModeEnabledFlow.value = enabled
     }
 }
 
@@ -74,6 +81,7 @@ class SettingsViewModelTest {
     private fun subscribeToAll(viewModel: SettingsViewModel, scope: kotlinx.coroutines.CoroutineScope) {
         scope.launch { viewModel.currentTheme.collect {} }
         scope.launch { viewModel.currentSystemDefaultLightVariant.collect {} }
+        scope.launch { viewModel.amoledModeEnabled.collect {} }
     }
 
     @Test
@@ -114,5 +122,18 @@ class SettingsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(Theme.WARM_PAPER, viewModel.currentSystemDefaultLightVariant.value)
+    }
+
+    @Test
+    fun `setAmoledModeEnabled forwards to SettingsPreferences and the StateFlow reflects it`() = runTest(testDispatcher) {
+        val prefs = FakeSettingsPreferences()
+        val viewModel = SettingsViewModel(prefs)
+        subscribeToAll(viewModel, backgroundScope)
+        advanceUntilIdle()
+
+        viewModel.setAmoledModeEnabled(true)
+        advanceUntilIdle()
+
+        assertEquals(true, viewModel.amoledModeEnabled.value)
     }
 }

@@ -25,6 +25,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -61,8 +62,13 @@ fun ThemeSettingsScreen(
     // behaves as Dark at night regardless of this choice). See PreferencesManager's
     // systemDefaultLightVariant doc comment.
     systemDefaultLightVariant: Theme = Theme.LIGHT,
+    // Dark-only "true black" mode (see ui/theme/AppTheme.kt's applyAmoledMode) - only
+    // consulted while currentTheme == Theme.DARK, same "reveal on select" posture as
+    // systemDefaultLightVariant's own sub-choice below.
+    amoledModeEnabled: Boolean = false,
     onThemeSelected: (Theme) -> Unit,
     onSystemDefaultLightVariantSelected: (Theme) -> Unit = {},
+    onAmoledModeToggle: (Boolean) -> Unit = {},
     onBack: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -90,6 +96,36 @@ fun ThemeSettingsScreen(
                     onClick = { onThemeSelected(theme) }
                 )
                 Spacer(modifier = Modifier.height(10.dp))
+
+                // AMOLED mode - Dark's own sub-choice, same "reveal only under the row
+                // it belongs to" pattern as System Default's daytime-look picker below.
+                // Only shown while Dark is the active theme, since the override it
+                // controls (ui/theme/AppTheme.kt's applyAmoledMode) only ever applies
+                // on top of Theme.DARK's own resolved palette.
+                if (theme == Theme.DARK && currentTheme == Theme.DARK) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "AMOLED mode",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                            Text(
+                                "True black background - deeper contrast and less " +
+                                    "battery use on OLED/AMOLED screens.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        Switch(checked = amoledModeEnabled, onCheckedChange = onAmoledModeToggle)
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
 
                 // System Default's own daytime-look sub-choice - indented under its
                 // parent option, a "reveal on select" pattern. Only shown right under

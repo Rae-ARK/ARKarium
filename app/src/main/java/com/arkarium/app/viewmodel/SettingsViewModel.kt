@@ -46,12 +46,21 @@ class SettingsViewModel(private val prefs: SettingsPreferences) : ViewModel() {
     val currentSystemDefaultLightVariant: StateFlow<Theme> = prefs.systemDefaultLightVariant
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Theme.LIGHT)
 
+    // Seeded false, matching PreferencesManager.amoledModeEnabled's own unset-key
+    // default - see that flow's doc comment.
+    val amoledModeEnabled: StateFlow<Boolean> = prefs.amoledModeEnabled
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
+
     fun setTheme(theme: Theme) {
         viewModelScope.launch { prefs.setTheme(theme) }
     }
 
     fun setSystemDefaultLightVariant(variant: Theme) {
         viewModelScope.launch { prefs.setSystemDefaultLightVariant(variant) }
+    }
+
+    fun setAmoledModeEnabled(enabled: Boolean) {
+        viewModelScope.launch { prefs.setAmoledModeEnabled(enabled) }
     }
 
     companion object {

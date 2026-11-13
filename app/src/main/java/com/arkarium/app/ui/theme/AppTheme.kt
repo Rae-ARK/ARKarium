@@ -5,6 +5,7 @@ package com.arkarium.app.ui.theme
 // state, no Context - so it's usable (and unit-testable, see resolveTheme below) on
 // its own without pulling in the Activity.
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
@@ -128,6 +129,23 @@ fun warmPaperColorScheme() = lightColorScheme(
     inverseOnSurface = Color(0xFFA69B93),
     inversePrimary = Color(0xFFBD8551),
     surfaceTint = Color(0xFF845425)
+)
+
+// AMOLED mode: an opt-in override on top of darkColorSchemeApp() rather than a
+// fourth Theme enum value - it's a modifier of Dark, not an independent look, so
+// resolveTheme/colorSchemeFor above stay untouched and every call site just gates
+// this call on the resolved theme being Theme.DARK (see MainActivity.renderMainContent).
+// Only the canvas colors go pure black (0xFF000000) - true black is the whole point on
+// an OLED/AMOLED panel, since those pixels can switch off entirely instead of merely
+// dimming. surfaceVariant gets a near-black (0xFF0D0D0D) rather than pure black too, so
+// cards/dividers drawn in that role stay faintly distinguishable from the background
+// instead of disappearing into it. Every other role (primary, outline, text colors,
+// containers, etc.) is left exactly as darkColorSchemeApp() calibrated it, so contrast
+// and the app's teal identity are unaffected - only the background itself goes darker.
+fun applyAmoledMode(scheme: ColorScheme): ColorScheme = scheme.copy(
+    background = Color(0xFF000000),
+    surface = Color(0xFF000000),
+    surfaceVariant = Color(0xFF0D0D0D)
 )
 
 fun colorSchemeFor(theme: Theme) = when (theme) {
