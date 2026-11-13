@@ -183,8 +183,13 @@ enum class Theme {
 interface SettingsPreferences {
     val theme: Flow<Theme>
     val systemDefaultLightVariant: Flow<Theme>
+    // Only meaningful while the resolved theme is Theme.DARK (see AppTheme.applyAmoledMode)
+    // - stored independently of `theme` itself so switching away from and back to Dark
+    // doesn't lose the choice, same reasoning as systemDefaultLightVariant above.
+    val amoledModeEnabled: Flow<Boolean>
     suspend fun setTheme(theme: Theme)
     suspend fun setSystemDefaultLightVariant(variant: Theme)
+    suspend fun setAmoledModeEnabled(enabled: Boolean)
 }
 
 // Library Settings screen state the UI reads in one shot rather than as four separate
@@ -203,6 +208,9 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         // separately from THEME_KEY so switching in and out of System Default doesn't
         // lose whichever daytime look the user last chose.
         private val SYSTEM_DEFAULT_LIGHT_VARIANT_KEY = stringPreferencesKey("system_default_light_variant")
+        // Dark-theme-only "true black" mode (AppTheme.applyAmoledMode) - off by default,
+        // same "no behavior change until opted into" posture as the rest of this file.
+        private val AMOLED_MODE_KEY = booleanPreferencesKey("amoled_mode_enabled")
         private val DEFAULT_PAGE_SIZE_KEY = intPreferencesKey("default_page_size")
         // Library Settings screen (see ui/LibrarySettingsScreen.kt). The old
         // USE_CUSTOM_FOLDER_KEY/HAS_SHOWN_SAF_REMOVED_NOTICE_KEY pair - the opt-in flag
@@ -348,6 +356,11 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         }
     }
 
+    // Off by default - see AMOLED_MODE_KEY's doc comment above.
+    override val amoledModeEnabled: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[AMOLED_MODE_KEY] ?: false
+    }
+
     val defaultPageSize: Flow<Int> = safePrefs.map { prefs ->
         prefs[DEFAULT_PAGE_SIZE_KEY] ?: 10
     }
@@ -475,6 +488,12 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     override suspend fun setSystemDefaultLightVariant(variant: Theme) {
         context.dataStore.edit { prefs ->
             prefs[SYSTEM_DEFAULT_LIGHT_VARIANT_KEY] = variant.name
+        }
+    }
+
+    override suspend fun setAmoledModeEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[AMOLED_MODE_KEY] = enabled
         }
     }
 

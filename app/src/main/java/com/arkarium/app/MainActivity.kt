@@ -93,6 +93,7 @@ import com.arkarium.app.data.NewChapterNotifier
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.relayBaseUrlForSlug
 import com.arkarium.app.data.PreferencesManager
+import com.arkarium.app.data.Theme
 import com.arkarium.app.data.LastScanInfo
 import com.arkarium.app.data.StorageBreakdown
 import com.arkarium.app.data.SyncManager
@@ -102,6 +103,7 @@ import androidx.core.content.FileProvider
 import com.arkarium.app.navigation.NavMotion
 import com.arkarium.app.navigation.AddFictionState
 import com.arkarium.app.navigation.SyncAllState
+import com.arkarium.app.ui.theme.applyAmoledMode
 import com.arkarium.app.ui.theme.colorSchemeFor
 import com.arkarium.app.ui.theme.resolveTheme
 import com.arkarium.app.viewmodel.ChapterRestore
@@ -814,12 +816,23 @@ class MainActivity : ComponentActivity() {
             // MaterialTheme{} even opens.
             val currentTheme = settingsViewModel.currentTheme.collectAsState()
             val currentSystemDefaultLightVariant = settingsViewModel.currentSystemDefaultLightVariant.collectAsState()
+            val amoledModeEnabled = settingsViewModel.amoledModeEnabled.collectAsState()
             val resolvedTheme = resolveTheme(
                 currentTheme.value,
                 currentSystemDefaultLightVariant.value,
                 systemInDarkTheme
             )
-            val colorScheme = colorSchemeFor(resolvedTheme)
+            // AMOLED only ever modifies Dark's own resolved palette (see
+            // ui/theme/AppTheme.kt's applyAmoledMode) - System Default resolving to
+            // DARK at night picks it up too, same as any other Dark-only behavior,
+            // since resolvedTheme is already the concrete theme by this point.
+            val colorScheme = colorSchemeFor(resolvedTheme).let { scheme ->
+                if (resolvedTheme == Theme.DARK && amoledModeEnabled.value) {
+                    applyAmoledMode(scheme)
+                } else {
+                    scheme
+                }
+            }
             MaterialTheme(colorScheme = colorScheme) {
                 // The activity's manifest theme is static (always light), so without this
                 // the system status bar icons stay dark-on-dark whenever the user picks
@@ -1950,9 +1963,13 @@ class MainActivity : ComponentActivity() {
                         ThemeSettingsScreen(
                             currentTheme = currentTheme.value,
                             systemDefaultLightVariant = currentSystemDefaultLightVariant.value,
+                            amoledModeEnabled = amoledModeEnabled.value,
                             onThemeSelected = { theme -> settingsViewModel.setTheme(theme) },
                             onSystemDefaultLightVariantSelected = { variant ->
                                 settingsViewModel.setSystemDefaultLightVariant(variant)
+                            },
+                            onAmoledModeToggle = { enabled ->
+                                settingsViewModel.setAmoledModeEnabled(enabled)
                             },
                             onBack = { navController.popBackStack() }
                         )
