@@ -177,7 +177,7 @@ object LegalContent {
                 "or synchronizing is stored locally in an on-device database, along " +
                 "with your reading progress, a record of which titles you have " +
                 "synchronized and at what version, and your app preferences (such as " +
-                "theme and selected library folder). Browsing the built-in catalog " +
+                "theme and sync settings). Browsing the built-in catalog " +
                 "also caches a preview - cover, description, and a few basic details " +
                 "- for titles you have not yet added, kept separately from your " +
                 "actual library so the Browse screen does not need to re-fetch it " +
