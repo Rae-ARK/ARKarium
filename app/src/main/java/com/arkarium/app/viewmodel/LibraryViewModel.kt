@@ -196,14 +196,22 @@ class LibraryViewModel(
             val novel = mergeNovelForRescan(scanned, existing, authorsFolderFound)
             db.novelDao().upsert(novel)
             seenNovelIds.add(novel.id)
-            withContext(Dispatchers.Main) {
-                val idx = novels.indexOfFirst { it.id == novel.id }
-                if (idx >= 0) novels[idx] = novel else novels.add(novel)
-            }
+            // Chapters must be scanned into the DB *before* `novel` is published to
+            // the observable `novels` list below - otherwise a consumer that reacts
+            // to `novels` the moment this novel appears (e.g. MainActivity's
+            // novelDetail/{novelId} route re-resolving a just-followed catalogue slug
+            // to its real novel) can call loadNovelDetails() and find zero chapters,
+            // latch "details ready" on that empty result, and never requery. See
+            // bugs.md - "Follow leaves the chapter list empty until the screen is
+            // reopened."
             scanner.scanChaptersForNovel(novelFolder, novel.id, db) { message ->
                 withContext(Dispatchers.Main) {
                     _scanMessage.value = "Scanning ${novel.title}: $message"
                 }
+            }
+            withContext(Dispatchers.Main) {
+                val idx = novels.indexOfFirst { it.id == novel.id }
+                if (idx >= 0) novels[idx] = novel else novels.add(novel)
             }
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
