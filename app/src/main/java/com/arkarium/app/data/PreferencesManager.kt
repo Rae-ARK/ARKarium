@@ -215,15 +215,18 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         private val USE_CUSTOM_FOLDER_KEY = booleanPreferencesKey("use_custom_folder")
         private val HAS_SHOWN_SAF_REMOVED_NOTICE_KEY = booleanPreferencesKey("has_shown_saf_removed_notice")
         // Splash-screen behavior toggles (see SettingsScreen's "Splash Screen"
-        // section). The line-reconstruction animation defaults to true - it's
-        // the intended out-of-the-box experience, an opt-out for people who
-        // find it slow or unwanted on repeat launches. The guitar-chord score
-        // (SPLASH_MUSIC_ENABLED_KEY) defaults to **false** per D6 (see
-        // docs/proposal/performance.md, F13): the chord requested no audio
-        // focus and played over whatever else the user had going, and D6
-        // chose "off by default" over building transient-focus handling for a
-        // one-off decorative sound - this removes that problem outright
-        // rather than just shortening it. The two remain independent toggles.
+        // section). Both default to true - the line-reconstruction animation
+        // and its guitar-chord score are the intended out-of-the-box
+        // experience (the chord is scored specifically to the whoosh-and-cross
+        // animation; muting it by default would undercut the thing it's
+        // syncing with). D6 (docs/proposal/performance.md, F13) originally
+        // called for the chord off by default to sidestep audio-focus work -
+        // revised back to on-by-default, since it only plays once per
+        // install/update anyway (see LAST_FULL_SPLASH_VERSION_CODE_KEY below)
+        // and "no audio focus" is a narrower, acceptable gap for a one-off
+        // decorative sound than losing the music entirely. Both remain
+        // independent opt-outs for repeat launches / a quiet or public
+        // setting.
         private val SPLASH_ANIMATION_ENABLED_KEY = booleanPreferencesKey("splash_animation_enabled")
         private val SPLASH_MUSIC_ENABLED_KEY = booleanPreferencesKey("splash_music_enabled")
         // D6 (performance.md, F13): the full ~2.75s whoosh-and-cross sequence
@@ -305,11 +308,11 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         prefs[SPLASH_ANIMATION_ENABLED_KEY] ?: true
     }
 
-    // Default **false** - see SPLASH_MUSIC_ENABLED_KEY's doc comment above (D6).
-    // Independent of splashAnimationEnabled: a user can turn the chord on without
-    // the visual reconstruction, or vice versa.
+    // Default true - see SPLASH_MUSIC_ENABLED_KEY's doc comment above (D6,
+    // revised). Independent of splashAnimationEnabled: a user can keep the
+    // visual reconstruction but turn off sound, or vice versa.
     val splashMusicEnabled: Flow<Boolean> = safePrefs.map { prefs ->
-        prefs[SPLASH_MUSIC_ENABLED_KEY] ?: false
+        prefs[SPLASH_MUSIC_ENABLED_KEY] ?: true
     }
 
     // D6 (performance.md, F13) - see LAST_FULL_SPLASH_VERSION_CODE_KEY's doc
