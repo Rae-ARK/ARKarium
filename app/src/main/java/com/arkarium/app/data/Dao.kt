@@ -70,6 +70,14 @@ interface NovelDao {
     @Query("SELECT * FROM novels WHERE reading_status = :status ORDER BY title")
     suspend fun byStatus(status: String): List<NovelEntity>
 
+    // Backs LibrarySettingsScreen's "Remove missing novels" action (see
+    // LibraryViewModel.removeMissingNovels) - every synced novel the last scan
+    // couldn't find locally (SyncStatus.MISSING_LOCALLY), so the user can cascade-
+    // delete them immediately instead of waiting for a re-sync to notice the folder is
+    // still gone.
+    @Query("SELECT * FROM novels WHERE sync_status = :status ORDER BY title")
+    suspend fun bySyncStatus(status: String): List<NovelEntity>
+
     // Backs the Stage 2 author page's fiction list.
     @Query("SELECT * FROM novels WHERE author_id = :authorId ORDER BY title")
     suspend fun byAuthor(authorId: String): List<NovelEntity>

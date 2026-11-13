@@ -2,6 +2,10 @@ package com.arkarium.app.data
 
 import android.content.Context
 import androidx.documentfile.provider.DocumentFile
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.util.UUID
 
 // Extracted from MainActivity.kt as Stage 2.1 of Phase 2 (see
 // docs/foundational/design-notes.md). Both functions are plain data-in/data-out logic -
@@ -26,9 +30,90 @@ import androidx.documentfile.provider.DocumentFile
 // storage genuinely isn't available on this device/state; callers already treat a
 // null result as "leave the library empty," same as the old SAF-unconfigured case.
 fun resolveLibraryRoot(context: Context): DocumentFile? {
-    val dir = context.getExternalMediaDirs().firstOrNull() ?: return null
+    val dir = libraryRootFile(context) ?: return null
     dir.mkdirs()
     return DocumentFile.fromFile(dir)
+}
+
+// The plain java.io.File underlying resolveLibraryRoot's DocumentFile - pulled out as
+// its own function (rather than inlined into resolveLibraryRoot, or re-derived from a
+// DocumentFile's file:// uri at each call site) because computeStorageBreakdown and
+// LibrarySettingsScreen's "Open in file manager" action both want the real File (for
+// File.walkTopDown()'s size walk, and for building a SAF document path respectively) -
+// the DocumentFile wrapper buys nothing for either and would mean re-parsing its uri
+// back into a File. Does NOT call mkdirs() - unlike resolveLibraryRoot, both those
+// callers are read-only and shouldn't conjure the folder into existence just by asking
+// where it is.
+fun libraryRootFile(context: Context): File? = context.getExternalMediaDirs().firstOrNull()
+
+// Storage usage breakdown for LibrarySettingsScreen - see that screen's "Storage &
+// organization" section.
+//   - libraryBytes: everything under the library root (every novel folder, plus
+//     authors/ if present) - this is "actual text content" in the proposal's framing,
+//     since nothing cache-derived ever lives inside the library root itself.
+//   - novelBytes: libraryBytes broken down per novel that resolved to an actual row in
+//     `novels`, largest first. A folder that doesn't match any known novel id (a stray
+//     file, or a novel whose scan hasn't run yet) still counts toward libraryBytes but
+//     has no entry here - same "don't claim more than we can attribute" posture as
+//     mergeNovelForRescan's merge rules elsewhere in this file.
+//   - cacheBytes: Coil's image disk cache (cacheDir/image_cache, see ArkariumApp's
+//     newImageLoader) plus the catalogue browse cache (filesDir/catalogue, see
+//     CatalogueStorage) - both are covers/thumbnails ARKarium re-derives on demand
+//     (from a novel's own cover file, or from the relay), never the user's own novel
+//     files, which is exactly the boundary "Clear cached covers/thumbnails" needs to
+//     respect.
+data class StorageBreakdown(
+    val libraryBytes: Long,
+    val novelBytes: List<Pair<String, Long>>,
+    val cacheBytes: Long
+)
+
+suspend fun computeStorageBreakdown(context: Context, novels: List<NovelEntity>): StorageBreakdown =
+    withContext(Dispatchers.IO) {
+        val root = libraryRootFile(context)
+        var libraryBytes = 0L
+        val novelBytes = mutableListOf<Pair<String, Long>>()
+        if (root != null && root.isDirectory) {
+            // Same novelId formula as ScannerImpl.novelIdFor/SyncManager.findNovelFolder
+            // (root uri + child uri, UUID.nameUUIDFromBytes) - duplicated here rather
+            // than calling either of those (both are private/instance members scoped to
+            // their own class) for the same reason SyncManager.findNovelFolder already
+            // duplicates ScannerImpl's version: it's one line, and a shared helper
+            // would cost more in indirection than it saves.
+            val rootUri = DocumentFile.fromFile(root).uri.toString()
+            root.listFiles()?.forEach { child ->
+                if (!child.isDirectory) return@forEach
+                val size = child.walkTopDown().filter { it.isFile }.sumOf { it.length() }
+                libraryBytes += size
+                val childUri = DocumentFile.fromFile(child).uri.toString()
+                val novelId = UUID.nameUUIDFromBytes("$rootUri:$childUri".toByteArray()).toString()
+                val novel = novels.firstOrNull { it.id == novelId }
+                if (novel != null) novelBytes += novel.title to size
+            }
+        }
+        val imageCacheDir = File(context.cacheDir, "image_cache")
+        val catalogueDir = File(context.filesDir, "catalogue")
+        val cacheBytes = dirSize(imageCacheDir) + dirSize(catalogueDir)
+        StorageBreakdown(libraryBytes, novelBytes.sortedByDescending { it.second }, cacheBytes)
+    }
+
+private fun dirSize(dir: File): Long =
+    if (dir.isDirectory) dir.walkTopDown().filter { it.isFile }.sumOf { it.length() } else 0L
+
+// "Clear cached covers/thumbnails" - deletes the contents (not the directories
+// themselves, so Coil/CatalogueStorage can keep writing into them without having to
+// re-mkdirs) of exactly the two directories computeStorageBreakdown counts as
+// cacheBytes above. Returns the number of bytes freed, for the confirmation snackbar.
+// Deliberately never touches anything under libraryRootFile - that boundary is the
+// whole point of this being a separate, "safe" action from anything that edits novel
+// files.
+suspend fun clearImageCaches(context: Context): Long = withContext(Dispatchers.IO) {
+    val imageCacheDir = File(context.cacheDir, "image_cache")
+    val catalogueDir = File(context.filesDir, "catalogue")
+    val freed = dirSize(imageCacheDir) + dirSize(catalogueDir)
+    imageCacheDir.listFiles()?.forEach { it.deleteRecursively() }
+    catalogueDir.listFiles()?.forEach { it.deleteRecursively() }
+    freed
 }
 
 // Merges a freshly-scanned NovelEntity with whatever row already exists for this
