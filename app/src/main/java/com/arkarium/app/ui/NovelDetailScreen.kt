@@ -82,7 +82,30 @@ import androidx.compose.ui.window.DialogProperties
 import coil.compose.AsyncImage
 import com.arkarium.app.data.ArcEntity
 import com.arkarium.app.data.ChapterEntity
+import com.arkarium.app.data.ChapterManifestMetaEntity
 import com.arkarium.app.data.NovelEntity
+import com.arkarium.app.data.PublicationStatus
+
+// "---" is the shared placeholder for every "Serial-fiction manifest metadata" field
+// below that's legitimately absent (not declared by the manifest/metadata.json, or
+// never synced) - distinct from the field just not being rendered at all, so a reader
+// can tell "not declared" apart from a loading/missing-data glitch. See
+// PublicationStatus and ChapterManifestMetaEntity's doc comments.
+private const val UNKNOWN_VALUE = "---"
+
+private fun publicationStatusLabel(raw: String?): String = when (raw) {
+    PublicationStatus.ONGOING.name -> "Ongoing"
+    PublicationStatus.HIATUS.name -> "Hiatus"
+    PublicationStatus.DROPPED.name -> "Dropped"
+    PublicationStatus.COMPLETE.name -> "Complete"
+    else -> UNKNOWN_VALUE
+}
+
+// "2/week", "0.5/week" - author-declared cadence (NovelEntity.chaptersPerWeek), never
+// rounded to an integer since a cadence slower than 1/week is a real, meaningful value
+// (see that field's doc comment), not noise to truncate away.
+private fun chaptersPerWeekLabel(value: Double?): String =
+    if (value == null) UNKNOWN_VALUE else "${if (value == value.toLong().toDouble()) value.toLong().toString() else value.toString()}/week"
 
 private val PAGE_SIZE_OPTIONS = listOf(10, 20, 50, 100)
 
@@ -96,6 +119,12 @@ fun NovelDetailScreen(
     novel: NovelEntity,
     chapters: List<ChapterEntity>,
     arcs: List<ArcEntity>,
+    // Keyed by ChapterEntity.id - see LibraryViewModel.chapterManifestMeta's doc
+    // comment. A chapter id missing from this map renders exactly like a present
+    // entry with both fields null - "---" for word count and read time, not a
+    // hidden row - so defaulting to emptyMap() here is safe for every existing
+    // caller/test that doesn't pass one.
+    chapterManifestMeta: Map<String, ChapterManifestMetaEntity> = emptyMap(),
     overriddenChapterIds: Set<String> = emptySet(),
     onBack: () -> Unit,
     onChapterSelected: (ChapterEntity) -> Unit,
@@ -289,6 +318,39 @@ fun NovelDetailScreen(
                             )
                         }
                     }
+                }
+            }
+
+            // "Serial-fiction manifest metadata" row (peer-app-survey.md Suggestion 1) -
+            // publication status and author-declared release cadence. Always rendered
+            // once a novel is synced-capable, with "---" per field rather than hiding
+            // the row entirely when a value is absent - see UNKNOWN_VALUE's doc
+            // comment: a reader should be able to tell "not declared" apart from a
+            // slow load, same reasoning NovelAnnouncementEntity.publishedAt's "---"
+            // fallback already follows.
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Status: ${publicationStatusLabel(novel.publicationStatus)}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        "•",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                    Text(
+                        chaptersPerWeekLabel(novel.chaptersPerWeek),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
 
@@ -614,6 +676,20 @@ fun NovelDetailScreen(
                                 color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.padding(top = 2.dp)
+                            )
+                            // Word count / read time (ChapterManifestMetaEntity) - "---"
+                            // per field, same UNKNOWN_VALUE convention as the novel-level
+                            // status row above. Renders even when this chapter has no
+                            // entry in the map at all (missing == both fields null), so
+                            // the column position never shifts chapter to chapter.
+                            val meta = chapterManifestMeta[chapter.id]
+                            val wordCountLabel = meta?.wordCount?.let { "$it words" } ?: "$UNKNOWN_VALUE words"
+                            val readTimeLabel = meta?.readTimeMinutes?.let { "$it min" } ?: "$UNKNOWN_VALUE min"
+                            Text(
+                                "$wordCountLabel · $readTimeLabel",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(top = 2.dp)
                             )
                         }

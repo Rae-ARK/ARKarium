@@ -200,6 +200,12 @@ class SyncViewModel(
     // existing.
     private suspend fun applyManifestMetadata(novelId: String, outcome: SyncOutcome) {
         db.novelDao().updatePublicationStatus(novelId, outcome.publicationStatus)
+        // Same unconditional-write contract as publicationStatus just above, not
+        // announcements' "null means leave alone" one - chaptersPerWeek has no
+        // "explicit empty means clear, absent means don't touch" distinction to make
+        // (it's a single nullable value, not a list), so a manifest that stops
+        // declaring a cadence really does clear it, same as publicationStatus would.
+        db.novelDao().updateChaptersPerWeek(novelId, outcome.chaptersPerWeek)
 
         outcome.announcements?.let { announcements ->
             val fetchedAt = System.currentTimeMillis()
@@ -425,6 +431,13 @@ class SyncViewModel(
             }
             db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novelId) })
             db.novelDao().updateSyncState(novelId, url, outcome.newVersion, System.currentTimeMillis(), folderName)
+            // Pre-existing gap fixed here: "Sync all Rae ARK's novels" never called
+            // applyManifestMetadata, unlike addFictionByName - every novel added this
+            // way landed with publicationStatus/announcements/chapterManifestMeta/
+            // chaptersPerWeek silently dropped on the floor even though
+            // SyncOutcome carried them the whole time. Same post-scan,
+            // post-updateSyncState ordering as addFictionByName.
+            applyManifestMetadata(novelId, outcome)
             val updated = db.novelDao().findById(novelId)
             if (updated != null) {
                 withContext(Dispatchers.Main) {
@@ -491,9 +504,31 @@ class SyncViewModel(
                         syncCheckState.value = SyncCheckState.InProgress(novel, message)
                     }
                 }
+                // Pre-existing gap fixed here: checkForUpdates never called
+                // applyManifestMetadata at all - the one call site this is most load-
+                // bearing for, since SyncOutcome's own doc comment explains status/
+                // announcements/chaptersPerWeek are populated even when outcome.changed
+                // is false specifically so "check for updates" notices a publisher
+                // flipping ongoing->hiatus without a version bump. Unconditional - not
+                // inside `if (outcome.changed)` below - for exactly that reason.
+                applyManifestMetadata(novel.id, outcome)
                 // Hoisted out of the `if (outcome.changed)` block below so the Done state
                 // can use it too - see the bug this fixes just below.
                 var refreshedNovel: NovelEntity? = null
+                if (!outcome.changed) {
+                    // applyManifestMetadata just above can still have written a new
+                    // publicationStatus/chaptersPerWeek even on this branch (that's the
+                    // whole point - see the comment above) - re-read and patch
+                    // libraryViewModel.novels the same way the `outcome.changed` branch
+                    // does below, so e.g. a status flip to "Hiatus" actually shows up
+                    // without the novel's files having changed at all.
+                    val updated = db.novelDao().findById(novel.id)
+                    if (updated != null) {
+                        val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
+                        if (idx >= 0) libraryViewModel.novels[idx] = updated
+                    }
+                    refreshedNovel = updated
+                }
                 if (outcome.changed) {
                     db.syncedFileDao().deleteForNovel(novel.id)
                     db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novel.id) })

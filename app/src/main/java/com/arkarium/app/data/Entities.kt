@@ -113,7 +113,18 @@ data class NovelEntity(
     // arbitrates description/genres/publishedDate against a "Fetch info" result. Null
     // renders as "---" rather than hiding the row - see NovelDetailScreen - so a
     // reader can tell "not declared" apart from a slow load.
-    @ColumnInfo(name = "publication_status") val publicationStatus: String? = null
+    @ColumnInfo(name = "publication_status") val publicationStatus: String? = null,
+    // Author-declared release cadence (chapters/week) - see SyncManager.Manifest's
+    // chaptersPerWeek doc comment: set at publish time by the author, never computed
+    // from real publish timestamps (the manifest format has none). Null renders as
+    // "---", same convention as publicationStatus and everything else in this
+    // "Serial-fiction manifest metadata" group - see peer-app-survey.md Suggestion 1.
+    // Sourced only from a sync manifest today (SyncViewModel's
+    // NovelDao.updateChaptersPerWeek call) - unlike publicationStatus, ScannerImpl's
+    // local metadata.json parsing doesn't also expose this, since a purely local
+    // novel has no publish-time tooling to have declared a cadence in the first
+    // place; nothing stops that from being added later the same way.
+    @ColumnInfo(name = "chapters_per_week") val chaptersPerWeek: Double? = null
 )
 
 enum class SyncStatus {

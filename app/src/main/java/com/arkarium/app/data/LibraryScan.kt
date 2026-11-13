@@ -82,6 +82,12 @@ fun mergeNovelForRescan(
         // finds no metadata.json (or one with no "status" key) never clobbers whatever
         // the last sync already determined.
         publicationStatus = scanned.publicationStatus ?: existing.publicationStatus,
+        // chaptersPerWeek, unlike publicationStatus just above, has no local
+        // metadata.json source at all (see NovelEntity.chaptersPerWeek's doc
+        // comment) - `scanned` (a fresh ScannerImpl.buildNovelEntity result) never
+        // carries one, so always keep whatever the last sync wrote rather than
+        // letting a plain rescan clobber it back to null.
+        chaptersPerWeek = existing.chaptersPerWeek,
         externalSourceUrl = existing.externalSourceUrl,
         metadataFetchedAt = existing.metadataFetchedAt,
         // Sync bookkeeping columns are never *overwritten* by a scan - always carry
