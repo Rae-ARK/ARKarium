@@ -1,6 +1,6 @@
 # Catalogue Browse: discovering fictions before you've followed them
 
-> **Kind:** implementation · **Status:** in progress, Rungs 1-4 done, Rung 5 next · **Verified:** 2026-11-13 @ 64db766
+> **Kind:** implementation · **Status:** implemented, Rungs 1-7 done · **Verified:** 2026-11-13 @ 64db766
 > **Origin:** owner request - Browse should show every fiction Rae ARK publishes,
 > not just the ones already synced into the library, with a Follow step that
 > gates reading. Promoted from `proposal/` once the field list below was
@@ -243,9 +243,9 @@ duplicate the moment someone actually follows one).
 | 2 | Catalogue ingestion pass - per-slug fetch manifest/metadata/cover, compute `chapterCount`/`totalWordCount`, upsert; one slug's failure never aborts the rest (C4) | 1 | done | `SyncManager.kt` (new `fetchCatalogueEntry(slug)`, reusing `fetchManifest`/`downloadFile`), `SyncViewModel.kt` (per-item loop, same shape as `downloadFiction`) |
 | 3 | Private-storage writer (`context.filesDir/catalogue/<slug>/`) for cover + metadata.json, slug through `SyncPaths.sanitize` first (C1) | 2 | done | `CatalogueStorage.kt` (new), wired in `SyncViewModel.fetchCatalogueItem` |
 | 4 | C2 deletion hook: `addFictionByName` deletes the matching `catalogue_entries` row (+ cached files) on success | 1 | done | `SyncViewModel.kt` (`dropCatalogueEntry`, also called from "Sync all"'s `downloadFiction`) |
-| 5 | `FictionBrowseScreen`: merge into one `sealed BrowseItem` list; catalogue cards get no status badge, no star row; `NEWEST`/alphabetical sort only for catalogue items | 1 | queued | `FictionBrowseScreen.kt` |
-| 6 | `NovelDetailScreen` catalogue-preview mode (above) - status/cadence row reads `CatalogueEntryEntity.status`/`chaptersPerWeek` the same way it already reads `NovelEntity`'s | 1, 4, 5 | queued | `NovelDetailScreen.kt` |
-| 7 | Navigation fallback: `novelDetail/{id}` resolves `novels` first, falls back to `catalogue_entries.slug`; recompose in place (no new back-stack entry) once Follow succeeds | 6 | queued | `MainActivity.kt` |
+| 5 | `FictionBrowseScreen`: merge into one `sealed BrowseItem` list; catalogue cards get no status badge, no star row; `NEWEST`/alphabetical sort only for catalogue items | 1 | done | `FictionBrowseScreen.kt` |
+| 6 | `NovelDetailScreen` catalogue-preview mode (above) - status/cadence row reads `CatalogueEntryEntity.status`/`chaptersPerWeek` the same way it already reads `NovelEntity`'s | 1, 4, 5 | done | `NovelDetailScreen.kt` |
+| 7 | Navigation fallback: `novelDetail/{id}` resolves `novels` first, falls back to `catalogue_entries.slug`; recompose in place (no new back-stack entry) once Follow succeeds | 6 | done | `MainActivity.kt` |
 
 ## Explicitly out of scope
 

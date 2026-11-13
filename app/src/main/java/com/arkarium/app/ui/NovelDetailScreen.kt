@@ -150,8 +150,19 @@ fun NovelDetailScreen(
     // reports dismissal back up through onCoverEnlargeHintDismissed, same
     // split as notifyEnabled/onToggleNotify above.
     hasSeenCoverEnlargeHint: Boolean = true,
-    onCoverEnlargeHintDismissed: () -> Unit = {}
+    onCoverEnlargeHintDismissed: () -> Unit = {},
+    // Rung 6 of docs/implementation/catalogue-browse-redesign.md - catalogue-preview
+    // mode. Non-null means `novel` is a stand-in built from a CatalogueEntryEntity for a
+    // fiction the person hasn't followed yet: `chapters`/`arcs` are empty, the header
+    // count and greyed placeholder rows come from this number (there are no real chapter
+    // titles to show), "Follow" replaces "Start Reading", and the controls that only make
+    // sense for a library novel (fetch info, edit, search, pagination) are left off.
+    catalogueChapterCount: Int? = null,
+    // Follow = the existing add-fiction pipeline (SyncViewModel.addFictionBySlug), whose
+    // progress/error UI is the existing AddFictionByNameDialog - nothing new rendered here.
+    onFollowClick: (() -> Unit)? = null
 ) {
+    val isCataloguePreview = catalogueChapterCount != null
     val selectedTabIndex = remember { mutableIntStateOf(0) }
     // Seeded from the novel's persisted page_size so the preference survives navigation
     // away and back, not just within a single composition.
@@ -220,11 +231,13 @@ fun NovelDetailScreen(
                         Icon(Icons.Default.Sync, contentDescription = "Check for updates")
                     }
                 }
-                IconButton(onClick = onFetchInfoClick) {
-                    Icon(Icons.Default.Info, contentDescription = "Fetch info")
-                }
-                IconButton(onClick = onEditClick) {
-                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                if (!isCataloguePreview) {
+                    IconButton(onClick = onFetchInfoClick) {
+                        Icon(Icons.Default.Info, contentDescription = "Fetch info")
+                    }
+                    IconButton(onClick = onEditClick) {
+                        Icon(Icons.Default.Edit, contentDescription = "Edit")
+                    }
                 }
             }
         )
@@ -446,6 +459,20 @@ fun NovelDetailScreen(
             // Start Reading - the single, prominent primary action Royal Road leads
             // with. Jumps into the first chapter of the whole novel (not just the
             // currently selected arc tab).
+            if (isCataloguePreview) {
+                item {
+                    Button(
+                        onClick = { onFollowClick?.invoke() },
+                        enabled = onFollowClick != null,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp)
+                            .padding(bottom = 8.dp)
+                    ) {
+                        Text("Follow")
+                    }
+                }
+            }
             if (chapters.isNotEmpty()) {
                 item {
                     Button(
@@ -491,7 +518,7 @@ fun NovelDetailScreen(
                         )
                     }
                     Text(
-                        "${chapters.size} Chapters",
+                        "${catalogueChapterCount ?: chapters.size} Chapters",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -566,7 +593,7 @@ fun NovelDetailScreen(
             // fiction with more than a screenful of chapters. Filters the currently
             // selected arc tab's list by title; doesn't touch pageSize/currentPage
             // directly, those reset via the LaunchedEffect above.
-            item {
+            if (!isCataloguePreview) item {
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = { searchQuery = it },
@@ -588,7 +615,7 @@ fun NovelDetailScreen(
 
             // Pagination size controls - kept compact, tucked under the ToC header
             // rather than competing with Start Reading for top-of-page attention.
-            item {
+            if (!isCataloguePreview) item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -626,6 +653,25 @@ fun NovelDetailScreen(
             // fix from bugs.md Bug 2 visible/legible instead of just "correct but
             // silent" - a reader can now actually see why an interlude sorts where
             // it does relative to numbered chapters.
+            // Catalogue preview: plain "Chapter 1" .. "Chapter N" rows, greyed and not
+            // clickable - the manifest carries a count, not titles. They un-grey only
+            // once Follow finishes and the route re-resolves to the real novel.
+            if (catalogueChapterCount != null) {
+                items(catalogueChapterCount) { index ->
+                    Column {
+                        Text(
+                            "Chapter ${index + 1}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        )
+                        Divider()
+                    }
+                }
+            }
+
             itemsIndexed(chaptersToShow, key = { _, chapter -> chapter.id }) { _, chapter ->
                 Column(
                     modifier = Modifier
@@ -720,7 +766,7 @@ fun NovelDetailScreen(
             }
 
             // Page navigation
-            item {
+            if (!isCataloguePreview) item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

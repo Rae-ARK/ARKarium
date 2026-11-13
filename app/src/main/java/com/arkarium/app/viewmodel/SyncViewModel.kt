@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.AuthorEntity
+import com.arkarium.app.data.CatalogueEntryEntity
 import com.arkarium.app.data.CatalogueStorage
 import com.arkarium.app.data.ChapterManifestMetaEntity
 import com.arkarium.app.data.FictionLut
@@ -107,6 +108,32 @@ class SyncViewModel(
     val syncAllState = mutableStateOf<SyncAllState>(SyncAllState.Idle)
     val syncCheckState = mutableStateOf<SyncCheckState>(SyncCheckState.Idle)
     val syncResolutionState = mutableStateOf<SyncResolutionState>(SyncResolutionState.Idle)
+
+    // Rung 5 of docs/implementation/catalogue-browse-redesign.md - the not-yet-followed
+    // catalogue rows Browse merges into its grid. A snapshot of catalogue_entries, not a
+    // live query: reloaded by loadCatalogue() after a refresh and after C2's deletion
+    // hook, same "ViewModel owns the state, screen just reads it" shape as the three
+    // dialog states above.
+    val catalogue = mutableStateOf<List<CatalogueEntryEntity>>(emptyList())
+
+    suspend fun loadCatalogue() {
+        catalogue.value = db.catalogueEntryDao().all()
+    }
+
+    // On-demand refresh for Browse's open (the redesign doc's "on-demand refresh (e.g.
+    // opening Browse...)"). Browse is a bottom-tab root, so it is opened constantly -
+    // without a gate every tap would re-fetch one manifest per unfollowed fiction. Cached
+    // rows are shown immediately and only re-fetched once the *oldest* one is older than
+    // maxAgeMs (C3: cachedAt is the honest staleness signal). A fiction whose fetch failed
+    // has no row at all, so it is simply retried whenever the rest next goes stale.
+    suspend fun refreshCatalogueIfStale(maxAgeMs: Long = CATALOGUE_MAX_AGE_MS) {
+        loadCatalogue()
+        val oldest = catalogue.value.minOfOrNull { it.cachedAt }
+        if (oldest == null || System.currentTimeMillis() - oldest > maxAgeMs) {
+            refreshCatalogue()
+            loadCatalogue()
+        }
+    }
 
     // Moved verbatim from MainActivity (Stage 2.5). Scoped counterpart to
     // LibraryViewModel.startScan (see docs/foundational/architecture.md, Sync invariants S8): runs the exact
@@ -275,6 +302,7 @@ class SyncViewModel(
         try {
             db.catalogueEntryDao().delete(slug)
             withContext(Dispatchers.IO) { catalogueStorage.delete(slug) }
+            loadCatalogue()
         } catch (e: Exception) {
             // Intentionally swallowed - see above.
         }
@@ -286,6 +314,24 @@ class SyncViewModel(
             metadataViewModel.addFictionState.value = AddFictionState.Error("Couldn't find a fiction called \"$name\".")
             return
         }
+        addFiction(slug, name, libraryRoot)
+    }
+
+    // Rung 6 of docs/implementation/catalogue-browse-redesign.md - "Follow" from a
+    // catalogue preview. The redesign doc's "cheap follow-up": a catalogue entry already
+    // resolved its slug, and its title may come from metadata.json rather than the LUT's
+    // display name, so looking the *title* back up by name could miss. The on-disk folder
+    // name is still the LUT display name, exactly as addFictionByName / Sync all use.
+    fun addFictionBySlug(slug: String, libraryRoot: DocumentFile) {
+        val displayName = FictionLut.allEntries(getApplication()).firstOrNull { it.second == slug }?.first
+        if (displayName == null) {
+            metadataViewModel.addFictionState.value = AddFictionState.Error("Couldn't find this fiction.")
+            return
+        }
+        addFiction(slug, displayName, libraryRoot)
+    }
+
+    private fun addFiction(slug: String, name: String, libraryRoot: DocumentFile) {
         val url = relayBaseUrlForSlug(slug)
         metadataViewModel.addFictionState.value = AddFictionState.InProgress("Fetching manifest...")
         viewModelScope.launch {
@@ -788,6 +834,10 @@ class SyncViewModel(
         // approaching the ~5-idle-connection ceiling NOVEL_SYNC_CONCURRENCY's own
         // comment describes.
         private const val CATALOGUE_FETCH_CONCURRENCY = 6
+
+        // How old the oldest cached catalogue row may get before opening Browse
+        // re-fetches (see refreshCatalogueIfStale).
+        private const val CATALOGUE_MAX_AGE_MS = 15 * 60 * 1000L
 
         // Same manual-Factory shape as the other three ViewModel factories (rule 4 - no
         // DSL needed for one Factory method), extended with the Application instance
