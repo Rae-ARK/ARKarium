@@ -51,7 +51,26 @@ fun lightColorSchemeApp() = lightColorScheme(
     inverseSurface = Color(0xFF0A0F10),
     inverseOnSurface = Color(0xFF999E9E),
     inversePrimary = Color(0xFFAEF4FD),
-    surfaceTint = Color(0xFF1B6871)
+    surfaceTint = Color(0xFF1B6871),
+    // The 7 roles below (surfaceDim/Bright + the 5 surfaceContainer* tones) were
+    // missing from every scheme in this file - lightColorScheme()/darkColorScheme()
+    // silently default any role you don't pass to Google's *own* stock baseline
+    // tokens, which are derived from Material's default purple seed (#6750A4), not
+    // from the teal background/surfaceVariant above. NavigationBar defaults its
+    // container to surfaceContainer and SearchBar to surfaceContainerHigh - exactly
+    // the two roles nobody had overridden - which is why the bottom bar and the
+    // search bar (and nothing else) showed a pink/violet tint in light mode even
+    // though primary/secondary/surfaceVariant were already correctly teal. Computed
+    // at the same neutral teal hue (~190°) as background/surfaceVariant/outline
+    // above, stepped by lightness the way Material's own tonal recipe steps them
+    // (dim < surface < bright; containers darkest-to-lightest lowest-to-highest).
+    surfaceDim = Color(0xFFD8E2E4),
+    surfaceBright = Color(0xFFF9FBFB),
+    surfaceContainerLowest = Color(0xFFFEFEFE),
+    surfaceContainerLow = Color(0xFFF3F6F7),
+    surfaceContainer = Color(0xFFEDF2F3),
+    surfaceContainerHigh = Color(0xFFE7EDEE),
+    surfaceContainerHighest = Color(0xFFE1E9EA)
 )
 
 fun darkColorSchemeApp() = darkColorScheme(
@@ -83,7 +102,18 @@ fun darkColorSchemeApp() = darkColorScheme(
     inverseSurface = Color(0xFFF6FAFA),
     inverseOnSurface = Color(0xFF515657),
     inversePrimary = Color(0xFF34666D),
-    surfaceTint = Color(0xFF9CCFD6)
+    surfaceTint = Color(0xFF9CCFD6),
+    // Same gap as lightColorSchemeApp() above - these 7 roles were defaulting to
+    // Google's stock purple-seed dark tokens instead of this scheme's own teal.
+    // Computed at the same ~190° hue as this scheme's background/surfaceVariant/
+    // outline, stepped the way Material's own dark tonal recipe steps them.
+    surfaceDim = Color(0xFF0A0F10),
+    surfaceBright = Color(0xFF324548),
+    surfaceContainerLowest = Color(0xFF070A0B),
+    surfaceContainerLow = Color(0xFF141D1F),
+    surfaceContainer = Color(0xFF192224),
+    surfaceContainerHigh = Color(0xFF243033),
+    surfaceContainerHighest = Color(0xFF2F3E41)
 )
 
 // Warm, sepia-toned reading theme - lower contrast than pure light/dark, meant to
@@ -128,7 +158,17 @@ fun warmPaperColorScheme() = lightColorScheme(
     inverseSurface = Color(0xFF130D09),
     inverseOnSurface = Color(0xFFA69B93),
     inversePrimary = Color(0xFFBD8551),
-    surfaceTint = Color(0xFF845425)
+    surfaceTint = Color(0xFF845425),
+    // Same gap as the two schemes above, at this scheme's own sepia hue (~40°,
+    // matching background/surfaceVariant/outline) instead of teal - Warm Paper's
+    // bottom bar and search bar were defaulting to the stock purple tokens too.
+    surfaceDim = Color(0xFFDCC9A3),
+    surfaceBright = Color(0xFFF7F2E9),
+    surfaceContainerLowest = Color(0xFFFAF8F4),
+    surfaceContainerLow = Color(0xFFF1E8D5),
+    surfaceContainer = Color(0xFFECDFC6),
+    surfaceContainerHigh = Color(0xFFE7D8BB),
+    surfaceContainerHighest = Color(0xFFE2D2B1)
 )
 
 // AMOLED mode: an opt-in override on top of darkColorSchemeApp() rather than a
