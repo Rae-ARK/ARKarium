@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.arkarium.app.data.CatalogueEntryEntity
 import com.arkarium.app.data.NovelEntity
 
 enum class SortBy {
@@ -63,6 +64,51 @@ enum class SortBy {
 
 enum class StatusFilter {
     ALL, IN_PROGRESS, COMPLETED, NOT_STARTED
+}
+
+// Rung 5 of docs/implementation/catalogue-browse-redesign.md - one grid cell: either a
+// novel already in the library (today's behavior, unchanged) or a not-yet-followed
+// catalogue entry. Keys are prefixed so a slug can never collide with a novel id.
+sealed interface BrowseItem {
+    val key: String
+
+    data class Library(val novel: NovelEntity) : BrowseItem {
+        override val key get() = "novel:${novel.id}"
+    }
+
+    data class Catalogue(val entry: CatalogueEntryEntity) : BrowseItem {
+        override val key get() = "catalogue:${entry.slug}"
+    }
+}
+
+// Search / filter / sort for the catalogue half of the merged grid.
+//
+// - Status filter: a catalogue entry has no reading status before it's followed, so any
+//   filter other than ALL hides every catalogue entry rather than guessing a bucket
+//   (NOT_STARTED in particular means "in my library, not opened yet", not "not followed").
+// - Sort: MOST_POPULAR / HIGHEST_RATED have nothing to rank by (see the doc's Sort
+//   section) and RECENTLY_UPDATED needs a manifest timestamp that doesn't exist, so
+//   those fall back to alphabetical. NEWEST orders by publishedDate where present
+//   (ISO-style dates sort correctly as strings), undated entries last, then by title.
+internal fun filterAndSortCatalogue(
+    catalogue: List<CatalogueEntryEntity>,
+    query: String,
+    status: StatusFilter,
+    sort: SortBy
+): List<CatalogueEntryEntity> {
+    if (status != StatusFilter.ALL) return emptyList()
+    val matching = catalogue.filter {
+        it.title.contains(query, ignoreCase = true) ||
+            (it.author?.contains(query, ignoreCase = true) ?: false)
+    }
+    return when (sort) {
+        SortBy.NEWEST -> matching.sortedWith(
+            compareByDescending<CatalogueEntryEntity> { !it.publishedDate.isNullOrBlank() }
+                .thenByDescending { it.publishedDate.orEmpty() }
+                .thenBy { it.title.lowercase() }
+        )
+        else -> matching.sortedBy { it.title.lowercase() }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -77,7 +123,10 @@ fun FictionBrowseScreen(
     // too - keying on initialQuery here is defensive documentation of that requirement,
     // not a fix for an observed bug.
     initialQuery: String = "",
-    onNovelSelected: (NovelEntity) -> Unit = {}
+    onNovelSelected: (NovelEntity) -> Unit = {},
+    // Not-yet-followed fictions, merged after the library novels (Rung 5).
+    catalogue: List<CatalogueEntryEntity> = emptyList(),
+    onCatalogueSelected: (CatalogueEntryEntity) -> Unit = {}
 ) {
     val searchQuery = remember(initialQuery) { mutableStateOf(initialQuery) }
     val selectedSort = remember { mutableStateOf(SortBy.RECENTLY_UPDATED) }
@@ -110,6 +159,14 @@ fun FictionBrowseScreen(
             SortBy.HIGHEST_RATED -> result.shuffled()  // Would use rating
             SortBy.NEWEST -> result.reversed()
         }
+    }
+
+    val filteredCatalogue = remember(catalogue, searchQuery.value, selectedStatus.value, selectedSort.value) {
+        filterAndSortCatalogue(catalogue, searchQuery.value, selectedStatus.value, selectedSort.value)
+    }
+    val browseItems = remember(filtered, filteredCatalogue) {
+        filtered.map<NovelEntity, BrowseItem> { BrowseItem.Library(it) } +
+            filteredCatalogue.map { BrowseItem.Catalogue(it) }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
@@ -177,11 +234,17 @@ fun FictionBrowseScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            items(filtered, key = { it.id }) { novel ->
-                EnhancedNovelCard(
-                    novel = novel,
-                    onClick = { onNovelSelected(novel) }
-                )
+            items(browseItems, key = { it.key }) { item ->
+                when (item) {
+                    is BrowseItem.Library -> EnhancedNovelCard(
+                        novel = item.novel,
+                        onClick = { onNovelSelected(item.novel) }
+                    )
+                    is BrowseItem.Catalogue -> CatalogueEntryCard(
+                        entry = item.entry,
+                        onClick = { onCatalogueSelected(item.entry) }
+                    )
+                }
             }
         }
     }
@@ -281,6 +344,46 @@ fun EnhancedNovelCard(
     novel: NovelEntity,
     onClick: () -> Unit = {}
 ) {
+    BrowseCard(
+        title = novel.title,
+        author = novel.author,
+        // Local cover.png from the scanned folder takes priority over a remote metadata
+        // cover (only present after "Fetch info" has been run).
+        coverUrl = novel.coverUri ?: novel.remoteCoverUrl,
+        readingStatus = novel.readingStatus,
+        showRating = true,
+        onClick = onClick
+    )
+}
+
+// A not-yet-followed fiction: cover, title, author - and deliberately no status badge
+// (there is no reading status before you've followed it) and no star row (there was
+// never real rating data behind it, and this doesn't invent any for catalogue entries).
+@Composable
+fun CatalogueEntryCard(
+    entry: CatalogueEntryEntity,
+    onClick: () -> Unit = {}
+) {
+    BrowseCard(
+        title = entry.title,
+        author = entry.author,
+        coverUrl = entry.coverPath,
+        readingStatus = null,
+        showRating = false,
+        onClick = onClick
+    )
+}
+
+@Composable
+private fun BrowseCard(
+    title: String,
+    author: String?,
+    coverUrl: String?,
+    // null = no status concept for this card (catalogue entry): no badge at all.
+    readingStatus: String?,
+    showRating: Boolean,
+    onClick: () -> Unit
+) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -296,9 +399,7 @@ fun EnhancedNovelCard(
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceVariant)
         ) {
-            // Cover area - local cover.png from the scanned folder takes priority over
-            // a remote metadata cover (only present after "Fetch info" has been run).
-            val coverUrl = novel.coverUri ?: novel.remoteCoverUrl
+            // Cover area.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -328,13 +429,13 @@ fun EnhancedNovelCard(
                 }
 
                         // Status badge
-                        if (novel.readingStatus != "NOT_STARTED") {
+                        if (readingStatus != null && readingStatus != "NOT_STARTED") {
                             Box(
                                 modifier = Modifier
                                     .align(Alignment.TopEnd)
                                     .padding(8.dp)
                                     .background(
-                                        color = when (novel.readingStatus) {
+                                        color = when (readingStatus) {
                                             "IN_PROGRESS" -> Color(0xFFFF9800)  // Orange for In Progress
                                             "COMPLETED" -> MaterialTheme.colorScheme.tertiary.copy(alpha = 0.7f)
                                             else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
@@ -344,7 +445,7 @@ fun EnhancedNovelCard(
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Text(
-                                    when (novel.readingStatus) {
+                                    when (readingStatus) {
                                         "IN_PROGRESS" -> "Reading"
                                         "COMPLETED" -> "Done"
                                         else -> "New"
@@ -364,7 +465,7 @@ fun EnhancedNovelCard(
                     .padding(12.dp)
             ) {
                 Text(
-                    novel.title,
+                    title,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     maxLines = 2,
@@ -372,9 +473,9 @@ fun EnhancedNovelCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                if (!novel.author.isNullOrBlank()) {
+                if (!author.isNullOrBlank()) {
                     Text(
-                        novel.author!!,
+                        author,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -383,8 +484,8 @@ fun EnhancedNovelCard(
                     )
                 }
 
-                // Rating placeholder
-                Row(
+                // Rating placeholder (library novels only - see CatalogueEntryCard)
+                if (showRating) Row(
                     modifier = Modifier
                         .padding(top = 8.dp)
                         .fillMaxWidth(),

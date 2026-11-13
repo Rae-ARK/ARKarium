@@ -82,6 +82,7 @@ import com.arkarium.app.data.NewChapterCheckWorker
 import com.arkarium.app.data.ReadingProgressSaveWorker
 import com.arkarium.app.data.NewChapterNotifier
 import com.arkarium.app.data.NovelEntity
+import com.arkarium.app.data.relayBaseUrlForSlug
 import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.SyncManager
 import com.arkarium.app.data.TextChapterContentRepository
@@ -1033,9 +1034,22 @@ class MainActivity : ComponentActivity() {
                         defaultValue = ""
                     })
                 ) { backStackEntry ->
+                    // Rung 5: show cached catalogue rows right away, re-fetch only when
+                    // they've gone stale (see SyncViewModel.refreshCatalogueIfStale).
+                    LaunchedEffect(Unit) { syncViewModel.refreshCatalogueIfStale() }
+                    // C2 at the UI level too: whatever the row/cache cleanup is doing, a
+                    // fiction that's already in the library never shows as a catalogue card.
+                    val followedUrls = libraryViewModel.novels.mapNotNull { it.syncSourceUrl }.toSet()
+                    val catalogue = syncViewModel.catalogue.value.filterNot { relayBaseUrlForSlug(it.slug) in followedUrls }
                     Column(modifier = Modifier.fillMaxSize()) {
                         FictionBrowseScreen(
                             novels = libraryViewModel.novels,
+                            catalogue = catalogue,
+                            onCatalogueSelected = { entry ->
+                                // Rung 7: the route's {novelId} carries the slug for an
+                                // unfollowed fiction (encoded - slugs can contain spaces).
+                                navController.navigate("novelDetail/${Uri.encode(entry.slug)}") { launchSingleTop = true }
+                            },
                             initialQuery = backStackEntry.arguments?.getString("initialQuery") ?: "",
                             onNovelSelected = { novel ->
                                 lifecycleScope.launch {
@@ -1068,8 +1082,65 @@ class MainActivity : ComponentActivity() {
                     arguments = listOf(navArgument("novelId") { type = NavType.StringType })
                 ) { backStackEntry ->
                     val novelId = backStackEntry.arguments?.getString("novelId") ?: ""
-                    val novel = libraryViewModel.novels.firstOrNull { it.id == novelId }
-                    if (novel == null) {
+                    // Rung 7 of docs/implementation/catalogue-browse-redesign.md: {novelId}
+                    // is a real NovelEntity.id first; failing that it may be a catalogue
+                    // slug. If a novel has since been followed for that slug (Follow just
+                    // finished), the same route re-resolves to the real novel in place -
+                    // no new back-stack entry - once its chapters are loaded below.
+                    val directNovel = libraryViewModel.novels.firstOrNull { it.id == novelId }
+                    val followedBySlug = if (directNovel == null) {
+                        libraryViewModel.novels.firstOrNull { it.syncSourceUrl == relayBaseUrlForSlug(novelId) }
+                    } else null
+                    val novel = directNovel ?: followedBySlug
+                    val catalogueEntry = if (novel == null) {
+                        syncViewModel.catalogue.value.firstOrNull { it.slug == novelId }
+                    } else null
+                    // libraryViewModel.chapters/arcs still hold whichever novel was loaded
+                    // last, so the real detail isn't drawn for a just-followed slug until
+                    // its own details have been loaded.
+                    val detailsReadyFor = remember(novelId) { mutableStateOf<String?>(null) }
+                    if (followedBySlug != null) {
+                        LaunchedEffect(followedBySlug.id) {
+                            libraryViewModel.loadNovelDetails(followedBySlug)
+                            detailsReadyFor.value = followedBySlug.id
+                        }
+                    }
+                    if (novel == null && catalogueEntry != null) {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            NovelDetailScreen(
+                                // Stand-in for NovelDetailScreen's required NovelEntity -
+                                // never persisted; catalogue-preview mode (see its doc
+                                // comment) hides everything that would act on it.
+                                novel = NovelEntity(
+                                    id = catalogueEntry.slug,
+                                    title = catalogueEntry.title,
+                                    author = catalogueEntry.author,
+                                    coverUri = catalogueEntry.coverPath,
+                                    description = catalogueEntry.description,
+                                    genres = catalogueEntry.genres,
+                                    publishedDate = catalogueEntry.publishedDate,
+                                    publicationStatus = catalogueEntry.status,
+                                    chaptersPerWeek = catalogueEntry.chaptersPerWeek
+                                ),
+                                chapters = emptyList(),
+                                arcs = emptyList(),
+                                // Back to wherever the preview was opened from (Browse),
+                                // not the Home-collapsing behavior of a library novel.
+                                onBack = { navController.popBackStack() },
+                                onChapterSelected = {},
+                                catalogueChapterCount = catalogueEntry.chapterCount,
+                                onFollowClick = {
+                                    val root = resolveLibraryRoot(this@MainActivity)
+                                    if (root != null) {
+                                        syncViewModel.addFictionBySlug(catalogueEntry.slug, root)
+                                    } else {
+                                        metadataViewModel.addFictionState.value =
+                                            AddFictionState.Error("No library folder is set up yet - pick one in Settings first.")
+                                    }
+                                }
+                            )
+                        }
+                    } else if (novel == null) {
                         // The novel this route pointed to is no longer in the library -
                         // most likely SyncResolutionDialog's onRemoveFromLibrary below just
                         // deleted it via syncViewModel.resolveByRemovingFromLibrary. That
@@ -1085,6 +1156,14 @@ class MainActivity : ComponentActivity() {
                                 popUpTo("home") { inclusive = false }
                                 launchSingleTop = true
                             }
+                        }
+                    } else if (followedBySlug != null && detailsReadyFor.value != novel.id) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                            verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center
+                        ) {
+                            androidx.compose.material3.CircularProgressIndicator()
                         }
                     } else {
                         Column(modifier = Modifier.fillMaxSize()) {
