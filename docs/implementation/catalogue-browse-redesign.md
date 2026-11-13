@@ -1,6 +1,6 @@
 # Catalogue Browse: discovering fictions before you've followed them
 
-> **Kind:** implementation · **Status:** in progress, Rung 1 done, Rung 2 next · **Verified:** 2026-11-13 @ 64db766
+> **Kind:** implementation · **Status:** in progress, Rungs 1-2 done, Rung 3 next · **Verified:** 2026-11-13 @ 64db766
 > **Origin:** owner request - Browse should show every fiction Rae ARK publishes,
 > not just the ones already synced into the library, with a Follow step that
 > gates reading. Promoted from `proposal/` once the field list below was
@@ -240,7 +240,7 @@ duplicate the moment someone actually follows one).
 | Rung | Item | Depends on | Status | Target file(s) |
 |---|---|---|---|---|
 | 1 | `CatalogueEntryEntity` + `CatalogueEntryDao` + `MIGRATION_17_18` (schema above) | - | done | `Entities.kt`, `Dao.kt`, `AppDatabase.kt` |
-| 2 | Catalogue ingestion pass - per-slug fetch manifest/metadata/cover, compute `chapterCount`/`totalWordCount`, upsert; one slug's failure never aborts the rest (C4) | 1 | queued | `SyncManager.kt` (new `fetchCatalogueEntry(slug)`, reusing `fetchManifest`/`downloadFile`), `SyncViewModel.kt` (per-item loop, same shape as `downloadFiction`) |
+| 2 | Catalogue ingestion pass - per-slug fetch manifest/metadata/cover, compute `chapterCount`/`totalWordCount`, upsert; one slug's failure never aborts the rest (C4) | 1 | done | `SyncManager.kt` (new `fetchCatalogueEntry(slug)`, reusing `fetchManifest`/`downloadFile`), `SyncViewModel.kt` (per-item loop, same shape as `downloadFiction`) |
 | 3 | Private-storage writer (`context.filesDir/catalogue/<slug>/`) for cover + metadata.json, slug through `SyncPaths.sanitize` first (C1) | 2 | queued | `SyncManager.kt` or new `CatalogueStorage.kt` |
 | 4 | C2 deletion hook: `addFictionByName` deletes the matching `catalogue_entries` row (+ cached files) on success | 1 | queued | `SyncViewModel.kt` |
 | 5 | `FictionBrowseScreen`: merge into one `sealed BrowseItem` list; catalogue cards get no status badge, no star row; `NEWEST`/alphabetical sort only for catalogue items | 1 | queued | `FictionBrowseScreen.kt` |

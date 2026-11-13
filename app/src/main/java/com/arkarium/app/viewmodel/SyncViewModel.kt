@@ -39,6 +39,13 @@ import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
+// Result of one refreshCatalogue() pass (Rung 2, docs/implementation/
+// catalogue-browse-redesign.md) - `skipped` names which display names didn't refresh
+// this pass (C4), not why each one failed; a per-slug reason is logged at the call site
+// (fetchCatalogueItem) but isn't surfaced further than that yet, same as
+// syncAllRaeArkNovels' own SyncAllItemResult.Skipped not carrying a reason either.
+data class CatalogueRefreshSummary(val fetchedCount: Int, val skipped: List<String>)
+
 // Stage 2.5 of Phase 2 (docs/foundational/design-notes.md) - the fourth and last of the
 // plan's feature-scoped ViewModels pulled out of MainActivity. Owns syncAllState,
 // syncCheckState, and syncResolutionState (the three dialog-driving sealed states this
@@ -466,6 +473,71 @@ class SyncViewModel(
         }
     }
 
+    // Rung 2 of docs/implementation/catalogue-browse-redesign.md. One fiction's
+    // fetch+upsert for the catalogue ingestion pass - same per-item shape as
+    // downloadFiction above (bounded concurrency, "one bad apple doesn't block the
+    // batch"), but deliberately not fanned out through syncAllRaeArkNovels' own
+    // machinery: that function's downloadFiction only swallows SourceGoneException and
+    // lets everything else cancel the whole batch (structured concurrency), which is
+    // the right call for a user-initiated "Sync all" someone is actively waiting on.
+    // This is a lighter-weight, on-demand background refresh - C4 asks for *any*
+    // per-slug failure (a stale LUT entry, a transient network blip, a malformed
+    // manifest) to just skip that one entry, never abort the rest.
+    private sealed class CatalogueRefreshItemResult {
+        object Fetched : CatalogueRefreshItemResult()
+        data class Skipped(val displayName: String, val reason: String) : CatalogueRefreshItemResult()
+    }
+
+    // Plain suspend function, not auto-launched into viewModelScope with a dialog-
+    // driving state the way syncAllRaeArkNovels is - Rungs 1-4 are "independently
+    // testable without touching a screen" (the redesign doc's own words), and this is
+    // the data-layer half of that: callable directly from a test, or from whatever
+    // Rung 5+ screen ends up triggering it (a pull-to-refresh, Browse's own open).
+    // No dialog/progress state exists yet for the same reason - one gets added once
+    // there's an actual screen to drive, not speculatively ahead of it.
+    suspend fun refreshCatalogue(): CatalogueRefreshSummary = coroutineScope {
+        val entries = FictionLut.allEntries(getApplication())
+        if (entries.isEmpty()) return@coroutineScope CatalogueRefreshSummary(fetchedCount = 0, skipped = emptyList())
+
+        // "For every (displayName, slug) FictionLut already knows about that isn't
+        // already in the library (no NovelEntity whose syncSourceUrl equals
+        // relayBaseUrlForSlug(slug))" - the redesign doc's own ingestion-scope
+        // sentence, applied here rather than ingesting every fiction and only
+        // filtering afterward. This is the forward half of C2 (never creating a
+        // catalogue row for an already-followed fiction); Rung 4 wires the reverse
+        // direction (deleting one the moment addFictionByName succeeds for its slug).
+        val followedUrls = db.novelDao().all().mapNotNull { it.syncSourceUrl }.toSet()
+        val toIngest = entries.filterNot { (_, slug) -> relayBaseUrlForSlug(slug) in followedUrls }
+
+        val semaphore = Semaphore(CATALOGUE_FETCH_CONCURRENCY)
+        val results = toIngest.map { entry ->
+            async { semaphore.withPermit { fetchCatalogueItem(entry) } }
+        }.awaitAll()
+
+        CatalogueRefreshSummary(
+            fetchedCount = results.count { it is CatalogueRefreshItemResult.Fetched },
+            skipped = results.filterIsInstance<CatalogueRefreshItemResult.Skipped>().map { it.displayName }
+        )
+    }
+
+    private suspend fun fetchCatalogueItem(entry: Pair<String, String>): CatalogueRefreshItemResult {
+        val (displayName, slug) = entry
+        return try {
+            val fetched = syncManager.fetchCatalogueEntry(slug, displayName)
+            db.catalogueEntryDao().upsert(fetched.entry)
+            CatalogueRefreshItemResult.Fetched
+        } catch (e: Exception) {
+            // C4: one slug's failure never aborts the rest - and deliberately broader
+            // than downloadFiction's catch above (SourceGoneException only). A
+            // catalogue refresh is a convenience pass over fictions nobody has
+            // followed yet, not a download the person is actively waiting on, so
+            // nothing here is worth stopping the other entries for - this one just
+            // doesn't refresh this pass (C3: visible via its unchanged/absent
+            // cachedAt, retried next refresh, not retried right now).
+            CatalogueRefreshItemResult.Skipped(displayName, e.message ?: e::class.simpleName.orEmpty())
+        }
+    }
+
     // Moved from MainActivity (Stage 2.5). Originally also patched MainActivity's own
     // `currentScreen` on a successful resync, when the novel being viewed in
     // NovelDetail was the one just updated, via an `onUpdated` callback (the same
@@ -663,6 +735,15 @@ class SyncViewModel(
         // client), so pushing this much higher stops buying overlapping latency and
         // starts just paying for more simultaneous fresh TCP+TLS handshakes instead.
         private const val NOVEL_SYNC_CONCURRENCY = 4
+
+        // How many fetchCatalogueItem calls refreshCatalogue runs at once - same
+        // bounded-fan-out reasoning as NOVEL_SYNC_CONCURRENCY just above, but a
+        // catalogue fetch is far lighter per fiction (one manifest + optional
+        // metadata.json + optional cover.*, never the full chapter set
+        // downloadFiction pulls down), so a higher bound is fine here without
+        // approaching the ~5-idle-connection ceiling NOVEL_SYNC_CONCURRENCY's own
+        // comment describes.
+        private const val CATALOGUE_FETCH_CONCURRENCY = 6
 
         // Same manual-Factory shape as the other three ViewModel factories (rule 4 - no
         // DSL needed for one Factory method), extended with the Application instance
