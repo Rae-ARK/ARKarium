@@ -51,6 +51,7 @@ import com.arkarium.app.navigation.isBottomBarRoute
 import com.arkarium.app.ui.NoticeBoardScreen
 import com.arkarium.app.ui.PigeonRallyScreen
 import com.arkarium.app.ui.RaesJournalScreen
+import com.arkarium.app.viewmodel.JournalViewModel
 import com.arkarium.app.ui.ChapterEditorScreen
 import com.arkarium.app.ui.AuthorPageScreen
 import com.arkarium.app.ui.HomeScreen
@@ -227,6 +228,8 @@ class MainActivity : ComponentActivity() {
     // chapter text load, saved-position resolve/migrate) so the NavHost destination no
     // longer touches db/contentRepo. Constructed in onCreate after db/contentRepo.
     private lateinit var readerViewModel: ReaderViewModel
+    // Rae's Journal (Notice Board) - see JournalViewModel.
+    private lateinit var journalViewModel: JournalViewModel
 
     // Originally launched only from a "Notify me when new chapters are available"
     // toggle being switched on (see NovelDetailScreen's onToggleNotify wiring below);
@@ -510,6 +513,8 @@ class MainActivity : ComponentActivity() {
             ).get(SyncViewModel::class.java)
             readerViewModel = ViewModelProvider(this, ReaderViewModel.factory(db, contentRepo))
                 .get(ReaderViewModel::class.java)
+            journalViewModel = ViewModelProvider(this, JournalViewModel.factory(applicationContext))
+                .get(JournalViewModel::class.java)
         } catch (e: DatabaseDowngradeException) {
             // See F23 in docs/proposal/data-safety.md - this is Room
             // refusing to open a database written by a newer version of the app, not
@@ -1703,7 +1708,15 @@ class MainActivity : ComponentActivity() {
 
                 composable("noticeBoard/journal") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        RaesJournalScreen(onBack = { navController.popBackStack() })
+                        // Re-entering within ten minutes reuses the last fresh copy; see
+                        // JournalViewModel.load.
+                        LaunchedEffect(Unit) { journalViewModel.load() }
+                        RaesJournalScreen(
+                            result = journalViewModel.result.value,
+                            isLoading = journalViewModel.isLoading.value,
+                            onRefresh = { journalViewModel.load(force = true) },
+                            onBack = { navController.popBackStack() }
+                        )
                     }
                 }
 
