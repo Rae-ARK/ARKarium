@@ -1,8 +1,11 @@
 package com.arkarium.app.ui
 
 import android.app.Activity
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.view.WindowManager
 import android.widget.Toast
@@ -1394,6 +1397,17 @@ fun ReaderScreen(
                         )
                     }
 
+                    // "Send Feedback" card - the very last thing on the chapter page,
+                    // below the author segment above. Unconditional (unlike
+                    // AboutAuthorCard, which needs a linked AuthorEntity): feedback has
+                    // nowhere else to come from when a fiction has no author.json, so it
+                    // isn't gated on `author` the way the card above it is.
+                    FeedbackCard(
+                        novelTitle = novelTitle,
+                        backgroundColor = backgroundColor,
+                        textColor = textColor
+                    )
+
                     // Small trailing gap so the last line of the chapter doesn't sit
                     // flush against the footer below it.
                     Box(modifier = Modifier.padding(bottom = 24.dp))
@@ -1926,6 +1940,11 @@ private fun ChapterNavRow(
 // in full (author page)" note on author.json's bio field.
 private const val BIO_EXCERPT_LENGTH = 160
 
+// Destination for the "Send Feedback" card below. A mailto: this app never sends
+// anything itself for - ACTION_SENDTO just hands the reader's own mail client a
+// pre-addressed, pre-subject-lined draft to review and send (or not) themselves.
+private const val FEEDBACK_EMAIL = "horizonarkstudio@gmail.com"
+
 // Centered scene/chapter separator for a <chapter break> tag. Empty tags
 // ("<chapter break></chapter break>", the common case - most chapter breaks don't
 // carry their own label) fall back to a plain glyph divider; text between the tags is
@@ -2069,6 +2088,69 @@ private fun AboutAuthorCard(
                     )
                 }
             }
+        }
+    }
+}
+
+// mailto: card shown below the author segment on every chapter page (see its call
+// site above). ACTION_SENDTO + a "mailto:" Uri is deliberate over ACTION_SEND: the
+// latter opens the general share sheet (any app that accepts text, not just mail),
+// while ACTION_SENDTO with this scheme restricts the chooser to apps that actually
+// handle email - the "opens in their default mail client" behavior that was asked
+// for - and nothing is sent until the reader reviews and taps send themselves inside
+// it. The subject is built, not hardcoded, so each fiction's chapters prefill a
+// subject naming that fiction rather than all pointing to the same generic one.
+@Composable
+private fun FeedbackCard(
+    novelTitle: String?,
+    backgroundColor: Color,
+    textColor: Color
+) {
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 12.dp)
+            .clickable {
+                // Falls back to a fiction-less subject rather than the literal string
+                // "null" on the (today impossible, but not enforced by this screen's
+                // own signature) chance novelTitle is missing - same "render something
+                // sensible instead of the raw missing value" rule AboutAuthorCard's
+                // bio-less branch above already follows.
+                val subject = if (novelTitle.isNullOrBlank()) {
+                    "Feedback"
+                } else {
+                    "Feedback [$novelTitle]"
+                }
+                val mailUri = Uri.parse("mailto:$FEEDBACK_EMAIL?subject=${Uri.encode(subject)}")
+                val intent = Intent(Intent.ACTION_SENDTO, mailUri)
+                try {
+                    context.startActivity(intent)
+                } catch (e: ActivityNotFoundException) {
+                    // No mail app installed - nothing else to fall back to here.
+                    Toast.makeText(context, "No email app found", Toast.LENGTH_SHORT).show()
+                }
+            },
+        colors = CardDefaults.cardColors(containerColor = backgroundColor)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "Feedback",
+                style = MaterialTheme.typography.labelSmall,
+                color = textColor.copy(alpha = 0.6f)
+            )
+            Text(
+                "Send Feedback",
+                style = MaterialTheme.typography.titleSmall,
+                color = textColor,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+            Text(
+                "Spotted a typo or have thoughts on this chapter? Let us know by email.",
+                style = MaterialTheme.typography.bodySmall,
+                color = textColor.copy(alpha = 0.85f),
+                modifier = Modifier.padding(top = 4.dp)
+            )
         }
     }
 }
