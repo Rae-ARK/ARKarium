@@ -120,18 +120,31 @@ object LegalContent {
                 "an existing title be re-synchronized, the App makes an HTTPS " +
                 "request to the publisher's own content distribution service to " +
                 "retrieve that title's manifest and chapter files, and writes them " +
-                "into your library folder. This service is first-party " +
-                "infrastructure operated by the same project as the App, is not an " +
-                "unaffiliated third-party service, and requires no account or " +
-                "sign-in. Each request identifies only the title being retrieved, by " +
-                "a fixed identifier built into the App; no information about your " +
-                "device, your library contents, or your reading history is included " +
-                "or required. As with any network request, the distribution service " +
-                "receives ordinary connection metadata (such as your IP address) " +
-                "that any server receives from any client; the App does not add any " +
-                "further tracking, identifiers, or analytics to that request.",
+                "into your library folder. Browsing the built-in catalog makes this " +
+                "same kind of request automatically: to show a cover, description, " +
+                "and chapter count for a title before you have added it, the App " +
+                "fetches that preview from the distribution service and caches it " +
+                "on your device for about fifteen minutes before refreshing it " +
+                "again. Separately, for any title in your library where you have " +
+                "turned on \"Notify me when new chapters are available,\" the App " +
+                "checks that title against the distribution service on its own, " +
+                "roughly every six hours, without you having to open the App - this " +
+                "automatic check honors your \"Wi-Fi-only sync\" setting if you have " +
+                "turned that on. This service is first-party infrastructure " +
+                "operated by the same project as the App, is not an unaffiliated " +
+                "third-party service, and requires no account or sign-in. Each " +
+                "request, automatic or not, identifies only the title being " +
+                "retrieved, by a fixed identifier built into the App; no " +
+                "information about your device, your library contents, or your " +
+                "reading history is included or required. As with any network " +
+                "request, the distribution service receives ordinary connection " +
+                "metadata (such as your IP address) that any server receives from " +
+                "any client; the App does not add any further tracking, " +
+                "identifiers, or analytics to that request.",
             icon = Icons.Filled.CloudSync,
-            tldr = "Adding a title talks to our own server, not a stranger's - just enough to fetch it, nothing about you."
+            tldr = "Adding a title, browsing the catalog, and background chapter " +
+                "checks you've opted into all talk to our own server, never a " +
+                "stranger's - and never more than the title itself."
         ),
         LegalSection(
             "Metadata lookup (optional, per title)",
@@ -164,9 +177,13 @@ object LegalContent {
                 "or synchronizing is stored locally in an on-device database, along " +
                 "with your reading progress, a record of which titles you have " +
                 "synchronized and at what version, and your app preferences (such as " +
-                "theme and selected library folder). None of this information leaves " +
-                "your device during normal use of the App; it exists solely so the " +
-                "App can determine what has already been synchronized, what has " +
+                "theme and selected library folder). Browsing the built-in catalog " +
+                "also caches a preview - cover, description, and a few basic details " +
+                "- for titles you have not yet added, kept separately from your " +
+                "actual library so the Browse screen does not need to re-fetch it " +
+                "every time you open it. None of this information leaves your " +
+                "device during normal use of the App; it exists solely so the App " +
+                "can determine what has already been synchronized, what has " +
                 "changed, and where you left off reading.",
             icon = Icons.Filled.Storage,
             tldr = "Everything we remember - progress, titles, settings - stays in a database on your phone."
