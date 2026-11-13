@@ -3,17 +3,21 @@
 A native reading experience for Rae ARK's published fiction.
 
 <table>
-<tr>
-    <td>[<img src="assets/badge_obtainium.png"
-    alt="Get it on Obtainium"
-    height="80">]([https://github.com/ImranR98/Obtainium/releases](https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522ARKarium%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FRae-ARK%252FARKarium%2522%252C%2522author%2522%253A%2522Rae-ARK%2522%252C%2522name%2522%253A%2522ARKarium%2522%257D))</td>
-    <td>[<img src="https://github.com/machiav3lli/oandbackupx/blob/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png"
-    alt="Get it on GitHub"
-    height="80">](https://github.com/Rae-ARK/ARKarium/releases/)</td>
+  <tr>
+    <td align="center">
+      <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522ARKarium%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FRae-ARK%252FARKarium%2522%252C%2522author%2522%253A%2522Rae-ARK%2522%252C%2522name%2522%253A%2522ARKarium%2522%257D">
+        <img src="assets/badge_obtainium.png" alt="Get it on Obtainium" height="80">
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/Rae-ARK/ARKarium/releases/">
+        <img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Get it on GitHub" height="80">
+      </a>
+    </td>
   </tr>
   <tr>
     <td align="center"><sub>Obtainium</sub></td>
-    <td align="center"><sub>Git Hub</sub></td>
+    <td align="center"><sub>GitHub</sub></td>
   </tr>
 </table>
 
@@ -78,9 +82,7 @@ Obtainium allows users to install and track Android applications directly from t
 3. Confirm the ARKarium application configuration.
 4. Obtainium will track the repository for available updates.
 
-Alternatively, add the repository manually:
-
-https://github.com/Rae-ARK/ARKarium
+Alternatively, download the latest release directly from [GitHub Releases](https://github.com/Rae-ARK/ARKarium/releases/).
 
 ## Status
 
