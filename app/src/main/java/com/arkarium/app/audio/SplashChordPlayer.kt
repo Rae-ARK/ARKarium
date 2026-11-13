@@ -12,13 +12,23 @@ import android.media.AudioTrack
 class SplashChordPlayer {
     private var audioTrack: AudioTrack? = null
 
-    fun play() {
+    // Synthesizes the chord and plays it. Kept for callers that don't care
+    // where the ~507,000-sample Karplus-Strong synthesis runs - but see
+    // playPcm below, which SplashScreen now uses so that synthesis (the
+    // actually expensive part) can happen on Dispatchers.Default instead of
+    // blocking the composition/apply pass on the main thread.
+    fun play() = playPcm(GuitarChordSynth.buildCMajorStrumPcm16())
+
+    // Plays an already-synthesized PCM16 buffer. Splitting this out from
+    // play() (F13, docs/proposal/performance.md) lets the caller synthesize
+    // off the main thread and only touch AudioTrack - construct, write,
+    // play, all cheap - here.
+    fun playPcm(pcm: ShortArray) {
         // Guard against a second play() on an already-playing instance
         // (shouldn't happen given how SplashScreen uses this, but cheap to
         // make safe).
         release()
 
-        val pcm = GuitarChordSynth.buildCMajorStrumPcm16()
         val bytesNeeded = pcm.size * 2 // 16-bit samples = 2 bytes each
         val minBufferSize = AudioTrack.getMinBufferSize(
             GuitarChordSynth.SAMPLE_RATE,

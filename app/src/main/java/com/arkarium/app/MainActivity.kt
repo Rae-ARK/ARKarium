@@ -667,7 +667,17 @@ class MainActivity : ComponentActivity() {
                 // section) - collected here too, same reasoning as shouldShowSafRemovedNotice
                 // above, and both default to true to match PreferencesManager's own default.
                 val splashAnimationEnabled = prefsManager.splashAnimationEnabled.collectAsState(initial = true)
-                val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = true)
+                val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = false)
+                // D6 (docs/proposal/performance.md, F13): whether this launch is the
+                // first one since an install/update, in which case the full
+                // whoosh-and-cross sequence plays; every other launch collapses to a
+                // short fade regardless of splashAnimationEnabled's own value. Initial
+                // true matches "a fresh process always assumes full until proven
+                // otherwise" - the same direction PreferencesManager's -1 sentinel
+                // resolves on an unset key, so there's no first-frame flash from true
+                // to false before this collects its real value either.
+                val fullSplashSequence =
+                    prefsManager.shouldShowFullSplash(BuildConfig.VERSION_CODE).collectAsState(initial = true)
                 // TTS default-settings state (see docs/foundational/design-notes.md, Stage
                 // 3.2) - collected here too, same reasoning as shouldShowSafRemovedNotice
                 // above. Initial values match PreferencesManager's own fallbacks (see
@@ -816,7 +826,17 @@ class MainActivity : ComponentActivity() {
                     SplashScreen(
                         animationEnabled = splashAnimationEnabled.value,
                         musicEnabled = splashMusicEnabled.value,
-                        onFinished = { showSplash.value = false }
+                        fullSequence = fullSplashSequence.value,
+                        onFinished = {
+                            showSplash.value = false
+                            // Record this version as having shown the full sequence
+                            // (a no-op write if it already had) so the next cold
+                            // start - this version or not - re-evaluates
+                            // shouldShowFullSplash freshly rather than assuming.
+                            lifecycleScope.launch {
+                                prefsManager.markFullSplashShown(BuildConfig.VERSION_CODE)
+                            }
+                        }
                     )
                     return@MaterialTheme
                 }

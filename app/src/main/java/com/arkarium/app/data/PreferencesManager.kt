@@ -215,12 +215,24 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         private val USE_CUSTOM_FOLDER_KEY = booleanPreferencesKey("use_custom_folder")
         private val HAS_SHOWN_SAF_REMOVED_NOTICE_KEY = booleanPreferencesKey("has_shown_saf_removed_notice")
         // Splash-screen behavior toggles (see SettingsScreen's "Splash Screen"
-        // section). Both default to true - the line-reconstruction animation and
-        // its guitar-chord score are the intended experience out of the box; these
-        // exist purely as an opt-out for people who find them slow or unwanted
-        // (repeat launches, sound in a quiet/public setting, etc.).
+        // section). The line-reconstruction animation defaults to true - it's
+        // the intended out-of-the-box experience, an opt-out for people who
+        // find it slow or unwanted on repeat launches. The guitar-chord score
+        // (SPLASH_MUSIC_ENABLED_KEY) defaults to **false** per D6 (see
+        // docs/proposal/performance.md, F13): the chord requested no audio
+        // focus and played over whatever else the user had going, and D6
+        // chose "off by default" over building transient-focus handling for a
+        // one-off decorative sound - this removes that problem outright
+        // rather than just shortening it. The two remain independent toggles.
         private val SPLASH_ANIMATION_ENABLED_KEY = booleanPreferencesKey("splash_animation_enabled")
         private val SPLASH_MUSIC_ENABLED_KEY = booleanPreferencesKey("splash_music_enabled")
+        // D6 (performance.md, F13): the full ~2.75s whoosh-and-cross sequence
+        // plays once per install/update, a short ~300ms fade every other
+        // launch. Stores the app's BuildConfig.VERSION_CODE the full sequence
+        // was last shown for; unset (-1) never matches a real version code, so
+        // a fresh install always gets the full sequence exactly once, same as
+        // the first launch after an update that bumps VERSION_CODE.
+        private val LAST_FULL_SPLASH_VERSION_CODE_KEY = intPreferencesKey("last_full_splash_version_code")
         // uiux.md's "Arc cover enlarger is undiscoverable", replacing the old
         // magnifier badge with a one-time onboarding ripple (see
         // NovelDetailScreen.kt's CoverEnlargeDiscoveryHint): the first time someone
@@ -293,11 +305,18 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         prefs[SPLASH_ANIMATION_ENABLED_KEY] ?: true
     }
 
-    // Default true - see SPLASH_MUSIC_ENABLED_KEY's doc comment above. Independent
-    // of splashAnimationEnabled: a user can keep the visual reconstruction but turn
-    // off sound, or vice versa.
+    // Default **false** - see SPLASH_MUSIC_ENABLED_KEY's doc comment above (D6).
+    // Independent of splashAnimationEnabled: a user can turn the chord on without
+    // the visual reconstruction, or vice versa.
     val splashMusicEnabled: Flow<Boolean> = safePrefs.map { prefs ->
-        prefs[SPLASH_MUSIC_ENABLED_KEY] ?: true
+        prefs[SPLASH_MUSIC_ENABLED_KEY] ?: false
+    }
+
+    // D6 (performance.md, F13) - see LAST_FULL_SPLASH_VERSION_CODE_KEY's doc
+    // comment above. `currentVersionCode` is BuildConfig.VERSION_CODE, passed in
+    // rather than read here so this stays testable without a real BuildConfig.
+    fun shouldShowFullSplash(currentVersionCode: Int): Flow<Boolean> = safePrefs.map { prefs ->
+        (prefs[LAST_FULL_SPLASH_VERSION_CODE_KEY] ?: -1) != currentVersionCode
     }
 
     // Seeds ChapterTtsState's initial speechRate once rememberChapterTts() is wired
@@ -398,6 +417,14 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     suspend fun setSplashMusicEnabled(enabled: Boolean) {
         context.dataStore.edit { prefs ->
             prefs[SPLASH_MUSIC_ENABLED_KEY] = enabled
+        }
+    }
+
+    // Called from SplashScreen's onFinished once the splash has actually played
+    // out (full or short) for `versionCode` - see shouldShowFullSplash above.
+    suspend fun markFullSplashShown(versionCode: Int) {
+        context.dataStore.edit { prefs ->
+            prefs[LAST_FULL_SPLASH_VERSION_CODE_KEY] = versionCode
         }
     }
 
