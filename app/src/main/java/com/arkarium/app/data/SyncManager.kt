@@ -771,4 +771,137 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         }
         dir?.findFile(segments.last())?.delete()
     }
+
+    // Rung 2 of docs/implementation/catalogue-browse-redesign.md - fetches and computes
+    // everything one catalogue entry needs, for a fiction FictionLut knows about but
+    // that isn't followed (synced) yet. Reuses client.fetchManifest/downloadFile
+    // exactly as downloadInitial/sync do above - no new relay endpoint, no new
+    // SyncClient method (see the redesign doc's "Catalogue ingestion" section).
+    //
+    // Deliberately returns raw cover/metadata bytes alongside the computed entity
+    // rather than writing them anywhere itself - this class never touches Room (see
+    // the file's own doc comment), and it has no opinion on *storage* either: Rung 3's
+    // private-storage writer (context.filesDir/catalogue/<slug>/, C1's
+    // SyncPaths.sanitize applied there, not here) doesn't exist yet, so coverPath on
+    // the returned entity is always null for now. The caller (SyncViewModel) persists
+    // the entity as-is; a later rung fills coverPath in once something can actually
+    // write the bytes this hands back.
+    suspend fun fetchCatalogueEntry(
+        slug: String,
+        displayName: String
+    ): CatalogueFetchResult = withContext(Dispatchers.IO) {
+        val baseUrl = relayBaseUrlForSlug(slug)
+        // A 404 here throws SourceGoneException (see SyncClient.fetchManifest) - same
+        // "this source doesn't exist" signal a stale FictionLut entry would throw for a
+        // real sync. The caller (SyncViewModel.fetchCatalogueItem) treats any failure
+        // here as C4's "skip this slug, don't abort the rest", so this doesn't need its
+        // own narrower handling.
+        val manifest = client.fetchManifest(baseUrl)
+
+        val metadataPath = manifest.files.firstOrNull { it.relativePath.equals("metadata.json", ignoreCase = true) }
+            ?.relativePath
+        val metadataBytes = metadataPath?.let { client.downloadFile(baseUrl, it) }
+        val metadata = metadataBytes?.let { parseCatalogueMetadata(it) }
+
+        val coverEntry = manifest.files.firstOrNull { isRootCoverPath(it.relativePath) }
+        val coverBytes = coverEntry?.let { client.downloadFile(baseUrl, it.relativePath) }
+
+        // "Chapter count - count manifest entries matching arcs/*/*.txt at the top
+        // level of their arc folder" - exactly the doc's own wording, deliberately
+        // narrower than ScannerImpl's real chapter detection (which also accepts
+        // root-level .txt files and per-file bonus/closing markers): a catalogue
+        // entry only ever needs a count, never a real chapter list, so this doesn't
+        // reimplement the scanner's classification.
+        val chapterEntries = manifest.files.filter { isChapterFilePath(it.relativePath) }
+        val totalWordCount = chapterEntries.mapNotNull { it.wordCount }.takeIf { it.isNotEmpty() }?.sum()
+
+        val entry = CatalogueEntryEntity(
+            slug = slug,
+            title = metadata?.title ?: displayName,
+            author = metadata?.author,
+            description = metadata?.description,
+            genres = metadata?.genres,
+            coverPath = null,
+            chapterCount = chapterEntries.size,
+            publishedDate = metadata?.publishedDate,
+            totalWordCount = totalWordCount,
+            status = manifest.status,
+            chaptersPerWeek = manifest.chaptersPerWeek,
+            cachedAt = System.currentTimeMillis()
+        )
+
+        CatalogueFetchResult(
+            entry = entry,
+            coverBytes = coverBytes,
+            coverFileName = coverEntry?.relativePath,
+            metadataBytes = metadataBytes
+        )
+    }
 }
+
+// Result of one fetchCatalogueEntry call. Split from CatalogueEntryEntity itself for
+// exactly the reason fetchCatalogueEntry's own doc comment gives: there's nowhere to
+// write coverBytes/metadataBytes to yet, so they're handed back raw rather than
+// silently dropped, for whichever later rung ends up persisting them.
+data class CatalogueFetchResult(
+    val entry: CatalogueEntryEntity,
+    val coverBytes: ByteArray? = null,
+    // The manifest-relative path the cover was found at (e.g. "cover.jpg") - Rung 3's
+    // writer needs this to know what filename/extension to give the cached copy. Null
+    // exactly when coverBytes is null (no cover.* entry in this manifest).
+    val coverFileName: String? = null,
+    val metadataBytes: ByteArray? = null
+)
+
+// Same forgiving, optional-everything shape as ScannerImpl.readLocalMetadata's
+// metadata.json parsing (title/author/description/genres/publishedDate - see that
+// function's doc comment for the full field list this mirrors). Not shared code with
+// ScannerImpl's version: that one is tightly coupled to DocumentFile/
+// context.contentResolver and returns ScannerImpl's own private type, for a fiction
+// already in the library; this one parses raw bytes just fetched from the relay, for a
+// fiction that isn't. `status` and `authorId` are deliberately not parsed here -
+// catalogue `status` comes from the manifest's own root-level field (manifest.status,
+// same "Status" field the redesign doc specifies), not metadata.json's, and
+// CatalogueEntryEntity has no authorId column to put one in.
+private data class CatalogueMetadata(
+    val title: String?,
+    val author: String?,
+    val description: String?,
+    val genres: String?,
+    val publishedDate: String?
+)
+
+// A malformed metadata.json means every field is null, never a thrown exception - same
+// "doesn't take down the whole fetch" philosophy as readLocalMetadata, just applied at
+// catalogue-ingestion time instead of scan time.
+private fun parseCatalogueMetadata(bytes: ByteArray): CatalogueMetadata? = try {
+    val json = JSONObject(String(bytes, Charsets.UTF_8))
+    val genresArray = json.optJSONArray("genres")
+    val genres = if (genresArray != null) {
+        (0 until genresArray.length()).joinToString(", ") { genresArray.optString(it) }
+    } else {
+        json.optString("genres").takeIf { it.isNotBlank() }
+    }
+    CatalogueMetadata(
+        title = json.optString("title").takeIf { it.isNotBlank() },
+        author = json.optString("author").takeIf { it.isNotBlank() },
+        description = json.optString("description").takeIf { it.isNotBlank() },
+        genres = genres,
+        publishedDate = json.optString("publishedDate").takeIf { it.isNotBlank() }
+    )
+} catch (e: Exception) {
+    null
+}
+
+// "The root-level cover.* entry (same 'Content format' convention architecture.md
+// already documents)" - same cover.<ext> set ScannerImpl.findCoverUri resolves against
+// locally-listed files, matched here directly against a manifest path string instead.
+// Root-level only (no "/" in the path): a per-arc cover isn't part of this proposal.
+private fun isRootCoverPath(relativePath: String): Boolean =
+    Regex("(?i)^cover\\.(jpg|jpeg|png|webp)$").matches(relativePath)
+
+// "Count manifest entries matching arcs/*/*.txt at the top level of their arc folder" -
+// see fetchCatalogueEntry's own comment on why this is deliberately narrower than
+// ScannerImpl's real chapter detection.
+private fun isChapterFilePath(relativePath: String): Boolean =
+    Regex("(?i)^arcs/[^/]+/[^/]+\\.txt$").matches(relativePath)
