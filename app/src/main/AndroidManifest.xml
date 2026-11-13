@@ -29,6 +29,27 @@
          install-time-granted permission - nothing to prompt for at runtime. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Package-visibility declarations (API 30+) for MainActivity.
+         openLibraryFolderInFileManager (LibrarySettingsScreen's "Open library folder
+         in file manager" action). Without these, Intent.resolveActivity /
+         PackageManager.queryIntentActivities always reports "no activity found" for
+         this ACTION_VIEW intent - even when a perfectly good file manager is
+         installed - because the system hides other apps' manifests from this one by
+         default. Two mime types since file managers are split roughly evenly
+         between treating a folder Uri as "resource/folder" (the one this app's own
+         Intent declares - see that function) and the SAF-native
+         "vnd.android.document/directory". -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="resource/folder" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="vnd.android.document/directory" />
+        </intent>
+    </queries>
+
     <application
         android:name=".ArkariumApp"
         android:allowBackup="true"
@@ -64,6 +85,23 @@
         <service android:name="com.arkarium.app.playback.TtsPlaybackService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Backs MainActivity.openLibraryFolderInFileManager (LibrarySettingsScreen's
+             "Open library folder in file manager" action) - mints a content:// Uri for
+             the library root (see res/xml/file_paths.xml) so it can be handed to
+             another app's Intent without a file:// StrictMode violation. Not exported
+             (grantUriPermissions + the per-call FLAG_GRANT_READ_URI_PERMISSION are the
+             only way another app ever sees a Uri from this provider), same posture as
+             TtsPlaybackService above. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>

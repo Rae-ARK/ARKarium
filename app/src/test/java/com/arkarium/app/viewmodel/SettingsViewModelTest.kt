@@ -22,22 +22,20 @@ import org.junit.Test
 // with no DataStore, Context, or Robolectric involved. See docs/foundational/design-notes.md
 // Stage 2.2.
 //
-// useCustomFolder/libraryUri were dropped from SettingsPreferences by the
-// SAF-removal decision (see "Settled decisions" in
-// docs/foundational/design-notes.md) - shouldShowSafRemovedNotice/
-// dismissSafRemovedNotice() took their place, so this fake and the tests below follow suit.
+// shouldShowSafRemovedNotice/dismissSafRemovedNotice were dropped from
+// SettingsPreferences once the SAF-removal notice had shipped for a while (see
+// PreferencesManager's doc comment on the key pair they used to back) - this fake
+// and the tests below follow suit, covering only the theme/systemDefaultLightVariant
+// surface SettingsPreferences actually has left.
 private class FakeSettingsPreferences(
     initialTheme: Theme = Theme.LIGHT,
-    initialSystemDefaultLightVariant: Theme = Theme.LIGHT,
-    initialShouldShowSafRemovedNotice: Boolean = false
+    initialSystemDefaultLightVariant: Theme = Theme.LIGHT
 ) : SettingsPreferences {
     private val themeFlow = MutableStateFlow(initialTheme)
     private val systemDefaultLightVariantFlow = MutableStateFlow(initialSystemDefaultLightVariant)
-    private val shouldShowSafRemovedNoticeFlow = MutableStateFlow(initialShouldShowSafRemovedNotice)
 
     override val theme: Flow<Theme> get() = themeFlow
     override val systemDefaultLightVariant: Flow<Theme> get() = systemDefaultLightVariantFlow
-    override val shouldShowSafRemovedNotice: Flow<Boolean> get() = shouldShowSafRemovedNoticeFlow
 
     override suspend fun setTheme(theme: Theme) {
         themeFlow.value = theme
@@ -45,10 +43,6 @@ private class FakeSettingsPreferences(
 
     override suspend fun setSystemDefaultLightVariant(variant: Theme) {
         systemDefaultLightVariantFlow.value = variant
-    }
-
-    override suspend fun dismissSafRemovedNotice() {
-        shouldShowSafRemovedNoticeFlow.value = false
     }
 }
 
@@ -80,15 +74,13 @@ class SettingsViewModelTest {
     private fun subscribeToAll(viewModel: SettingsViewModel, scope: kotlinx.coroutines.CoroutineScope) {
         scope.launch { viewModel.currentTheme.collect {} }
         scope.launch { viewModel.currentSystemDefaultLightVariant.collect {} }
-        scope.launch { viewModel.shouldShowSafRemovedNotice.collect {} }
     }
 
     @Test
     fun `once subscribed, exposes SettingsPreferences' current values`() = runTest(testDispatcher) {
         val prefs = FakeSettingsPreferences(
             initialTheme = Theme.DARK,
-            initialSystemDefaultLightVariant = Theme.WARM_PAPER,
-            initialShouldShowSafRemovedNotice = true
+            initialSystemDefaultLightVariant = Theme.WARM_PAPER
         )
         val viewModel = SettingsViewModel(prefs)
         subscribeToAll(viewModel, backgroundScope)
@@ -96,7 +88,6 @@ class SettingsViewModelTest {
 
         assertEquals(Theme.DARK, viewModel.currentTheme.value)
         assertEquals(Theme.WARM_PAPER, viewModel.currentSystemDefaultLightVariant.value)
-        assertEquals(true, viewModel.shouldShowSafRemovedNotice.value)
     }
 
     @Test
@@ -123,20 +114,5 @@ class SettingsViewModelTest {
         advanceUntilIdle()
 
         assertEquals(Theme.WARM_PAPER, viewModel.currentSystemDefaultLightVariant.value)
-    }
-
-    @Test
-    fun `dismissSafRemovedNotice forwards to SettingsPreferences`() = runTest(testDispatcher) {
-        val prefs = FakeSettingsPreferences(initialShouldShowSafRemovedNotice = true)
-        val viewModel = SettingsViewModel(prefs)
-        subscribeToAll(viewModel, backgroundScope)
-        advanceUntilIdle()
-
-        assertEquals(true, viewModel.shouldShowSafRemovedNotice.value)
-
-        viewModel.dismissSafRemovedNotice()
-        advanceUntilIdle()
-
-        assertEquals(false, viewModel.shouldShowSafRemovedNotice.value)
     }
 }

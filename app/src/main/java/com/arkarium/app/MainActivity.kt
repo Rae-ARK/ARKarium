@@ -93,8 +93,12 @@ import com.arkarium.app.data.NewChapterNotifier
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.relayBaseUrlForSlug
 import com.arkarium.app.data.PreferencesManager
+import com.arkarium.app.data.LastScanInfo
+import com.arkarium.app.data.StorageBreakdown
 import com.arkarium.app.data.SyncManager
 import com.arkarium.app.data.TextChapterContentRepository
+import com.arkarium.app.ui.formatBytes
+import androidx.core.content.FileProvider
 import com.arkarium.app.navigation.NavMotion
 import com.arkarium.app.navigation.AddFictionState
 import com.arkarium.app.navigation.SyncAllState
@@ -109,6 +113,7 @@ import com.arkarium.app.viewmodel.SyncViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectIndexed
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -139,7 +144,8 @@ import kotlinx.coroutines.withContext
 // same local names. The old useCustomFolder/savedUri pair (once a per-composition
 // collectAsState() local) is gone with SAF support itself - see "Settled
 // decisions" in docs/foundational/design-notes.md - replaced by
-// settingsViewModel.shouldShowSafRemovedNotice, collected the same way.
+// the SAF-removal notice, which has since been dropped entirely (see
+// PreferencesManager's doc comment on the key pair it used to back).
 //
 // metadataSearchState/addFictionState and fetchMetadataFor/applyMetadata formerly
 // lived here too - all four now come from metadataViewModel (Stage 2.4 of Phase 2,
@@ -228,6 +234,20 @@ class MainActivity : ComponentActivity() {
     // FILE_CHANGE_DEBOUNCE_MS of the last one into a single rescan, fired once things
     // go quiet.
     private var fileChangeRescanJob: Job? = null
+    // Live value of PreferencesManager.scanOnFileChangeEnabled, kept in sync by the
+    // collector started in onCreate below. Read by onStart/onStop (which can't
+    // themselves collect a Flow's current value synchronously) to decide whether a
+    // freshly-foregrounded Activity should start the watcher, and by that same
+    // collector to decide whether a toggle flipped on mid-foreground should start it
+    // immediately rather than waiting for the next onStart.
+    private var scanOnFileChangeEnabled = false
+    // True between onStart and onStop - see LibraryFileWatcher's own "process-lifetime
+    // only" doc comment for why the watcher follows this window rather than
+    // onCreate/onDestroy. Used alongside scanOnFileChangeEnabled above so the
+    // preference collector never starts a watcher for an Activity that's currently
+    // stopped (it would just be immediately torn down again, or worse, outlive onStop
+    // if the collector raced it).
+    private var isActivityStarted = false
     // Stage 2.2 of Phase 2 (docs/foundational/design-notes.md) - the first ViewModel
     // pulled out of MainActivity. Constructed in onCreate right after prefsManager
     // (its only dependency), same lateinit-set-in-onCreate pattern as the services
@@ -404,6 +424,87 @@ class MainActivity : ComponentActivity() {
         handleShortcutIntent(intent)
     }
 
+    // "Scan on file change" (LibrarySettingsScreen) - start/stop the FileObserver-
+    // backed watcher across exactly the window ARKarium is in the foreground or
+    // visible, per LibraryFileWatcher's own doc comment. scanOnFileChangeEnabled is
+    // kept current by the preference collector in onCreate; onStart/onStop can't
+    // collect a Flow's latest value synchronously themselves, so they just read it.
+    override fun onStart() {
+        super.onStart()
+        isActivityStarted = true
+        if (scanOnFileChangeEnabled) startLibraryFileWatcher()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        isActivityStarted = false
+        stopLibraryFileWatcher()
+    }
+
+    // Builds the watcher over the current library root and starts it. A null
+    // libraryRootFile (shared storage genuinely unavailable right now - see
+    // resolveLibraryRoot's own doc comment) just means there's nothing to watch yet;
+    // the next onStart or preference flip tries again. No-ops if one is already
+    // running, so onStart and the preference collector can both call this safely.
+    private fun startLibraryFileWatcher() {
+        if (libraryFileWatcher != null) return
+        val root = libraryRootFile(this) ?: return
+        libraryFileWatcher = LibraryFileWatcher(root) {
+            // Debounced - see fileChangeRescanJob's own doc comment above. Cancel
+            // whatever's still pending and start a fresh countdown on every
+            // callback, so a burst of file events (a multi-file drag-and-drop, a
+            // sync writing a chapter at a time) collapses into exactly one rescan
+            // once things go quiet.
+            fileChangeRescanJob?.cancel()
+            fileChangeRescanJob = lifecycleScope.launch {
+                delay(FILE_CHANGE_DEBOUNCE_MS)
+                resolveLibraryRoot(this@MainActivity)?.let { libraryViewModel.startScan(it) }
+            }
+        }.also { it.start() }
+    }
+
+    private fun stopLibraryFileWatcher() {
+        libraryFileWatcher?.stop()
+        libraryFileWatcher = null
+        fileChangeRescanJob?.cancel()
+        fileChangeRescanJob = null
+    }
+
+    // "Open library folder in file manager" (LibrarySettingsScreen's "Storage &
+    // organization" section) - a direct intent/shortcut rather than making the user
+    // navigate there by hand, since the whole model is "you manage files yourself"
+    // (see data/LibraryScan.kt's resolveLibraryRoot doc comment). The library root is
+    // a plain java.io.File under getExternalMediaDirs(), not a content:// Uri, so it
+    // has to go through a FileProvider (see the <provider> entry in
+    // AndroidManifest.xml and res/xml/file_paths.xml) rather than a bare file:// Uri,
+    // which Android refuses to hand to another app's Intent on API 24+
+    // (StrictMode.FileUriExposedException). resolveActivity()/queryIntentActivities
+    // need the matching <queries> block in the manifest to see any file manager at
+    // all on API 30+ - without it this always finds "no activity" even when a
+    // perfectly good file manager is installed, due to package-visibility
+    // restrictions.
+    private fun openLibraryFolderInFileManager() {
+        val dir = libraryRootFile(this)
+        if (dir == null) {
+            libraryViewModel.reportScanSetupError("Couldn't reach the library folder right now.")
+            return
+        }
+        try {
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", dir)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "resource/folder")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            if (intent.resolveActivity(packageManager) != null) {
+                startActivity(intent)
+            } else {
+                libraryViewModel.reportScanSetupError("No file manager app found that can open this folder.")
+            }
+        } catch (e: Exception) {
+            libraryViewModel.reportScanSetupError("Couldn't open the library folder: ${e.message}")
+        }
+    }
+
     // resolveMissingFolderBySyncing/resolveByRemovingFromLibrary/
     // resolveSourceGoneByUnlinking - the three resolution actions SyncResolutionDialog
     // offers once checkForUpdates hits a MissingLocalFolderException or
@@ -473,6 +574,11 @@ class MainActivity : ComponentActivity() {
         // value, so the two must be kept in sync by hand - there's no way for a
         // manifest-declared shortcut's <extra> to reference a Kotlin constant.
         const val EXTRA_CONTINUE_READING_SHORTCUT = "com.arkarium.app.EXTRA_CONTINUE_READING_SHORTCUT"
+        // "Scan on file-change" (LibrarySettingsScreen) - how long
+        // startLibraryFileWatcher's debounce job waits after the last file-system
+        // event before actually starting a rescan; see fileChangeRescanJob's own
+        // doc comment.
+        private const val FILE_CHANGE_DEBOUNCE_MS = 1_500L
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -564,7 +670,54 @@ class MainActivity : ComponentActivity() {
         // immediately if that's empty, so scheduling it eagerly here just means it's
         // already running by the time the user first flips a toggle on, rather than
         // needing this call moved to wherever the very first toggle happens.
-        NewChapterCheckWorker.schedule(this)
+        // Three Library Settings preferences (see ui/LibrarySettingsScreen.kt) that
+        // need to take effect immediately when toggled, not just on the next cold
+        // launch - each collector below runs for the life of the process
+        // (lifecycleScope survives config changes, only cancelled on real
+        // destruction) and distinctUntilChanged() so a value that hasn't actually
+        // changed (e.g. DataStore re-emitting after an unrelated write) never
+        // re-issues the same WorkManager/watcher call for nothing.
+
+        // Background scan (LibraryScanWorker) - schedule while enabled, cancel the
+        // moment it's turned off. Safe to call unconditionally on every emission:
+        // schedule()'s own ExistingPeriodicWorkPolicy.UPDATE and cancel() are both
+        // idempotent.
+        lifecycleScope.launch {
+            prefsManager.backgroundScanEnabled.distinctUntilChanged().collect { enabled ->
+                if (enabled) LibraryScanWorker.schedule(this@MainActivity) else LibraryScanWorker.cancel(this@MainActivity)
+            }
+        }
+
+        // Scan on file change (LibraryFileWatcher) - keeps scanOnFileChangeEnabled
+        // current for onStart/onStop above, and additionally starts/stops the
+        // watcher immediately for a toggle flipped while already in the foreground
+        // (onStart won't fire again on its own until the next backgrounding).
+        lifecycleScope.launch {
+            prefsManager.scanOnFileChangeEnabled.distinctUntilChanged().collect { enabled ->
+                scanOnFileChangeEnabled = enabled
+                if (enabled && isActivityStarted) {
+                    startLibraryFileWatcher()
+                } else if (!enabled) {
+                    stopLibraryFileWatcher()
+                }
+            }
+        }
+
+        // Wi-Fi-only sync - gates NewChapterCheckWorker's periodic "new chapter"
+        // check (see docs/foundational/architecture.md, Sync: entry points).
+        // collectIndexed rather than plain collect: the very first emission (index
+        // 0, the value read back at cold launch) schedules with
+        // ExistingPeriodicWorkPolicy.KEEP (replaceExisting = false) so a build
+        // that's already scheduled this from a previous launch isn't reset just
+        // because onCreate ran again; every emission after that is a live toggle
+        // flip and should actually take effect (replaceExisting = true) - see
+        // NewChapterCheckWorker.schedule's own doc comment for the same KEEP-vs-
+        // UPDATE split.
+        lifecycleScope.launch {
+            prefsManager.wifiOnlySync.distinctUntilChanged().collectIndexed { index, wifiOnly ->
+                NewChapterCheckWorker.schedule(this@MainActivity, wifiOnly, replaceExisting = index > 0)
+            }
+        }
 
         // A cold start from a "new chapter" notification tap delivers its extras via
         // this initial intent, not onNewIntent (that only fires for an already-running
@@ -656,7 +809,7 @@ class MainActivity : ComponentActivity() {
             // app". Still resets on process death same as before; that's fine, a cold
             // process restart showing the splash once is the intended case.
             val showSplash = rememberSaveable { mutableStateOf(true) }
-            // Read here (rather than down with shouldShowSafRemovedNotice below) since
+            // Read here (rather than down with the splash toggles below) since
             // resolvedTheme, computed immediately below, needs them before
             // MaterialTheme{} even opens.
             val currentTheme = settingsViewModel.currentTheme.collectAsState()
@@ -681,14 +834,8 @@ class MainActivity : ComponentActivity() {
                 // of Stage 3.4; Stage 3.5 removed the manual currentScreen/Screen fallback
                 // this comment used to describe.
                 val navController = rememberNavController()
-                // Hoisted above the splash/Surface split (rather than declared inside the
-                // Column below, where they used to live) so settings/library further down
-                // can show its one-time migration dialog without re-collecting this flow a
-                // second time.
-                val shouldShowSafRemovedNotice = settingsViewModel.shouldShowSafRemovedNotice.collectAsState()
                 // Splash-screen behavior toggles (see SettingsScreen's "Splash Screen"
-                // section) - collected here too, same reasoning as shouldShowSafRemovedNotice
-                // above, and both default to true to match PreferencesManager's own default.
+                // section) - both default to true to match PreferencesManager's own default.
                 val splashAnimationEnabled = prefsManager.splashAnimationEnabled.collectAsState(initial = true)
                 val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = true)
                 // D6 (docs/proposal/performance.md, F13): whether this launch is the
@@ -702,7 +849,7 @@ class MainActivity : ComponentActivity() {
                 val fullSplashSequence =
                     prefsManager.shouldShowFullSplash(BuildConfig.VERSION_CODE).collectAsState(initial = true)
                 // TTS default-settings state (see docs/foundational/design-notes.md, Stage
-                // 3.2) - collected here too, same reasoning as shouldShowSafRemovedNotice
+                // 3.2) - collected here too, same "avoid a first-frame flash" reasoning
                 // above. Initial values match PreferencesManager's own fallbacks (see
                 // ttsDefaultRate/ttsPitch/ttsAutoContinue/ttsKeepScreenOn) so the
                 // settings/tts screen doesn't flash a different value on first
@@ -907,7 +1054,7 @@ class MainActivity : ComponentActivity() {
                 // see that function's own doc comment).
                 // .value, not `by` - this file never imports androidx.compose.runtime.getValue
                 // and uses the explicit-.value style for every other collectAsState()/
-                // mutableStateOf() read above (shouldShowSafRemovedNotice.value, etc.);
+                // mutableStateOf() read above (splashAnimationEnabled.value, etc.);
                 // matching that here instead of introducing the only `by` delegate in the
                 // file is what the build log from the previous patch's attempted build
                 // caught - `by` needs that import's getValue/setValue operators and this
@@ -1814,17 +1961,72 @@ class MainActivity : ComponentActivity() {
 
                 composable("settings/library") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        // Stage 2 (see docs/foundational/design-notes.md): the Library
-                        // screen's callback wiring, unchanged from the old "settings"
-                        // composable in shape - just terminating on this screen
-                        // instead of the index. The switch/folder-picker callbacks that
-                        // used to live here (onUseCustomFolderToggle, onSelectFolderClick)
-                        // are gone per docs/foundational/design-notes.md
-                        // ("accepted") - LibrarySettingsScreen now only needs the
-                        // one-time migration-notice plumbing plus Rescan.
+                        // Rewritten per docs/proposal/library-maintenance.md - see
+                        // ui/LibrarySettingsScreen.kt's own doc comment for the full
+                        // scope. These four read straight off prefsManager (same
+                        // pattern splashAnimationEnabled/ttsDefaultRate etc. already
+                        // use above) rather than through settingsViewModel, which
+                        // only ever wrapped the theme flows (see that class's own
+                        // doc comment).
+                        val autoScanOnLaunch = prefsManager.autoScanOnLaunch.collectAsState(initial = true)
+                        val backgroundScanEnabled = prefsManager.backgroundScanEnabled.collectAsState(initial = false)
+                        val scanOnFileChangeEnabledState = prefsManager.scanOnFileChangeEnabled.collectAsState(initial = false)
+                        val wifiOnlySync = prefsManager.wifiOnlySync.collectAsState(initial = false)
+                        val lastScanInfo = prefsManager.lastScanInfo.collectAsState(initial = null)
+                        // Storage breakdown is a one-shot suspend computation
+                        // (computeStorageBreakdown walks the filesystem), not a
+                        // Flow - recomputed on entering this route and again after
+                        // anything that could have changed it (rescan, clear
+                        // cache), rather than live.
+                        var storageBreakdown by remember { mutableStateOf<StorageBreakdown?>(null) }
+                        // Result text for whichever of Clear cache / Remove missing
+                        // novels last ran - see LibrarySettingsScreen's own doc
+                        // comment on the actionMessage param for why this is a
+                        // plain Text rather than a Snackbar.
+                        var libraryActionMessage by remember { mutableStateOf<String?>(null) }
+
+                        LaunchedEffect(Unit) {
+                            storageBreakdown = computeStorageBreakdown(this@MainActivity, libraryViewModel.novels.toList())
+                        }
+
                         LibrarySettingsScreen(
-                            shouldShowMigrationNotice = shouldShowSafRemovedNotice.value,
-                            onMigrationNoticeDismissed = { settingsViewModel.dismissSafRemovedNotice() },
+                            autoScanOnLaunch = autoScanOnLaunch.value,
+                            onAutoScanOnLaunchToggle = { enabled ->
+                                lifecycleScope.launch { prefsManager.setAutoScanOnLaunch(enabled) }
+                            },
+                            backgroundScanEnabled = backgroundScanEnabled.value,
+                            onBackgroundScanToggle = { enabled ->
+                                lifecycleScope.launch { prefsManager.setBackgroundScanEnabled(enabled) }
+                            },
+                            scanOnFileChangeEnabled = scanOnFileChangeEnabledState.value,
+                            onScanOnFileChangeToggle = { enabled ->
+                                lifecycleScope.launch { prefsManager.setScanOnFileChangeEnabled(enabled) }
+                            },
+                            wifiOnlySync = wifiOnlySync.value,
+                            onWifiOnlySyncToggle = { enabled ->
+                                lifecycleScope.launch { prefsManager.setWifiOnlySync(enabled) }
+                            },
+                            lastScanInfo = lastScanInfo.value,
+                            storageBreakdown = storageBreakdown,
+                            actionMessage = libraryActionMessage,
+                            onClearImageCaches = {
+                                lifecycleScope.launch {
+                                    val freed = clearImageCaches(this@MainActivity)
+                                    libraryActionMessage = "Cleared ${formatBytes(freed)} of cached covers and thumbnails."
+                                    storageBreakdown = computeStorageBreakdown(this@MainActivity, libraryViewModel.novels.toList())
+                                }
+                            },
+                            onOpenInFileManager = { openLibraryFolderInFileManager() },
+                            onRemoveMissingNovels = {
+                                lifecycleScope.launch {
+                                    val removed = libraryViewModel.removeMissingNovels()
+                                    libraryActionMessage = if (removed > 0) {
+                                        "Removed $removed missing novel(s)."
+                                    } else {
+                                        "No missing novels to remove."
+                                    }
+                                }
+                            },
                             onRescan = {
                                 lifecycleScope.launch {
                                     // No novels.clear() here - see bugs.md Bug 4.
@@ -1836,6 +2038,7 @@ class MainActivity : ComponentActivity() {
                                     val root = resolveLibraryRoot(this@MainActivity)
                                     if (root != null) {
                                         libraryViewModel.startScan(root)
+                                        storageBreakdown = computeStorageBreakdown(this@MainActivity, libraryViewModel.novels.toList())
                                     } else {
                                         // Shared storage genuinely isn't available right
                                         // now (see resolveLibraryRoot's doc comment) -
