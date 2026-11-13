@@ -49,6 +49,8 @@ import com.arkarium.app.navigation.AppDestination
 import com.arkarium.app.navigation.AppDialogHost
 import com.arkarium.app.navigation.isBottomBarRoute
 import com.arkarium.app.ui.NoticeBoardScreen
+import com.arkarium.app.ui.PigeonRallyScreen
+import com.arkarium.app.ui.RaesJournalScreen
 import com.arkarium.app.ui.ChapterEditorScreen
 import com.arkarium.app.ui.AuthorPageScreen
 import com.arkarium.app.ui.HomeScreen
@@ -1679,11 +1681,29 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // Home-screen rework's fourth bottom-bar tab - a deliberate stub for now
-                // (see NoticeBoardScreen.kt's own doc comment and AppDestination.NOTICE_BOARD).
+                // Home-screen rework's third bottom-bar tab: now an index (a cork board of
+                // pinned notes, see NoticeBoardScreen.kt) that opens one page per note.
+                // The sub-routes below aren't bottom-bar routes (isBottomBarRoute matches
+                // tabs by exact route), so they're drill-down pages like settings/* -
+                // the bar hides on them and Back pops to the board. Both are stubs for now.
                 composable("noticeBoard") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        NoticeBoardScreen()
+                        NoticeBoardScreen(
+                            onOpenPigeonRally = { navController.navigate("noticeBoard/pigeonRally") { launchSingleTop = true } },
+                            onOpenJournal = { navController.navigate("noticeBoard/journal") { launchSingleTop = true } }
+                        )
+                    }
+                }
+
+                composable("noticeBoard/pigeonRally") {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        PigeonRallyScreen(onBack = { navController.popBackStack() })
+                    }
+                }
+
+                composable("noticeBoard/journal") {
+                    Column(modifier = Modifier.fillMaxSize()) {
+                        RaesJournalScreen(onBack = { navController.popBackStack() })
                     }
                 }
 

@@ -1,12 +1,43 @@
 # Notice Board: a persistent new-chapters log (and, later, a home-screen widget)
 
-> **Kind:** proposal · **Status:** design only, nothing built · **Verified:** 2026-11-08 @ 0434903
+> **Kind:** proposal · **Status:** index page and two stub pages built (no data layer yet) · **Verified:** 2026-11-13 @ 63f42c8
 > **Origin:** owner request - a dedicated screen listing which fictions have
 > received new chapters, explicitly scoped in two phases: the in-app screen
 > first, a launcher home-screen widget built on top of it once the screen
 > itself is working.
 
-## What's built today
+## Index and pages (stubs built)
+
+The Notice Board tab (`AppDestination.NOTICE_BOARD`, `ui/NoticeBoardScreen.kt`) is an
+**index**: a skeuomorphic cork board with one pinned paper note per section; tapping a
+note opens that section's own page. Drawn entirely with Compose shapes (no bitmaps), with
+fixed "physical" colors - only the cork's darkness follows the theme.
+
+| Note | Route | Screen | Status |
+|---|---|---|---|
+| **Pigeon Rally** | `noticeBoard/pigeonRally` | `PigeonRallyScreen.kt` | stub - the new-chapters log below, styled as scrolls delivered by pigeon (`ScrollPaper` is the shared look the real rows reuse) |
+| **Rae's Journal** | `noticeBoard/journal` | `RaesJournalScreen.kt` | stub - the author's writing journal, read from the RSS feed `https://rae-ark.horizonarkstudio.workers.dev/feed.xml` |
+
+Both sub-routes are drill-down pages, not tabs: the bottom bar hides on them and Back
+returns to the board. Nothing behind either page is built yet - Pigeon Rally has no
+`chapter_update_events` table or DAO, and Rae's Journal fetches and parses nothing.
+
+### Rae's Journal feed - shape, as of 2026-11-13
+
+Noted from the live feed so the parser isn't designed blind:
+
+- RSS 2.0, about ten items, newest first.
+- Every item's `<link>` is the same journal page, so an entry's identity is its `<guid>`
+  (`isPermaLink="false"`), and there is no per-entry URL to open.
+- `<pubDate>` is optional - some entries only carry a month or season in their guid - so a
+  missing date renders as undated, and ordering trusts the feed's own order.
+- `<description>` is plain text; `<category>` holds the fiction tags as one string
+  (`SBM`, `SBM · EPMC`).
+- A different host from the fiction relay (`RELAY_HOST`), so this adds a second origin the
+  app talks to - worth deciding how that fits `architecture.md`'s single-relay stance
+  before building the fetch.
+
+## What's built today (for the new-chapters log)
 
 "New chapter available" is entirely **transient**. `NewChapterCheckWorker`
 (background, periodic via WorkManager) and `SyncViewModel.checkForUpdates`
@@ -67,10 +98,11 @@ currently logs nothing at all.
 
 ### The screen
 
-- **Entry point:** a bell icon on `HomeScreen`'s top bar, next to the
-  existing "Add fiction"/Settings `IconButton`s, with an unread-count badge
-  (`chapter_update_events` where `seen = false`) - the glanceable cue that
-  something arrived, the same job a badge-on-icon does anywhere else.
+- **Entry point:** Notice Board is already a bottom-bar tab, and Pigeon Rally is one of
+  its pinned notes. The glanceable cue that something arrived is an unread-count badge
+  (`chapter_update_events` where `seen = false`), the same job a badge-on-icon does
+  anywhere else - on the tab, on the note, or as a bell on `HomeScreen`'s top bar (not
+  decided).
 - **List:** reverse-chronological, one row per event - novel cover
   (`ReaderCoverThumbnail`, already built and reused elsewhere), novel title,
   "3 new chapters" / the latest chapter's title, relative time
