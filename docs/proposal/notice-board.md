@@ -1,6 +1,6 @@
 # Notice Board: a persistent new-chapters log (and, later, a home-screen widget)
 
-> **Kind:** proposal · **Status:** index page and two stub pages built (no data layer yet) · **Verified:** 2026-11-13 @ 63f42c8
+> **Kind:** proposal · **Status:** index page and Rae's Journal built; Pigeon Rally is still a stub (no data layer) · **Verified:** 2026-11-13 @ 66846bc
 > **Origin:** owner request - a dedicated screen listing which fictions have
 > received new chapters, explicitly scoped in two phases: the in-app screen
 > first, a launcher home-screen widget built on top of it once the screen
@@ -16,15 +16,37 @@ fixed "physical" colors - only the cork's darkness follows the theme.
 | Note | Route | Screen | Status |
 |---|---|---|---|
 | **Pigeon Rally** | `noticeBoard/pigeonRally` | `PigeonRallyScreen.kt` | stub - the new-chapters log below, styled as scrolls delivered by pigeon (`ScrollPaper` is the shared look the real rows reuse) |
-| **Rae's Journal** | `noticeBoard/journal` | `RaesJournalScreen.kt` | stub - the author's writing journal, read from the RSS feed `https://rae-ark.horizonarkstudio.workers.dev/feed.xml` |
+| **Rae's Journal** | `noticeBoard/journal` | `RaesJournalScreen.kt` | built - the author's writing journal, read from the RSS feed `https://rae-ark.horizonarkstudio.workers.dev/feed.xml` (see below) |
 
 Both sub-routes are drill-down pages, not tabs: the bottom bar hides on them and Back
-returns to the board. Nothing behind either page is built yet - Pigeon Rally has no
-`chapter_update_events` table or DAO, and Rae's Journal fetches and parses nothing.
+returns to the board. Pigeon Rally has nothing behind it yet - no `chapter_update_events`
+table or DAO.
+
+### Rae's Journal - built
+
+`data/JournalFeed.kt` (parser, `JournalFeedClient`, `JournalRepository`),
+`viewmodel/JournalViewModel.kt`, `ui/RaesJournalScreen.kt`.
+
+- **Fetch:** a plain `HttpURLConnection` GET on `Dispatchers.IO` (15 s timeouts, response
+  capped at 1 MiB), same convention as `SyncClient` - no new dependency.
+- **Parse:** RSS 2.0 only, via the platform DOM parser (no new dependency), DOCTYPEs
+  refused where the parser supports it. Entries stay in the feed's own order; duplicate
+  guids collapse to one.
+- **Offline copy:** the last response that *parsed* is saved to the app's cache dir
+  (`journal-feed.xml`). If a later fetch fails or returns something unparseable, the page
+  shows that copy under a banner saying when it was saved; with no copy it shows the
+  error and a "Try again" button. Nothing is stored in Room, so there is no schema bump.
+- **Refresh:** opening the page re-fetches unless a fresh copy is under ten minutes old;
+  the app-bar button always re-fetches.
+- **Screen:** one card per entry - title, date (or "Undated"), fiction tags, and the text
+  collapsed to five lines until tapped. No link-out: entries have no URL of their own.
+- **Second origin:** the feed lives on a different host from the fiction relay, so the app
+  now talks to two. That is the one place `architecture.md`'s single-relay stance has an
+  exception; the relay's own sync invariants (S1-S10) don't cover it.
 
 ### Rae's Journal feed - shape, as of 2026-11-13
 
-Noted from the live feed so the parser isn't designed blind:
+Noted from the live feed:
 
 - RSS 2.0, about ten items, newest first.
 - Every item's `<link>` is the same journal page, so an entry's identity is its `<guid>`
