@@ -1,6 +1,7 @@
 package com.arkarium.app.viewmodel
 
 import com.arkarium.app.data.AppDatabase
+import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.ScannerImpl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -55,26 +56,28 @@ class LibraryViewModelTest {
     fun `reportScanSetupError sets scanMessage and clears scanProgress`() = runTest(testDispatcher) {
         val db = mock(AppDatabase::class.java)
         val scanner = mock(ScannerImpl::class.java)
-        val viewModel = LibraryViewModel(db, scanner)
+        val prefsManager = mock(PreferencesManager::class.java)
+        val viewModel = LibraryViewModel(db, scanner, prefsManager)
 
         viewModel.reportScanSetupError("Couldn't open the library folder")
 
         assertEquals("Couldn't open the library folder", viewModel.scanMessage.value)
         assertNull(viewModel.scanProgress.value)
-        verifyNoInteractions(db, scanner)
+        verifyNoInteractions(db, scanner, prefsManager)
     }
 
     @Test
     fun `reportScanSetupError on a second call replaces the first message`() = runTest(testDispatcher) {
         val db = mock(AppDatabase::class.java)
         val scanner = mock(ScannerImpl::class.java)
-        val viewModel = LibraryViewModel(db, scanner)
+        val prefsManager = mock(PreferencesManager::class.java)
+        val viewModel = LibraryViewModel(db, scanner, prefsManager)
 
         viewModel.reportScanSetupError("first failure")
         viewModel.reportScanSetupError("second failure")
 
         assertEquals("second failure", viewModel.scanMessage.value)
         assertNull(viewModel.scanProgress.value)
-        verifyNoInteractions(db, scanner)
+        verifyNoInteractions(db, scanner, prefsManager)
     }
 }

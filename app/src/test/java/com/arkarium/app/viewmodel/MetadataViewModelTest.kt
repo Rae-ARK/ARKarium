@@ -4,6 +4,7 @@ import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.NovelMetadataCandidate
 import com.arkarium.app.data.NovelMetadataProvider
+import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.ScannerImpl
 import com.arkarium.app.navigation.MetadataSearchState
 import kotlinx.coroutines.Dispatchers
@@ -68,7 +69,11 @@ class MetadataViewModelTest {
         NovelEntity(id = id, title = title, author = null, coverUri = null)
 
     private fun newLibraryViewModel() =
-        LibraryViewModel(mock(AppDatabase::class.java), mock(ScannerImpl::class.java))
+        LibraryViewModel(
+            mock(AppDatabase::class.java),
+            mock(ScannerImpl::class.java),
+            mock(PreferencesManager::class.java)
+        )
 
     private val candidate = NovelMetadataCandidate(
         title = "Test Novel",
