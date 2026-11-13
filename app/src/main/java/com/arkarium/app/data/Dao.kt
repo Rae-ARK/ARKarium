@@ -413,7 +413,8 @@ interface CatalogueEntryDao {
     suspend fun findBySlug(slug: String): CatalogueEntryEntity?
 
     // C2: a catalogue entry disappears the moment its fiction is followed - called by
-    // the addFictionByName success path (Rung 4), not wired up yet in this rung.
+    // SyncViewModel.dropCatalogueEntry (Rung 4) on the addFictionByName / Sync-all
+    // success paths.
     @Query("DELETE FROM catalogue_entries WHERE slug = :slug")
     suspend fun delete(slug: String)
 }
