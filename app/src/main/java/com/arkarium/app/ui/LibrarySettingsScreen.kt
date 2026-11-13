@@ -143,7 +143,18 @@ fun LibrarySettingsScreen(
                             "open and rescan as soon as a file changes on disk - " +
                             "only while the app is in the foreground.",
                         checked = scanOnFileChangeEnabled,
-                        onCheckedChange = onScanOnFileChangeToggle
+                        onCheckedChange = onScanOnFileChangeToggle,
+                        infoDialogTitle = "About file-change detection",
+                        infoDialogText = "This relies on Android's FileObserver, " +
+                            "whose behavior differs by device and Android version - " +
+                            "on Android 10 (API 29) and above ARKarium watches the " +
+                            "whole library folder at once, but on older versions it " +
+                            "has to watch each novel/arc folder individually and " +
+                            "won't notice a brand-new folder until the next rescan. " +
+                            "Real-device behavior can also vary by manufacturer. If " +
+                            "new chapters aren't showing up reliably, turning on " +
+                            "Background scan or rescanning manually will still work " +
+                            "regardless of device."
                     )
                     if (lastScanInfo != null) {
                         SectionDivider()
@@ -370,8 +381,15 @@ private fun SwitchRow(
     description: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    icon: androidx.compose.ui.graphics.vector.ImageVector? = null
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    // Reliability/behavior caveats that don't belong in the one-line description
+    // (too long, or only relevant to some devices) go here instead - shown via a
+    // tap-to-reveal "i" button rather than always-on text. Null hides the button.
+    infoDialogTitle: String? = null,
+    infoDialogText: String? = null
 ) {
+    var showInfoDialog by remember { mutableStateOf(false) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -382,7 +400,22 @@ private fun SwitchRow(
                 .weight(1f)
                 .padding(end = 12.dp)
         ) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+                if (infoDialogText != null) {
+                    IconButton(
+                        onClick = { showInfoDialog = true },
+                        modifier = Modifier.height(20.dp)
+                    ) {
+                        Icon(
+                            Icons.Filled.Info,
+                            contentDescription = "More information about $title",
+                            modifier = Modifier.height(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                        )
+                    }
+                }
+            }
             Text(
                 description,
                 style = MaterialTheme.typography.bodySmall,
@@ -390,6 +423,19 @@ private fun SwitchRow(
             )
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+
+    if (showInfoDialog && infoDialogText != null) {
+        AlertDialog(
+            onDismissRequest = { showInfoDialog = false },
+            title = { Text(infoDialogTitle ?: title) },
+            text = { Text(infoDialogText) },
+            confirmButton = {
+                TextButton(onClick = { showInfoDialog = false }) {
+                    Text("Got it")
+                }
+            }
+        )
     }
 }
 
