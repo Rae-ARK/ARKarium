@@ -262,6 +262,24 @@ class SyncViewModel(
         }
     }
 
+    // Rung 4 of docs/implementation/catalogue-browse-redesign.md - C2: a catalogue entry
+    // disappears the moment its fiction is followed. Called only after the real
+    // NovelEntity + synced files are in place, so a failed add leaves the entry
+    // browsable. Deliberately never throws: by this point the follow itself has
+    // succeeded, and a leftover catalogue row (or cache folder) must not turn that
+    // into an "Couldn't add this fiction" error - the worst case is a stale preview
+    // that the next refreshCatalogue() won't re-ingest, since the fiction is now
+    // followed. Row first, files second: a surviving folder with no row is inert
+    // (nothing reads it), whereas a surviving row would point at a missing cover.
+    private suspend fun dropCatalogueEntry(slug: String) {
+        try {
+            db.catalogueEntryDao().delete(slug)
+            withContext(Dispatchers.IO) { catalogueStorage.delete(slug) }
+        } catch (e: Exception) {
+            // Intentionally swallowed - see above.
+        }
+    }
+
     fun addFictionByName(name: String, libraryRoot: DocumentFile) {
         val slug = FictionLut.lookup(getApplication(), name)
         if (slug == null) {
@@ -300,6 +318,9 @@ class SyncViewModel(
                     val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }
                     if (idx >= 0) libraryViewModel.novels[idx] = updated
                 }
+                // C2: the real library folder is now the one representation of this
+                // fiction - drop its catalogue row and cached files.
+                dropCatalogueEntry(slug)
                 metadataViewModel.addFictionState.value = AddFictionState.Hidden
             } catch (e: Exception) {
                 metadataViewModel.addFictionState.value = AddFictionState.Error("Couldn't add this fiction: ${e.message}")
@@ -456,6 +477,8 @@ class SyncViewModel(
                     if (idx >= 0) libraryViewModel.novels[idx] = updated
                 }
             }
+            // C2 applies to "Sync all" too - it follows fictions just like addFictionByName.
+            dropCatalogueEntry(slug)
             val justCompleted = completed.incrementAndGet()
             withContext(Dispatchers.Main) {
                 syncAllState.value = SyncAllState.InProgress(
