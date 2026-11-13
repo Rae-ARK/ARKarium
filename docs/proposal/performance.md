@@ -1,6 +1,6 @@
 # Performance: SAF I/O, build/startup, recomposition, images, database and scan cost
 
-> **Kind:** proposal · **Status:** F14, F15, F24, F25, F26 and F28 fixed in code (all unmeasured — no device/benchmark run); F27 reviewed and deferred, no code change (see below); D4's toolchain bump (Kotlin 2.0.21, Compose BOM 2024.09.00, Navigation 2.8.3) fixed in code under F12, also unbuilt; F12's R8/baseline-profile/benchmark-module work still not built; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-13 @ b315244 (F12's D4 toolchain bump as of this patch — F24's migration, entity indices and exported `15.json` schema as of the prior patch, F15's shared `ImageLoader` and F25/F26/F28 fixes and F27's deferral as of the patch before that, the F14 additions/closure as of that same pass, everything else as of 2026-11-12)
+> **Kind:** proposal · **Status:** F13, F14, F15, F24, F25, F26 and F28 fixed in code (all unmeasured — no device/benchmark run, no on-device confirmation of the ~2.75s/~300ms splash timings for F13); F27 reviewed and deferred, no code change (see below); D4's toolchain bump (Kotlin 2.0.21, Compose BOM 2024.09.00, Navigation 2.8.3) fixed in code under F12, also unbuilt; F12's R8/baseline-profile/benchmark-module work still not built; F13's Android 12+ `SplashScreen` API adoption (the "two splashes back to back" half) is **not** part of this patch — see F13's note below; D4 (toolchain) and D6 (splash policy) decided and now implemented, measurement should come before the rest · **Verified:** 2026-11-13 @ b315244 (F12's D4 toolchain bump as of this patch — F24's migration, entity indices and exported `15.json` schema as of the prior patch, F15's shared `ImageLoader` and F25/F26/F28 fixes and F27's deferral as of the patch before that, the F14 additions/closure as of that same pass, everything else as of 2026-11-12)
 > **Origin:** [`engineering-review.md`](engineering-review.md) F5, F12–F15, F24–F28.
 
 ### F5. SAF scan and sync cost several provider queries per file
@@ -160,6 +160,23 @@ chord **off by default** rather than requesting audio focus — simpler than
 building and maintaining transient-focus handling for a one-off decorative
 sound, and it removes F13's "plays over whatever else the user has playing"
 problem outright instead of just making it briefer.
+
+**Fixed in code (unbuilt, unmeasured):** D6's policy is implemented —
+`PreferencesManager.shouldShowFullSplash`/`markFullSplashShown` store and
+compare the last `VERSION_CODE` the full sequence played for, `SplashScreen`
+takes a `fullSequence` flag driven by that comparison and collapses to the
+~300ms `SIMPLE_FADE_IN_MS` path whenever it's false (independent of the
+animation toggle), a tap anywhere on the splash now races the timed animation
+to completion via `skipRequested`, `splashMusicEnabled` now defaults to
+`false`, and chord synthesis (`GuitarChordSynth.buildCMajorStrumPcm16`) runs
+on `Dispatchers.Default` via `SplashChordPlayer.playPcm` instead of inline on
+the main thread. The `elapsedMs`/`playtime.value` reads that used to sit in
+`SplashScreen`'s composable body (driving full recomposition every frame) now
+happen inside `Modifier.graphicsLayer { }` blocks and the `Canvas` draw
+lambda instead, so only redraw is per-frame, not composition. **Not** done
+here: the Android 12+ `SplashScreen` API adoption (the system-splash
+hand-off, still showing two splashes back to back on API 31+) — left as
+separate scope, same as F12's R8/baseline-profile/benchmark-module work.
 
 ### F14. Lazy lists mostly unkeyed; derived data not remembered; non-lifecycle-aware Flow collection
 

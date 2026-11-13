@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,10 +20,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -30,15 +32,24 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arkarium.app.R
+import com.arkarium.app.audio.GuitarChordSynth
 import com.arkarium.app.audio.SplashChordPlayer
 import kotlin.math.sqrt
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
+import kotlinx.coroutines.withContext
 
 // ---------------------------------------------------------------------------
 // Timeline. Four phases, driven by a single 0f..1f Animatable (see `playtime`
@@ -80,12 +91,13 @@ private const val CROSSFADE_MS = 380
 private const val HOLD_MS = 650
 private const val FADE_OUT_MS = 320
 
-// Used in place of WHOOSH_MS + CROSSFADE_MS when the animation is turned off
-// (see SettingsScreen's "Splash Screen" section) - the real logo just does a
-// plain, quick fade-in instead of the whoosh-and-cross sequence, so disabling
-// the animation actually gets you a faster splash rather than the same total
-// duration with the visual removed.
-private const val SIMPLE_FADE_IN_MS = 280
+// Used in place of WHOOSH_MS + CROSSFADE_MS whenever the full sequence
+// shouldn't play (see SettingsScreen's "Splash Screen" section's animation
+// toggle, and `fullSequence` below) - the real logo just does a plain, quick
+// fade-in instead of the whoosh-and-cross sequence. ~300ms per D6
+// (docs/proposal/performance.md, F13): the policy for every launch that
+// isn't the first one after an install/update.
+private const val SIMPLE_FADE_IN_MS = 300
 
 // A_STROKE/R_STROKE both start near the shared crossbar (see LogoPoints), not
 // exactly where the cross sub-beat leaves off - this fraction of TRACE_MS is
@@ -98,116 +110,176 @@ private val SplashForeground = Color(0xFFFFFFFF)
 
 @Composable
 fun SplashScreen(
-    // See SettingsScreen's "Splash Screen" section / PreferencesManager -
-    // both default to true. animationEnabled=false skips straight to a plain
-    // fade-in of the real logo (see SIMPLE_FADE_IN_MS); musicEnabled=false
-    // just never starts the AudioTrack. The two are independent of each
-    // other.
+    // See SettingsScreen's "Splash Screen" section / PreferencesManager.
+    // animationEnabled=false (user opt-out, default true) skips straight to a
+    // plain fade-in of the real logo (see SIMPLE_FADE_IN_MS); musicEnabled=false
+    // (default **false** per D6) just never starts the AudioTrack. The two are
+    // independent of each other.
     animationEnabled: Boolean = true,
-    musicEnabled: Boolean = true,
+    musicEnabled: Boolean = false,
+    // D6 (docs/proposal/performance.md, F13): true exactly once per
+    // install/update (see PreferencesManager.shouldShowFullSplash) - plays the
+    // full whoosh-and-cross sequence. false on every other cold start, which
+    // collapses to the same short SIMPLE_FADE_IN_MS fade animationEnabled=false
+    // already uses, regardless of animationEnabled's own value - a user who
+    // wants the animation still gets it on the one launch it's meant for.
+    fullSequence: Boolean = true,
     onFinished: () -> Unit
 ) {
     // Single linear timeline driver - every phase below derives its own
     // progress from this rather than running independent animations, so nothing
-    // can end up out of step with anything else.
+    // can end up out of step with anything else. Only read inside a
+    // graphicsLayer{}/draw-phase lambda below (never in this composable's own
+    // body) - see F13 in docs/proposal/performance.md: reading an Animatable's
+    // .value directly in a @Composable body makes every observer of that
+    // function recompose on every animation frame, when only layout/draw
+    // actually need the new value each frame.
     val playtime = remember { Animatable(0f) }
+
+    // Lets a tap jump straight to the end instead of waiting out the full
+    // timeline - D6's "tap-to-skip always available", independent of
+    // animationEnabled/fullSequence.
+    val skipRequested = remember { mutableStateOf(false) }
 
     // Scores the whoosh-and-cross with a synthesized C major guitar strum
     // (see GuitarChordSynth) - generated in code, no bundled audio asset.
-    // Starts the moment this composable enters composition (i.e. right
-    // alongside the animation below) and is always released via onDispose, so
-    // the AudioTrack can't leak or keep playing past the splash itself.
-    // Skipped entirely (never even constructed) when musicEnabled is false.
+    // F13 (performance.md): synthesis (buildCMajorStrumPcm16, ~507,000
+    // samples) used to run inline inside a DisposableEffect - i.e. on the main
+    // thread, before the first animated frame could show. Moved to
+    // Dispatchers.Default here; only the AudioTrack construct/write/play in
+    // SplashChordPlayer.playPcm (comparatively cheap) still touches the main
+    // thread, via the LaunchedEffect's resumption after withContext returns.
+    // Skipped entirely when musicEnabled is false, and released via
+    // DisposableEffect regardless of whether synthesis had finished yet by the
+    // time the splash tears down, so the AudioTrack can never leak or keep
+    // playing past the splash itself.
+    val chordPlayer = remember { mutableStateOf<SplashChordPlayer?>(null) }
     DisposableEffect(musicEnabled) {
-        if (!musicEnabled) {
-            return@DisposableEffect onDispose {}
+        onDispose {
+            chordPlayer.value?.release()
+            chordPlayer.value = null
         }
-        val player = SplashChordPlayer()
+    }
+    LaunchedEffect(musicEnabled) {
+        if (!musicEnabled) return@LaunchedEffect
         try {
-            player.play()
+            val pcm = withContext(Dispatchers.Default) {
+                GuitarChordSynth.buildCMajorStrumPcm16()
+            }
+            val player = SplashChordPlayer()
+            player.playPcm(pcm)
+            chordPlayer.value = player
         } catch (_: Exception) {
             // An unusual/missing audio output shouldn't be able to crash the
             // splash - the visual whoosh still runs fine without sound.
         }
-        onDispose { player.release() }
     }
 
-    // Whoosh + crossfade collapse into a single quick fade-in when the
-    // animation is disabled - see SIMPLE_FADE_IN_MS.
-    val whooshDurationMs = if (animationEnabled) WHOOSH_MS else 0
-    val crossfadeDurationMs = if (animationEnabled) CROSSFADE_MS else SIMPLE_FADE_IN_MS
+    // Whoosh + crossfade collapse into a single quick fade-in whenever the
+    // full sequence shouldn't play this launch - either the user turned the
+    // animation off, or (D6) this isn't the first launch since an
+    // install/update. See SIMPLE_FADE_IN_MS.
+    val playFullSequence = animationEnabled && fullSequence
+    val whooshDurationMs = if (playFullSequence) WHOOSH_MS else 0
+    val crossfadeDurationMs = if (playFullSequence) CROSSFADE_MS else SIMPLE_FADE_IN_MS
     val totalMs = whooshDurationMs + crossfadeDurationMs + HOLD_MS + FADE_OUT_MS
 
     LaunchedEffect(totalMs) {
         playtime.snapTo(0f)
-        playtime.animateTo(1f, animationSpec = tween(totalMs, easing = LinearEasing))
+        // Races the timed animation against a tap: whichever finishes first
+        // (the animation reaching 1f on its own, or skipRequested flipping
+        // true) cancels the other and the result either way is playtime
+        // sitting at 1f.
+        coroutineScope {
+            val animJob = launch {
+                playtime.animateTo(1f, animationSpec = tween(totalMs, easing = LinearEasing))
+            }
+            val skipJob = launch {
+                snapshotFlow { skipRequested.value }.first { it }
+                playtime.snapTo(1f)
+            }
+            select<Unit> {
+                animJob.onJoin { skipJob.cancel() }
+                skipJob.onJoin { animJob.cancel() }
+            }
+        }
         delay(16) // let the final frame actually render before tearing the composable down
         onFinished()
     }
-
-    val elapsedMs = playtime.value * totalMs
-
-    // Phase 1: 0f..1f across whooshDurationMs (0 when animation is off, in
-    // which case this stays pinned at 1f and the Canvas below never draws).
-    val whooshProgress =
-        if (whooshDurationMs <= 0) 1f else (elapsedMs / whooshDurationMs).coerceIn(0f, 1f)
-    // Phase 2: 0f..1f across crossfadeDurationMs, starting right as phase 1 ends.
-    val crossfadeProgress =
-        ((elapsedMs - whooshDurationMs) / crossfadeDurationMs).coerceIn(0f, 1f)
-    // Phase 4: 0f..1f across FADE_OUT_MS, starting after phase1+phase2+HOLD.
-    val fadeOutProgress =
-        ((elapsedMs - whooshDurationMs - crossfadeDurationMs - HOLD_MS) / FADE_OUT_MS).coerceIn(0f, 1f)
-
-    // The real logo+text crossfades in starting in phase 2 and stays fully
-    // visible through the hold, then fades with everything else in phase 4.
-    val realContentAlpha = crossfadeProgress
-    // The whoosh/trace drawing fades out over the same crossfade window.
-    val lineCanvasAlpha = 1f - crossfadeProgress
-    // Master alpha for the whole screen - only phase 4 touches this.
-    val masterAlpha = 1f - fadeOutProgress
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(SplashBackground)
-            .alpha(masterAlpha),
+            // Phase 4 (fade-out) is the only thing that touches the whole
+            // screen's alpha - computed here, inside the graphicsLayer block,
+            // so this read of playtime.value drives redraw only, not
+            // recomposition of SplashScreen itself.
+            .graphicsLayer {
+                val elapsedMs = playtime.value * totalMs
+                val fadeOutProgress =
+                    ((elapsedMs - whooshDurationMs - crossfadeDurationMs - HOLD_MS) / FADE_OUT_MS)
+                        .coerceIn(0f, 1f)
+                alpha = 1f - fadeOutProgress
+            }
+            // D6: tap anywhere on the splash to skip straight to onFinished.
+            .pointerInput(Unit) {
+                detectTapGestures(onTap = { skipRequested.value = true })
+            },
         contentAlignment = Alignment.Center
     ) {
-        if (animationEnabled && lineCanvasAlpha > 0f) {
+        if (playFullSequence) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                drawWhoosh(whooshProgress, lineCanvasAlpha)
+                // Phase 1/2 progress, read here (draw phase) rather than in
+                // the composable body - see the playtime doc comment above.
+                val elapsedMs = playtime.value * totalMs
+                val crossfadeProgress =
+                    ((elapsedMs - whooshDurationMs) / crossfadeDurationMs).coerceIn(0f, 1f)
+                val lineCanvasAlpha = 1f - crossfadeProgress
+                if (lineCanvasAlpha > 0f) {
+                    val whooshProgress = (elapsedMs / whooshDurationMs).coerceIn(0f, 1f)
+                    drawWhoosh(whooshProgress, lineCanvasAlpha)
+                }
             }
         }
 
-        if (realContentAlpha > 0f) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-                modifier = Modifier
-                    .padding(32.dp)
-                    .alpha(realContentAlpha)
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_splash_logo),
-                    contentDescription = null,
-                    modifier = Modifier.size(112.dp)
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-                Text(
-                    "ARKarium",
-                    color = SplashForeground,
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "A better way to consume Rae ARK's Novels straight from him.",
-                    color = SplashForeground.copy(alpha = 0.7f),
-                    fontSize = 14.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
+        // Always present once composed (rather than conditionally added/
+        // removed based on a per-frame alpha, as this used to be) - only its
+        // graphicsLayer alpha changes per frame, which is redraw, not
+        // composition churn.
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .padding(32.dp)
+                .graphicsLayer {
+                    // The real logo+text crossfades in starting once the
+                    // whoosh phase ends and stays fully visible through the
+                    // hold; phase 4's fade-out is handled by the Box above.
+                    val elapsedMs = playtime.value * totalMs
+                    alpha = ((elapsedMs - whooshDurationMs) / crossfadeDurationMs).coerceIn(0f, 1f)
+                }
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_splash_logo),
+                contentDescription = null,
+                modifier = Modifier.size(112.dp)
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                "ARKarium",
+                color = SplashForeground,
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                "A better way to consume Rae ARK's Novels straight from him.",
+                color = SplashForeground.copy(alpha = 0.7f),
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
