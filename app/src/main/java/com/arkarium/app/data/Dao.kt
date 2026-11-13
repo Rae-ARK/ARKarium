@@ -393,6 +393,32 @@ interface ChapterManifestMetaDao {
 }
 
 @Dao
+interface CatalogueEntryDao {
+    // No cascading children point at catalogue_entries (unlike NovelDao/ArcDao/
+    // ChapterDao's @Upsert fix - see their doc comments), so a plain REPLACE upsert
+    // carries none of that risk here: a re-ingested slug just overwrites its row.
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entry: CatalogueEntryEntity)
+
+    // Per-slug ingestion pass (Rung 2) upserts one at a time (C4: one slug's failure
+    // never aborts the rest), but a batch helper is cheap to have for a caller that
+    // ends up with several already-fetched rows at once.
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(entries: List<CatalogueEntryEntity>)
+
+    @Query("SELECT * FROM catalogue_entries ORDER BY title")
+    suspend fun all(): List<CatalogueEntryEntity>
+
+    @Query("SELECT * FROM catalogue_entries WHERE slug = :slug")
+    suspend fun findBySlug(slug: String): CatalogueEntryEntity?
+
+    // C2: a catalogue entry disappears the moment its fiction is followed - called by
+    // the addFictionByName success path (Rung 4), not wired up yet in this rung.
+    @Query("DELETE FROM catalogue_entries WHERE slug = :slug")
+    suspend fun delete(slug: String)
+}
+
+@Dao
 interface NovelAnnouncementDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(announcements: List<NovelAnnouncementEntity>)

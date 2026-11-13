@@ -416,3 +416,48 @@ data class NovelAnnouncementEntity(
     // CatalogueEntryEntity proposes (C3: "staleness is visible, not silently trusted").
     @ColumnInfo(name = "fetched_at") val fetchedAt: Long
 )
+
+// Rung 1 of docs/implementation/catalogue-browse-redesign.md - a not-yet-followed
+// fiction surfaced on the Browse grid from FictionLut.allEntries, not yet a real
+// NovelEntity. One row per slug, upserted by the catalogue ingestion pass (Rung 2) from
+// that fiction's own manifest.json/metadata.json/cover, same optional-fields-optional
+// schema ScannerImpl.readLocalMetadata already parses locally - see the redesign doc's
+// "Catalogue ingestion" section for exactly which fields come from where.
+//
+// Deliberately its own table, not a variant of NovelEntity: a catalogue entry has no
+// synced files, no reading progress, no chapters, and (per C2 below) is never meant to
+// coexist with a real NovelEntity for the same fiction - merging the two shapes would
+// mean every NovelEntity-only column (sync bookkeeping, reading_status, page_size, ...)
+// needing a meaningless default for a fiction nobody has followed yet.
+@Entity(tableName = "catalogue_entries")
+data class CatalogueEntryEntity(
+    // FictionLut's own slug - see SyncPaths.sanitize (C1: untrusted input before it's a
+    // folder name) applied before this is ever used to build a cache path, not here.
+    @PrimaryKey val slug: String,
+    @ColumnInfo val title: String,
+    @ColumnInfo val author: String?,
+    @ColumnInfo val description: String?,
+    @ColumnInfo val genres: String?,  // comma-separated, same convention as NovelEntity.genres
+    // file:// path under context.filesDir/catalogue/<slug>/ (see the redesign doc's
+    // "Storage" section) - deliberately outside the SAF library root ScannerImpl walks,
+    // so a not-yet-followed fiction's cached cover can never be misread as a real,
+    // locally-added novel.
+    @ColumnInfo(name = "cover_path") val coverPath: String?,
+    // Count of manifest entries matching arcs/*/*.txt - a count, not a table of
+    // contents; the manifest carries no per-chapter titles for an unfollowed fiction.
+    @ColumnInfo(name = "chapter_count") val chapterCount: Int,
+    @ColumnInfo(name = "published_date") val publishedDate: String?,
+    // Sum of ChapterManifestMetaEntity-equivalent wordCount across the manifest's
+    // chapter entries; null (never a fabricated 0) when none of them declare one.
+    @ColumnInfo(name = "total_word_count") val totalWordCount: Int? = null,
+    // PublicationStatus name straight off the manifest's "status" field - same
+    // null-renders-as-"---" convention as NovelEntity.publicationStatus.
+    @ColumnInfo val status: String? = null,
+    // Author-declared cadence (Manifest.chaptersPerWeek) - "what the author says," same
+    // trust level as `status`, never computed from real publish timestamps.
+    @ColumnInfo(name = "chapters_per_week") val chaptersPerWeek: Double? = null,
+    // When this row was last actually re-fetched (C3: staleness is visible, not
+    // silently trusted) - nothing here claims to reflect the relay's current state
+    // beyond this point.
+    @ColumnInfo(name = "cached_at") val cachedAt: Long
+)

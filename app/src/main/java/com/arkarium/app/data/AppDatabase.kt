@@ -20,7 +20,7 @@ class DatabaseDowngradeException(message: String) : IllegalStateException(messag
 // list actually reaches it. @Database below reads it from here - bump this (and add the
 // matching MIGRATION_n_m + a committed app/schemas/.../n.json) together, never the
 // annotation alone.
-const val APP_DATABASE_VERSION = 17
+const val APP_DATABASE_VERSION = 18
 
 // @Database must sit directly above the RoomDatabase subclass it annotates - an
 // annotation binds to the very next declaration, and with DatabaseDowngradeException's
@@ -45,7 +45,8 @@ const val APP_DATABASE_VERSION = 17
         SyncedFileEntity::class,
         ChapterReadEventEntity::class,
         ChapterManifestMetaEntity::class,
-        NovelAnnouncementEntity::class
+        NovelAnnouncementEntity::class,
+        CatalogueEntryEntity::class
     ],
     version = APP_DATABASE_VERSION
 )
@@ -61,6 +62,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun chapterReadEventDao(): ChapterReadEventDao
     abstract fun chapterManifestMetaDao(): ChapterManifestMetaDao
     abstract fun novelAnnouncementDao(): NovelAnnouncementDao
+    abstract fun catalogueEntryDao(): CatalogueEntryDao
 
     companion object {
         // Migration from v1 to v2: add new tables
@@ -386,6 +388,38 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v17 to v18: adds the catalogue_entries table (Rung 1,
+        // docs/implementation/catalogue-browse-redesign.md) backing the Browse grid's
+        // not-yet-followed fictions. Purely additive, new table starts empty for every
+        // existing install - nothing to backfill, since this is a cache of relay data
+        // keyed by slug (CatalogueEntryEntity's doc comment), never derived from an
+        // existing novels/chapters row. No FK to novels: a catalogue entry and a real
+        // NovelEntity for the same fiction are never meant to coexist (C2, enforced at
+        // the call-site level in Rung 4, not by a DB constraint - the two tables share
+        // no identity column to constrain against: novels.id is a scan-assigned id,
+        // this table's key is FictionLut's slug).
+        val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS catalogue_entries (
+                        slug TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        author TEXT,
+                        description TEXT,
+                        genres TEXT,
+                        cover_path TEXT,
+                        chapter_count INTEGER NOT NULL,
+                        published_date TEXT,
+                        total_word_count INTEGER,
+                        status TEXT,
+                        chapters_per_week REAL,
+                        cached_at INTEGER NOT NULL,
+                        PRIMARY KEY(slug)
+                    )
+                """.trimIndent())
+            }
+        }
+
         // Every migration, in order - the one list create() hands to Room, and the one
         // MigrationChainTest (JVM) and MigrationTest (instrumented) check. A new
         // MIGRATION_n_m only counts once it is added here.
@@ -393,7 +427,7 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
             MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
             MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15,
-            MIGRATION_15_16, MIGRATION_16_17
+            MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18
         )
 
         // NOTE: deliberately no fallbackToDestructiveMigration() here. That fallback
