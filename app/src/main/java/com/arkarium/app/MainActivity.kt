@@ -667,7 +667,7 @@ class MainActivity : ComponentActivity() {
                 // section) - collected here too, same reasoning as shouldShowSafRemovedNotice
                 // above, and both default to true to match PreferencesManager's own default.
                 val splashAnimationEnabled = prefsManager.splashAnimationEnabled.collectAsState(initial = true)
-                val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = false)
+                val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = true)
                 // D6 (docs/proposal/performance.md, F13): whether this launch is the
                 // first one since an install/update, in which case the full
                 // whoosh-and-cross sequence plays; every other launch collapses to a

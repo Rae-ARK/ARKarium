@@ -110,13 +110,15 @@ private val SplashForeground = Color(0xFFFFFFFF)
 
 @Composable
 fun SplashScreen(
-    // See SettingsScreen's "Splash Screen" section / PreferencesManager.
-    // animationEnabled=false (user opt-out, default true) skips straight to a
-    // plain fade-in of the real logo (see SIMPLE_FADE_IN_MS); musicEnabled=false
-    // (default **false** per D6) just never starts the AudioTrack. The two are
-    // independent of each other.
+    // See SettingsScreen's "Splash Screen" section / PreferencesManager -
+    // both default to true (D6, revised: the chord is scored to the
+    // animation, so it stays on by default rather than being muted
+    // out-of-the-box). animationEnabled=false skips straight to a plain
+    // fade-in of the real logo (see SIMPLE_FADE_IN_MS); musicEnabled=false
+    // just never starts the AudioTrack. The two are independent of each
+    // other.
     animationEnabled: Boolean = true,
-    musicEnabled: Boolean = false,
+    musicEnabled: Boolean = true,
     // D6 (docs/proposal/performance.md, F13): true exactly once per
     // install/update (see PreferencesManager.shouldShowFullSplash) - plays the
     // full whoosh-and-cross sequence. false on every other cold start, which

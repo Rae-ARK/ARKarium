@@ -40,11 +40,10 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun SplashSettingsScreen(
     // Splash-screen behavior (see PreferencesManager.splashAnimationEnabled /
-    // splashMusicEnabled). Animation defaults to true; the chord defaults to
-    // false per D6 (docs/proposal/performance.md, F13). Independent of each
-    // other either way.
+    // splashMusicEnabled) - both default to true (D6, revised; see
+    // PreferencesManager's doc comment), independent of each other.
     splashAnimationEnabled: Boolean = true,
-    splashMusicEnabled: Boolean = false,
+    splashMusicEnabled: Boolean = true,
     onSplashAnimationToggle: (Boolean) -> Unit = {},
     onSplashMusicToggle: (Boolean) -> Unit = {},
     onBack: () -> Unit

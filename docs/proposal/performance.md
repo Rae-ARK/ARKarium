@@ -155,28 +155,38 @@ back.
 
 **Decided (D6):** full ~2.75s splash sequence once per install/update
 (the `BuildConfig.VERSION_CODE` comparison already proposed above), a short
-~300ms fade on every other launch, tap-to-skip always available, and the
-chord **off by default** rather than requesting audio focus — simpler than
-building and maintaining transient-focus handling for a one-off decorative
-sound, and it removes F13's "plays over whatever else the user has playing"
-problem outright instead of just making it briefer.
+~300ms fade on every other launch, tap-to-skip always available.
 
-**Fixed in code (unbuilt, unmeasured):** D6's policy is implemented —
-`PreferencesManager.shouldShowFullSplash`/`markFullSplashShown` store and
-compare the last `VERSION_CODE` the full sequence played for, `SplashScreen`
-takes a `fullSequence` flag driven by that comparison and collapses to the
-~300ms `SIMPLE_FADE_IN_MS` path whenever it's false (independent of the
-animation toggle), a tap anywhere on the splash now races the timed animation
-to completion via `skipRequested`, `splashMusicEnabled` now defaults to
-`false`, and chord synthesis (`GuitarChordSynth.buildCMajorStrumPcm16`) runs
-on `Dispatchers.Default` via `SplashChordPlayer.playPcm` instead of inline on
-the main thread. The `elapsedMs`/`playtime.value` reads that used to sit in
-`SplashScreen`'s composable body (driving full recomposition every frame) now
-happen inside `Modifier.graphicsLayer { }` blocks and the `Canvas` draw
-lambda instead, so only redraw is per-frame, not composition. **Not** done
-here: the Android 12+ `SplashScreen` API adoption (the system-splash
-hand-off, still showing two splashes back to back on API 31+) — left as
-separate scope, same as F12's R8/baseline-profile/benchmark-module work.
+**Revised:** D6 originally also called for the chord **off by default**
+rather than requesting audio focus, to sidestep building and maintaining
+transient-focus handling for a one-off decorative sound. Reversed back to
+**on by default** — the chord is scored specifically to the whoosh-and-cross
+animation (see `GuitarChordSynth`'s doc comment), so muting it out of the box
+undercuts the one thing it's there to sync with, and since it only plays on
+the once-per-install/update full sequence anyway (never on the short
+~300ms-fade repeat-launch path), the exposure to "plays over whatever else
+the user has playing" is already limited to that single occasion rather than
+every cold start. No audio-focus request is still made; that gap remains
+accepted rather than built out, same trade-off D6 made originally, just
+scoped down to one launch instead of every one.
+
+**Fixed in code (unbuilt, unmeasured):** D6's policy (as revised) is
+implemented — `PreferencesManager.shouldShowFullSplash`/`markFullSplashShown`
+store and compare the last `VERSION_CODE` the full sequence played for,
+`SplashScreen` takes a `fullSequence` flag driven by that comparison and
+collapses to the ~300ms `SIMPLE_FADE_IN_MS` path whenever it's false
+(independent of the animation toggle), a tap anywhere on the splash now races
+the timed animation to completion via `skipRequested`, `splashMusicEnabled`
+defaults to `true`, and chord synthesis
+(`GuitarChordSynth.buildCMajorStrumPcm16`) runs on `Dispatchers.Default` via
+`SplashChordPlayer.playPcm` instead of inline on the main thread. The
+`elapsedMs`/`playtime.value` reads that used to sit in `SplashScreen`'s
+composable body (driving full recomposition every frame) now happen inside
+`Modifier.graphicsLayer { }` blocks and the `Canvas` draw lambda instead, so
+only redraw is per-frame, not composition. **Not** done here: the Android 12+
+`SplashScreen` API adoption (the system-splash hand-off, still showing two
+splashes back to back on API 31+) — left as separate scope, same as F12's
+R8/baseline-profile/benchmark-module work.
 
 ### F14. Lazy lists mostly unkeyed; derived data not remembered; non-lifecycle-aware Flow collection
 
