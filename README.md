@@ -2,13 +2,20 @@
 
 A native reading experience for Rae ARK's published fiction.
 
-[<img src="assets/badge_obtainium.png"
+<table>
+<tr>
+    <td>[<img src="assets/badge_obtainium.png"
     alt="Get it on Obtainium"
-    height="80">]([https://github.com/ImranR98/Obtainium/releases](https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522ARKarium%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FRae-ARK%252FARKarium%2522%252C%2522author%2522%253A%2522Rae-ARK%2522%252C%2522name%2522%253A%2522ARKarium%2522%257D))
-
-[<img src="https://github.com/machiav3lli/oandbackupx/blob/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png"
+    height="80">]([https://github.com/ImranR98/Obtainium/releases](https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522ARKarium%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FRae-ARK%252FARKarium%2522%252C%2522author%2522%253A%2522Rae-ARK%2522%252C%2522name%2522%253A%2522ARKarium%2522%257D))</td>
+    <td>[<img src="https://github.com/machiav3lli/oandbackupx/blob/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png"
     alt="Get it on GitHub"
-    height="80">](https://github.com/Rae-ARK/ARKarium/releases/)
+    height="80">](https://github.com/Rae-ARK/ARKarium/releases/)</td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Obtainium</sub></td>
+    <td align="center"><sub>Git Hub</sub></td>
+  </tr>
+</table>
 
 ## What it is
 
