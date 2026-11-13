@@ -1978,15 +1978,15 @@ class MainActivity : ComponentActivity() {
                         // Flow - recomputed on entering this route and again after
                         // anything that could have changed it (rescan, clear
                         // cache), rather than live.
-                        var storageBreakdown by remember { mutableStateOf<StorageBreakdown?>(null) }
+                        val storageBreakdown = remember { mutableStateOf<StorageBreakdown?>(null) }
                         // Result text for whichever of Clear cache / Remove missing
                         // novels last ran - see LibrarySettingsScreen's own doc
                         // comment on the actionMessage param for why this is a
                         // plain Text rather than a Snackbar.
-                        var libraryActionMessage by remember { mutableStateOf<String?>(null) }
+                        val libraryActionMessage = remember { mutableStateOf<String?>(null) }
 
                         LaunchedEffect(Unit) {
-                            storageBreakdown = computeStorageBreakdown(this@MainActivity, libraryViewModel.novels.toList())
+                            storageBreakdown.value = computeStorageBreakdown(this@MainActivity, libraryViewModel.novels.toList())
                         }
 
                         LibrarySettingsScreen(
@@ -2007,20 +2007,20 @@ class MainActivity : ComponentActivity() {
                                 lifecycleScope.launch { prefsManager.setWifiOnlySync(enabled) }
                             },
                             lastScanInfo = lastScanInfo.value,
-                            storageBreakdown = storageBreakdown,
-                            actionMessage = libraryActionMessage,
+                            storageBreakdown = storageBreakdown.value,
+                            actionMessage = libraryActionMessage.value,
                             onClearImageCaches = {
                                 lifecycleScope.launch {
                                     val freed = clearImageCaches(this@MainActivity)
-                                    libraryActionMessage = "Cleared ${formatBytes(freed)} of cached covers and thumbnails."
-                                    storageBreakdown = computeStorageBreakdown(this@MainActivity, libraryViewModel.novels.toList())
+                                    libraryActionMessage.value = "Cleared ${formatBytes(freed)} of cached covers and thumbnails."
+                                    storageBreakdown.value = computeStorageBreakdown(this@MainActivity, libraryViewModel.novels.toList())
                                 }
                             },
                             onOpenInFileManager = { openLibraryFolderInFileManager() },
                             onRemoveMissingNovels = {
                                 lifecycleScope.launch {
                                     val removed = libraryViewModel.removeMissingNovels()
-                                    libraryActionMessage = if (removed > 0) {
+                                    libraryActionMessage.value = if (removed > 0) {
                                         "Removed $removed missing novel(s)."
                                     } else {
                                         "No missing novels to remove."
@@ -2038,7 +2038,7 @@ class MainActivity : ComponentActivity() {
                                     val root = resolveLibraryRoot(this@MainActivity)
                                     if (root != null) {
                                         libraryViewModel.startScan(root)
-                                        storageBreakdown = computeStorageBreakdown(this@MainActivity, libraryViewModel.novels.toList())
+                                        storageBreakdown.value = computeStorageBreakdown(this@MainActivity, libraryViewModel.novels.toList())
                                     } else {
                                         // Shared storage genuinely isn't available right
                                         // now (see resolveLibraryRoot's doc comment) -
