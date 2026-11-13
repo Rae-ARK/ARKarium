@@ -10,6 +10,31 @@ enum class NovelStatus {
     NOT_STARTED, IN_PROGRESS, COMPLETED
 }
 
+// Author-declared publication status (docs/proposal/ideas.md "Serial-fiction manifest
+// metadata", docs/proposal/peer-app-survey.md Suggestion 1) - distinct from
+// NovelStatus/NovelEntity.readingStatus above, which tracks *this reader's* progress,
+// not whether the author is still writing it. Deliberately a small closed set rather
+// than a free-text field: readers want a stable glyph/label (and, eventually, a
+// hiatus-ended notification - see Suggestion 1 - keyed on a value actually changing),
+// neither of which works against arbitrary publisher text.
+enum class PublicationStatus {
+    ONGOING, HIATUS, DROPPED, COMPLETE;
+
+    companion object {
+        // Case/whitespace-forgiving parse used by both ScannerImpl.readLocalMetadata
+        // (metadata.json) and SyncManager.parseManifest (manifest.json) - same
+        // "malformed/unrecognized input just means no value" philosophy every other
+        // optional field in those two parsers already follows (see
+        // ScannerImpl.readLocalMetadata's doc comment): an unrecognized status string
+        // is never a parse failure for the whole file, it just leaves this field null,
+        // same as if it had been absent.
+        fun fromRaw(raw: String?): String? =
+            raw?.trim()?.uppercase()?.takeIf { normalized ->
+                entries.any { it.name == normalized }
+            }
+    }
+}
+
 @Entity(tableName = "novels")
 data class NovelEntity(
     @PrimaryKey val id: String,
@@ -79,7 +104,16 @@ data class NovelEntity(
     // NewChapterCheckWorker's periodic background pass (NovelDao.notifyEnabledSynced)
     // to decide which novels are even worth checking; never written to by ScannerImpl/
     // mergeNovelForRescan, so a rescan can never silently flip it back off.
-    @ColumnInfo(name = "notify_new_chapters") val notifyNewChapters: Boolean = false
+    @ColumnInfo(name = "notify_new_chapters") val notifyNewChapters: Boolean = false,
+    // PublicationStatus name (ONGOING/HIATUS/DROPPED/COMPLETE) or null = unknown/not
+    // declared - see PublicationStatus's doc comment. Sourced from either
+    // metadata.json (ScannerImpl.readLocalMetadata, scan time) or the sync manifest's
+    // own "status" field (SyncManager.parseManifest, sync time); LibraryScan.kt's
+    // mergeNovelForRescan decides which one wins on a rescan, the same way it already
+    // arbitrates description/genres/publishedDate against a "Fetch info" result. Null
+    // renders as "---" rather than hiding the row - see NovelDetailScreen - so a
+    // reader can tell "not declared" apart from a slow load.
+    @ColumnInfo(name = "publication_status") val publicationStatus: String? = null
 )
 
 enum class SyncStatus {
@@ -157,7 +191,45 @@ data class ChapterEntity(
     // prefix - afterword, author's note, ...). Regular chapters still sort by `number`
     // within tier 0 exactly as before; see ScannerImpl.parseChapter and bugs.md Bug 2.
     @ColumnInfo(name = "sort_tier") val sortTier: Int = 0,
-    @ColumnInfo(name = "source_path") val sourcePath: String
+    @ColumnInfo(name = "source_path") val sourcePath: String,
+    // Manifest-relative path ("NNN.txt" at novel root, "arcs/<Arc>/NNN.txt" under an
+    // arc - see architecture.md's Content format and ScannerImpl.parseChaptersInFolder)
+    // rather than the SAF content:// URI `sourcePath` above holds. This is what lets a
+    // sync pass's ManifestFileEntry (keyed by that same relative path, per
+    // architecture.md's Manifest section) be matched back to the ChapterEntity row it
+    // describes, to carry wordCount/readTimeMinutes below. Recomputed on every scan
+    // like title/number/sortTier - safe to do, since (unlike wordCount/
+    // readTimeMinutes) it's entirely scan-derived with nothing that needs to survive a
+    // rescan.
+    @ColumnInfo(name = "relative_path") val relativePath: String? = null
+)
+
+// Per-chapter metadata sourced only from the sync manifest (ManifestFileEntry's
+// wordCount/readTimeMinutes - "Word count and estimated read time per chapter" in
+// peer-app-survey.md Suggestion 1; cheap to compute at publish time, never computed
+// on-device). A dedicated table, not columns on ChapterEntity itself, for exactly the
+// reason chapter_overrides is one and not columns on ChapterEntity either: see that
+// entity's own doc comment above - ScannerImpl.parseChaptersInFolder rebuilds every
+// ChapterEntity column from the local file on every rescan (REPLACE upsert), so a
+// value that needs to survive a rescan it didn't come from can't live on that row.
+// SyncViewModel writes here separately, after a scan has already (re)created the
+// chapter row, via ChapterDao.updateManifestMeta keyed on (novel_id, relative_path);
+// ScannerImpl never touches this table.
+// chapter_id is the primary key directly (not a synthetic id + indexed FK column, the
+// shape chapter_overrides uses) since this is a true 1:1 relationship - there's never
+// a list of these per chapter, so an indexed lookup column would be redundant with the
+// primary key itself.
+@Entity(tableName = "chapter_manifest_meta",
+    foreignKeys = [
+        ForeignKey(entity = ChapterEntity::class, parentColumns = ["id"], childColumns = ["chapter_id"], onDelete = ForeignKey.CASCADE)
+    ])
+data class ChapterManifestMetaEntity(
+    @PrimaryKey @ColumnInfo(name = "chapter_id") val chapterId: String,
+    // Null for either field individually is a valid, expected state (a manifest can
+    // supply one without the other) - renders as "---" per-field, not as the whole row
+    // being absent. See NovelDetailScreen's chapter row.
+    @ColumnInfo(name = "word_count") val wordCount: Int? = null,
+    @ColumnInfo(name = "read_time_minutes") val readTimeMinutes: Int? = null
 )
 
 // index (performance.md F24): chapter_id has no index otherwise - this table's
@@ -293,4 +365,43 @@ data class SyncedFileEntity(
     @ColumnInfo(name = "relative_path") val relativePath: String,
     @ColumnInfo val sha256: String,
     @ColumnInfo val size: Long
+)
+
+// Manifest-level announcements (ideas.md "Serial-fiction manifest metadata",
+// peer-app-survey.md Suggestion 1) - deliberately separate from the in-chapter
+// `<news>` callout (ChapterMarkup.kt/ReaderScreen.kt), which lives inside one specific
+// chapter file. An announcement here isn't tied to any chapter, so showing or
+// dismissing one can never disturb a reader's bookmark/progress state the way editing
+// a `<news>` tag into an already-read chapter file would (see that proposal's
+// reasoning). Written wholesale per sync pass - see NovelAnnouncementDao.replaceForNovel
+// - the same "files is the complete new set, not a delta" shape SyncedFileEntity
+// already uses for exactly the same reason: the manifest is the one source of truth
+// for "what's currently announced," not an append-only log this table should
+// accumulate forever.
+@Entity(
+    tableName = "novel_announcements",
+    foreignKeys = [
+        ForeignKey(entity = NovelEntity::class, parentColumns = ["id"], childColumns = ["novel_id"], onDelete = ForeignKey.CASCADE)
+    ],
+    indices = [Index("novel_id")]
+)
+data class NovelAnnouncementEntity(
+    // Deterministic from (novelId, text, publishedAt) rather than a random UUID - see
+    // NovelAnnouncementDao.replaceForNovel's doc comment on why that matters for a
+    // wholesale per-sync replace.
+    @PrimaryKey val id: String,
+    @ColumnInfo(name = "novel_id") val novelId: String,
+    @ColumnInfo val text: String,
+    // Publisher-supplied, free-form - see architecture.md's Manifest section: nothing
+    // else in the manifest format carries a real timestamp today (catalogue-browse.md
+    // Sort's "a true RECENTLY_UPDATED would need the relay to carry some notion of
+    // when did this version actually publish" caveat applies here too), so this is
+    // whatever string the publisher put in, not a parsed/validated date. Null renders
+    // as "---" rather than a guessed date.
+    @ColumnInfo(name = "published_at") val publishedAt: String? = null,
+    // When *this client* pulled the announcement down, not when the publisher wrote
+    // it - used only to order announcements lacking a publishedAt and as a staleness
+    // signal, same cachedAt convention docs/proposal/catalogue-browse.md's
+    // CatalogueEntryEntity proposes (C3: "staleness is visible, not silently trusted").
+    @ColumnInfo(name = "fetched_at") val fetchedAt: Long
 )

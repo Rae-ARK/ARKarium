@@ -279,7 +279,8 @@ class ScannerImpl(private val context: Context) {
             description = localMetadata?.description,
             genres = localMetadata?.genres,
             publishedDate = localMetadata?.publishedDate,
-            syncSourceUrl = recognizedSyncUrl
+            syncSourceUrl = recognizedSyncUrl,
+            publicationStatus = localMetadata?.status
         )
     }
 
@@ -455,6 +456,19 @@ class ScannerImpl(private val context: Context) {
         files.forEachIndexed { idx, file ->
             val parsed = parseChapter(file.name ?: "Chapter ${idx + 1}")
             val chapterId = UUID.nameUUIDFromBytes("${novelId}:${file.uri}".toByteArray()).toString()
+            // Mirrors architecture.md's Content format exactly ("arcs/<Arc>/NNN.txt"
+            // under an arc, a bare filename at novel root) - this is also precisely
+            // the shape a synced novel's on-disk folder already has, since
+            // downloadManifestFiles wrote each file at exactly its manifest relative
+            // path. `folder` is the arc folder itself when arcId != null (see this
+            // function's two call sites in scanChaptersForNovel), so folder.name here
+            // is the arc segment, not the novel folder. See ChapterEntity.relativePath's
+            // doc comment for what this is matched against.
+            val relativePath = if (arcId == null) {
+                file.name ?: ""
+            } else {
+                "arcs/${folder.name ?: ""}/${file.name ?: ""}"
+            }
             val chapter = ChapterEntity(
                 id = chapterId,
                 novelId = novelId,
@@ -462,7 +476,8 @@ class ScannerImpl(private val context: Context) {
                 number = parsed.number,
                 title = parsed.title,
                 sortTier = parsed.sortTier,
-                sourcePath = file.uri.toString()
+                sourcePath = file.uri.toString(),
+                relativePath = relativePath
             )
             db.chapterDao().upsert(chapter)
             ids.add(chapterId)
@@ -626,7 +641,12 @@ class ScannerImpl(private val context: Context) {
         val authorId: String?,
         val description: String?,
         val genres: String?,
-        val publishedDate: String?
+        val publishedDate: String?,
+        // "Serial-fiction manifest metadata" (ideas.md / peer-app-survey.md Suggestion
+        // 1) - already normalized/validated (PublicationStatus.fromRaw) by the time
+        // this class exists, same contract as Manifest.status in SyncManager.kt: an
+        // unrecognized value is null here, never the raw publisher string.
+        val status: String?
     )
 
     // Reads an optional `metadata.json` sitting directly in the novel's folder, e.g.:
@@ -636,7 +656,8 @@ class ScannerImpl(private val context: Context) {
     //   "authorId": "rae-ark",
     //   "description": "A short synopsis...",
     //   "genres": ["Fantasy", "Isekai"],
-    //   "publishedDate": "2023"
+    //   "publishedDate": "2023",
+    //   "status": "ongoing"
     // }
     // All fields are optional and applied only where present - a missing/unparseable
     // file just means no local metadata, never a scan failure (this is loaded once per
@@ -644,6 +665,9 @@ class ScannerImpl(private val context: Context) {
     // "genres" accepts either a JSON array of strings or a single comma-separated string.
     // "authorId" links this fiction to authors/<authorId>.json - see
     // AUTHOR_PAGE_AND_CHAPTER_REDESIGN.md's "Linking a fiction to an author".
+    // "status" is one of ongoing/hiatus/dropped/complete (case-insensitive) - see
+    // PublicationStatus; anything else parses as if the field were absent, same
+    // forgiving-field philosophy as every other optional key here.
     // Same change as findCoverUri above - takes the folder's already-listed children
     // instead of listing it again itself (F26, performance.md).
     private fun readLocalMetadata(children: List<DocumentFile>): LocalMetadata? {
@@ -667,7 +691,8 @@ class ScannerImpl(private val context: Context) {
                 authorId = json.optString("authorId").takeIf { it.isNotBlank() },
                 description = json.optString("description").takeIf { it.isNotBlank() },
                 genres = genres,
-                publishedDate = json.optString("publishedDate").takeIf { it.isNotBlank() }
+                publishedDate = json.optString("publishedDate").takeIf { it.isNotBlank() },
+                status = PublicationStatus.fromRaw(json.optString("status").takeIf { it.isNotBlank() })
             )
         } catch (e: Exception) {
             // Malformed metadata.json shouldn't take down the scan for this novel - it
