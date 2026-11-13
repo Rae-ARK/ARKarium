@@ -66,7 +66,7 @@ data class ManifestAnnouncement(
 // e.g. in whatever tool writes manifest.json) - not a telemetry-derived figure and
 // never computed on-device from actual publish timestamps, since nothing in the
 // manifest format carries real per-chapter publish times (see the "Chapters/Week"
-// row in docs/proposal/catalogue-browse.md - a true computed cadence would need
+// row in docs/implementation/catalogue-browse-redesign.md - a true computed cadence would need
 // that, this is deliberately simpler). A plain author-supplied number, same
 // "trust it, show '---' if absent" contract as `status`. Double rather than Int:
 // an author publishing slower than one chapter/week (e.g. one every two weeks)

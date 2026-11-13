@@ -412,7 +412,7 @@ data class NovelAnnouncementEntity(
     @ColumnInfo(name = "published_at") val publishedAt: String? = null,
     // When *this client* pulled the announcement down, not when the publisher wrote
     // it - used only to order announcements lacking a publishedAt and as a staleness
-    // signal, same cachedAt convention docs/proposal/catalogue-browse.md's
+    // signal, same cachedAt convention docs/implementation/catalogue-browse-redesign.md's
     // CatalogueEntryEntity proposes (C3: "staleness is visible, not silently trusted").
     @ColumnInfo(name = "fetched_at") val fetchedAt: Long
 )
