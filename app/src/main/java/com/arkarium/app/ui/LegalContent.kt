@@ -98,9 +98,12 @@ object LegalContent {
         ),
         LegalSection(
             "Your library folder",
-            "The App reads from, and writes synchronized content into, a single " +
-                "folder you select using Android's Storage Access Framework (SAF). " +
-                "It writes only the files it downloads for a title you have " +
+            "The App reads from, and writes synchronized content into, a single, " +
+                "fixed folder on your device's external storage " +
+                "(Android/media/com.arkarium.app/), rather than a folder you pick " +
+                "yourself; this location requires no storage permission to access " +
+                "and is visible to file managers and to a computer connected over " +
+                "USB. It writes only the files it downloads for a title you have " +
                 "explicitly added or re-synchronized (see \"Content synchronization\" " +
                 "below), and it removes only files within that folder that it " +
                 "previously wrote as part of a synchronization; it does not modify, " +
