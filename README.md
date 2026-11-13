@@ -2,7 +2,7 @@
 
 A native reading experience for Rae ARK's published fiction.
 
-<table>
+<table align="center">
   <tr>
     <td align="center">
       <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522ARKarium%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FRae-ARK%252FARKarium%2522%252C%2522author%2522%253A%2522Rae-ARK%2522%252C%2522name%2522%253A%2522ARKarium%2522%257D">
@@ -31,10 +31,12 @@ Content is published as files in a relay and synchronized to the reader's local 
 
 <table>
   <tr>
-    <td><img src="assets/Home.jpg" alt="Home page" /></td>
+    <td colspan="2">
+      <img src="assets/Home.jpg" alt="Home page" width="100%">
+    </td>
   </tr>
   <tr>
-    <td align="center"><sub>Home</sub></td>
+    <td colspan="2" align="center"><sub>Home</sub></td>
   </tr>
   <tr>
     <td width="50%"><img src="assets/Fiction-Browse.jpg" alt="Browsing page" /></td>
