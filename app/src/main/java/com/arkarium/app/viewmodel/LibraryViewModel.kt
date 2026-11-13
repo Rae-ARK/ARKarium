@@ -3,8 +3,10 @@ package com.arkarium.app.viewmodel
 import android.content.Context
 import androidx.compose.runtime.State
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.snapshots.SnapshotStateMap
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -12,6 +14,7 @@ import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.ArcEntity
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.ChapterEntity
+import com.arkarium.app.data.ChapterManifestMetaEntity
 import com.arkarium.app.data.ChapterOverrideEntity
 import com.arkarium.app.data.ChapterReadEventEntity
 import com.arkarium.app.data.NovelEntity
@@ -103,6 +106,15 @@ class LibraryViewModel(
     // Overrides already applied - see loadNovelDetails.
     val chapters: SnapshotStateList<ChapterEntity> = mutableStateListOf()
     val arcs: SnapshotStateList<ArcEntity> = mutableStateListOf()
+    // Keyed by ChapterEntity.id (not relativePath - that's only how SyncViewModel
+    // looks the row up to write it in the first place, see
+    // ChapterManifestMetaDao's doc comment). Populated alongside `chapters` in
+    // loadNovelDetails below with the same batch-query shape (`forChapters`) that
+    // DAO already exists for - one row per chapter that actually has a word
+    // count/read time, missing entirely for any chapter that doesn't (see
+    // NovelDetailScreen's "---" rendering: absence from this map IS the "---"
+    // case, same as a null field would be).
+    val chapterManifestMeta: SnapshotStateMap<String, ChapterManifestMetaEntity> = mutableStateMapOf()
     // The only correct source for "resume reading this novel at its last chapter":
     // built from reading_progress.recentNovelIds(), so every entry is guaranteed to
     // have an actual saved position (see refreshRecentlyRead). Home's "Continue
@@ -356,6 +368,17 @@ class LibraryViewModel(
         arcs.addAll(db.arcDao().forNovel(novel.id))
         _overriddenChapterIds.value = overridesByChapterId.keys
         _arcStartChapterIds.value = overrides.filter { it.isArcStart }.map { it.chapterId }.toSet()
+
+        // One batch query for the whole visible chapter list (ChapterManifestMetaDao.
+        // forChapters), same F26 reasoning as everything else in this function -
+        // never one query per row. A chapter missing from the result just has no
+        // manifest-sourced word count/read time yet (old manifest, never synced,
+        // etc) - NovelDetailScreen treats a missing map entry the same as a present
+        // one with both fields null.
+        chapterManifestMeta.clear()
+        chapterManifestMeta.putAll(
+            db.chapterManifestMetaDao().forChapters(effective.map { it.id }).associateBy { it.chapterId }
+        )
     }
 
     // Moved from MainActivity alongside recentlyRead/inProgressNovels themselves.

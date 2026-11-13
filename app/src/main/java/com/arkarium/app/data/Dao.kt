@@ -61,6 +61,12 @@ interface NovelDao {
     @Query("UPDATE novels SET publication_status = :status WHERE id = :novelId")
     suspend fun updatePublicationStatus(novelId: String, status: String?)
 
+    // Author-declared cadence (NovelEntity.chaptersPerWeek) - same nullable,
+    // fill-in-or-clear contract as updatePublicationStatus above, written from the
+    // same sync outcome at the same call sites (see SyncViewModel).
+    @Query("UPDATE novels SET chapters_per_week = :chaptersPerWeek WHERE id = :novelId")
+    suspend fun updateChaptersPerWeek(novelId: String, chaptersPerWeek: Double?)
+
     @Query("SELECT * FROM novels WHERE reading_status = :status ORDER BY title")
     suspend fun byStatus(status: String): List<NovelEntity>
 

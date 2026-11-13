@@ -20,7 +20,7 @@ class DatabaseDowngradeException(message: String) : IllegalStateException(messag
 // list actually reaches it. @Database below reads it from here - bump this (and add the
 // matching MIGRATION_n_m + a committed app/schemas/.../n.json) together, never the
 // annotation alone.
-const val APP_DATABASE_VERSION = 16
+const val APP_DATABASE_VERSION = 17
 
 // @Database must sit directly above the RoomDatabase subclass it annotates - an
 // annotation binds to the very next declaration, and with DatabaseDowngradeException's
@@ -376,6 +376,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Purely additive, same shape as MIGRATION_15_16: one nullable column, no
+        // backfill possible (chapters_per_week only ever arrives via a sync pass - see
+        // NovelEntity.chaptersPerWeek's doc comment), existing rows just read null
+        // until their next sync.
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE novels ADD COLUMN chapters_per_week REAL")
+            }
+        }
+
         // Every migration, in order - the one list create() hands to Room, and the one
         // MigrationChainTest (JVM) and MigrationTest (instrumented) check. A new
         // MIGRATION_n_m only counts once it is added here.
@@ -383,7 +393,7 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
             MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
             MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15,
-            MIGRATION_15_16
+            MIGRATION_15_16, MIGRATION_16_17
         )
 
         // NOTE: deliberately no fallbackToDestructiveMigration() here. That fallback

@@ -62,11 +62,21 @@ data class ManifestAnnouncement(
 // new fields above. `status` is already normalized/validated (PublicationStatus.fromRaw)
 // by the time a Manifest exists - an unrecognized value is null here, not the raw
 // publisher string, so every caller downstream can treat it as a closed enum name.
+// chaptersPerWeek is the author's own declared release cadence (set at publish time,
+// e.g. in whatever tool writes manifest.json) - not a telemetry-derived figure and
+// never computed on-device from actual publish timestamps, since nothing in the
+// manifest format carries real per-chapter publish times (see the "Chapters/Week"
+// row in docs/proposal/catalogue-browse.md - a true computed cadence would need
+// that, this is deliberately simpler). A plain author-supplied number, same
+// "trust it, show '---' if absent" contract as `status`. Double rather than Int:
+// an author publishing slower than one chapter/week (e.g. one every two weeks)
+// still needs to say so as a cadence, not round down to 0.
 data class Manifest(
     val version: Int,
     val files: List<ManifestFileEntry>,
     val status: String? = null,
-    val announcements: List<ManifestAnnouncement>? = null
+    val announcements: List<ManifestAnnouncement>? = null,
+    val chaptersPerWeek: Double? = null
 )
 
 class ManifestParseException(message: String) : IOException(message)
@@ -241,6 +251,7 @@ class SyncClient {
         // "status" string normalizes to null via PublicationStatus.fromRaw rather than
         // throwing.
         val status = PublicationStatus.fromRaw(root.optString("status").takeIf { it.isNotBlank() })
+        val chaptersPerWeek = root.optDoubleOrNull("chaptersPerWeek")?.takeIf { it >= 0.0 }
         val announcementsArray = root.optJSONArray("announcements")
         val announcements = if (announcementsArray != null) {
             (0 until announcementsArray.length()).mapNotNull { i ->
@@ -261,7 +272,10 @@ class SyncClient {
             null
         }
 
-        return Manifest(version = version, files = files, status = status, announcements = announcements)
+        return Manifest(
+            version = version, files = files, status = status, announcements = announcements,
+            chaptersPerWeek = chaptersPerWeek
+        )
     }
 }
 
@@ -273,6 +287,12 @@ class SyncClient {
 // of parseManifest's two call sites above.
 private fun JSONObject.optIntOrNull(name: String): Int? =
     if (has(name) && !isNull(name)) optInt(name).takeIf { it >= 0 } else null
+
+// Same absent-vs-zero distinction as optIntOrNull above, for chaptersPerWeek - a
+// manifest explicitly declaring a 0 cadence (paused, no set schedule) is different
+// from one that never mentions a cadence at all.
+private fun JSONObject.optDoubleOrNull(name: String): Double? =
+    if (has(name) && !isNull(name)) optDouble(name).takeIf { !it.isNaN() } else null
 
 // Result of one sync pass against a relay - callers persist this into
 // NovelDao.updateSyncState + SyncedFileDao themselves; SyncManager never writes to
@@ -302,6 +322,11 @@ data class SyncOutcome(
     // ChapterManifestMetaDao.upsert calls, same division of labor as files/folderName.
     val publicationStatus: String? = null,
     val announcements: List<ManifestAnnouncement>? = null,
+    // Manifest.chaptersPerWeek, carried straight through - see that field's doc
+    // comment. Same "populated even on the unchanged-version branch" reasoning as
+    // publicationStatus/announcements above: an author can update their declared
+    // cadence without bumping `version`.
+    val chaptersPerWeek: Double? = null,
     // relativePath -> (wordCount, readTimeMinutes), chapter-file entries only (a
     // cover.*/metadata.json entry simply never has either field set, so it's harmless
     // but pointless to include - callers only ever look this up by a ChapterEntity's
@@ -427,6 +452,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         folderName to SyncOutcome(
             newVersion = manifest.version, files = records, changed = true, folderName = folderName,
             publicationStatus = manifest.status, announcements = manifest.announcements,
+            chaptersPerWeek = manifest.chaptersPerWeek,
             chapterManifestMeta = manifestChapterMeta(manifest)
         )
     }
@@ -474,6 +500,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
             return@withContext SyncOutcome(
                 newVersion = manifest.version, files = knownFiles, changed = false,
                 publicationStatus = manifest.status, announcements = manifest.announcements,
+                chaptersPerWeek = manifest.chaptersPerWeek,
                 chapterManifestMeta = manifestChapterMeta(manifest)
             )
         }
@@ -533,7 +560,17 @@ class SyncManager(private val context: Context, private val client: SyncClient =
             }
         }
 
-        SyncOutcome(newVersion = manifest.version, files = records, changed = true, folderName = folderName)
+        // Pre-existing gap fixed here: this branch used to return a bare SyncOutcome
+        // with none of status/announcements/chaptersPerWeek/chapterManifestMeta set,
+        // unlike both the "already up to date" branch above and downloadInitial - a
+        // resync that actually found new files silently dropped all of this instead
+        // of persisting it. Same fields, same source (`manifest`), for consistency.
+        SyncOutcome(
+            newVersion = manifest.version, files = records, changed = true, folderName = folderName,
+            publicationStatus = manifest.status, announcements = manifest.announcements,
+            chaptersPerWeek = manifest.chaptersPerWeek,
+            chapterManifestMeta = manifestChapterMeta(manifest)
+        )
     }
 
     // Downloads whatever in `manifest` isn't already present-and-unchanged in

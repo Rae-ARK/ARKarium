@@ -1092,6 +1092,7 @@ class MainActivity : ComponentActivity() {
                                 novel = novel,
                                 chapters = libraryViewModel.chapters,
                                 arcs = libraryViewModel.arcs,
+                                chapterManifestMeta = libraryViewModel.chapterManifestMeta,
                                 overriddenChapterIds = libraryViewModel.overriddenChapterIds.value,
                                 onBack = {
                                     // NovelDetail always went straight back to Home
