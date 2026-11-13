@@ -52,6 +52,7 @@ import com.arkarium.app.ui.NoticeBoardScreen
 import com.arkarium.app.ui.PigeonRallyScreen
 import com.arkarium.app.ui.RaesJournalScreen
 import com.arkarium.app.viewmodel.JournalViewModel
+import com.arkarium.app.viewmodel.NoticeBoardViewModel
 import com.arkarium.app.ui.ChapterEditorScreen
 import com.arkarium.app.ui.AuthorPageScreen
 import com.arkarium.app.ui.HomeScreen
@@ -230,6 +231,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var readerViewModel: ReaderViewModel
     // Rae's Journal (Notice Board) - see JournalViewModel.
     private lateinit var journalViewModel: JournalViewModel
+    // Pigeon Rally (Notice Board) - see NoticeBoardViewModel.
+    private lateinit var noticeBoardViewModel: NoticeBoardViewModel
 
     // Originally launched only from a "Notify me when new chapters are available"
     // toggle being switched on (see NovelDetailScreen's onToggleNotify wiring below);
@@ -515,6 +518,8 @@ class MainActivity : ComponentActivity() {
                 .get(ReaderViewModel::class.java)
             journalViewModel = ViewModelProvider(this, JournalViewModel.factory(applicationContext))
                 .get(JournalViewModel::class.java)
+            noticeBoardViewModel = ViewModelProvider(this, NoticeBoardViewModel.factory(db))
+                .get(NoticeBoardViewModel::class.java)
         } catch (e: DatabaseDowngradeException) {
             // See F23 in docs/proposal/data-safety.md - this is Room
             // refusing to open a database written by a newer version of the app, not
@@ -1690,10 +1695,18 @@ class MainActivity : ComponentActivity() {
                 // pinned notes, see NoticeBoardScreen.kt) that opens one page per note.
                 // The sub-routes below aren't bottom-bar routes (isBottomBarRoute matches
                 // tabs by exact route), so they're drill-down pages like settings/* -
-                // the bar hides on them and Back pops to the board. Both are stubs for now.
+                // the bar hides on them and Back pops to the board. Pigeon Rally is now
+                // backed by NoticeBoardViewModel/chapter_update_events; Journal remains
+                // its own thing (JournalViewModel, an RSS feed, not a notification log).
                 composable("noticeBoard") {
                     Column(modifier = Modifier.fillMaxSize()) {
+                        // Re-reads unseenCount every time the board is (re)opened - e.g.
+                        // after backing out of Pigeon Rally having marked rows read, or
+                        // after the background worker logged a new row while this screen
+                        // wasn't on top.
+                        LaunchedEffect(Unit) { noticeBoardViewModel.refresh() }
                         NoticeBoardScreen(
+                            pigeonRallyUnseenCount = noticeBoardViewModel.unseenCount.intValue,
                             onOpenPigeonRally = { navController.navigate("noticeBoard/pigeonRally") { launchSingleTop = true } },
                             onOpenJournal = { navController.navigate("noticeBoard/journal") { launchSingleTop = true } }
                         )
@@ -1702,7 +1715,24 @@ class MainActivity : ComponentActivity() {
 
                 composable("noticeBoard/pigeonRally") {
                     Column(modifier = Modifier.fillMaxSize()) {
-                        PigeonRallyScreen(onBack = { navController.popBackStack() })
+                        LaunchedEffect(Unit) { noticeBoardViewModel.refresh() }
+                        PigeonRallyScreen(
+                            events = noticeBoardViewModel.events,
+                            novels = libraryViewModel.novels,
+                            onBack = { navController.popBackStack() },
+                            onEventClick = { event ->
+                                noticeBoardViewModel.markSeen(event.id)
+                                // Straight to the novel page, not the reader - same
+                                // reasoning as tapping a novel anywhere else in the app
+                                // (notice-board.md's "List" bullet): a reader who wants
+                                // the new chapter itself is one more tap in via Continue
+                                // Reading/the chapter list.
+                                navController.navigate("novelDetail/${event.novelId}") {
+                                    launchSingleTop = true
+                                }
+                            },
+                            onMarkAllRead = { noticeBoardViewModel.markAllSeen() }
+                        )
                     }
                 }
 

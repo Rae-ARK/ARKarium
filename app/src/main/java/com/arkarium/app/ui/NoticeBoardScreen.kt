@@ -53,6 +53,10 @@ private val InkSoft = Color(0xFF6B543C)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NoticeBoardScreen(
+    // Unseen chapter_update_events count (NoticeBoardViewModel.unseenCount) - the
+    // glanceable "something arrived" cue notice-board.md's "Entry point" bullet calls
+    // for. 0 draws no badge at all rather than a badge reading "0".
+    pigeonRallyUnseenCount: Int = 0,
     onOpenPigeonRally: () -> Unit = {},
     onOpenJournal: () -> Unit = {}
 ) {
@@ -93,6 +97,7 @@ fun NoticeBoardScreen(
                     title = "Pigeon Rally",
                     subtitle = "New chapters, delivered by wing",
                     tilt = -1.8f,
+                    unseenCount = pigeonRallyUnseenCount,
                     onClick = onOpenPigeonRally
                 )
                 PinnedNote(
@@ -114,7 +119,8 @@ private fun PinnedNote(
     title: String,
     subtitle: String,
     tilt: Float,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    unseenCount: Int = 0
 ) {
     Box(modifier = Modifier.fillMaxWidth().rotate(tilt)) {
         Column(
@@ -158,5 +164,25 @@ private fun PinnedNote(
                     CircleShape
                 )
         )
+        // Same "something arrived" cue as any other badge-on-icon in the app - a
+        // small red circle in the note's corner, drawn only once there's something
+        // unseen to flag (see pigeonRallyUnseenCount's doc comment above).
+        if (unseenCount > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 4.dp, end = 4.dp)
+                    .shadow(3.dp, CircleShape)
+                    .background(Color(0xFFC62828), CircleShape)
+                    .padding(horizontal = 7.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    if (unseenCount > 99) "99+" else unseenCount.toString(),
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 11.sp
+                )
+            }
+        }
     }
 }

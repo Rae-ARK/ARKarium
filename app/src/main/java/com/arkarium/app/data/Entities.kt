@@ -417,6 +417,48 @@ data class NovelAnnouncementEntity(
     @ColumnInfo(name = "fetched_at") val fetchedAt: Long
 )
 
+// Notice Board's "Pigeon Rally" page (docs/proposal/notice-board.md) - one row per
+// *sync that found new chapters*, not one row per chapter: a sync that pulls in 3
+// chapters at once is one entry ("3 new chapters"), matching what
+// NewChapterNotifier's existing notification text already says. Written by the same
+// two call sites that already detect "did this sync find new chapters" -
+// NewChapterCheckWorker.checkOneNovel (background) and SyncViewModel.checkForUpdates
+// (the manual "Check for updates" action) - using the same newChapterCount/
+// latestChapterTitle each already computes, so this is never a second query over the
+// chapter diff, just a second thing done with a result already in hand. Gated by the
+// per-novel "Notify me" toggle on NovelDetailScreen the same way those two call sites
+// already gate the system notification - an event is only ever logged for a novel
+// that toggle is on for; this table deliberately has no mute/filter of its own (see
+// the proposal doc's "Explicitly out of scope" section).
+//
+// No FK to novels: unlike ChapterReadEventEntity/ReadingProgressEntity, an entry here
+// is meant to survive the novel being removed and re-followed later (a fresh follow
+// gets a new scan-assigned NovelEntity.id - see SyncViewModel.addFiction - so a FK
+// with ON DELETE CASCADE would silently erase the log on every re-follow). A
+// novel_id with nothing to show for it any more (because the novel was removed and
+// never re-followed) just renders as an orphaned row the UI can't resolve a
+// title/cover for - NoticeBoardViewModel filters those out rather than crashing or
+// showing a blank row; see its doc comment.
+@Entity(
+    tableName = "chapter_update_events",
+    indices = [Index("novel_id")]
+)
+data class ChapterUpdateEventEntity(
+    @PrimaryKey val id: String,  // UUID, same pattern as every other event row
+    @ColumnInfo(name = "novel_id") val novelId: String,
+    // From the same diff NewChapterNotifier.notify already gets - see its own
+    // call sites' doc comments on why a chapter that already existed never counts
+    // as "new" just because a rescan touched its row again.
+    @ColumnInfo(name = "new_chapter_count") val newChapterCount: Int,
+    @ColumnInfo(name = "latest_chapter_title") val latestChapterTitle: String?,
+    @ColumnInfo(name = "detected_at") val detectedAt: Long,
+    // Unread/read state for the Notice Board badge - see NoticeBoardViewModel.
+    // Opening Pigeon Rally itself doesn't flip this (that would make the badge
+    // useless the moment you glance at the list without reading anything); only
+    // tapping a row, or "Mark all read", does.
+    @ColumnInfo val seen: Boolean = false
+)
+
 // Rung 1 of docs/implementation/catalogue-browse-redesign.md - a not-yet-followed
 // fiction surfaced on the Browse grid from FictionLut.allEntries, not yet a real
 // NovelEntity. One row per slug, upserted by the catalogue ingestion pass (Rung 2) from

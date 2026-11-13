@@ -20,7 +20,7 @@ class DatabaseDowngradeException(message: String) : IllegalStateException(messag
 // list actually reaches it. @Database below reads it from here - bump this (and add the
 // matching MIGRATION_n_m + a committed app/schemas/.../n.json) together, never the
 // annotation alone.
-const val APP_DATABASE_VERSION = 18
+const val APP_DATABASE_VERSION = 19
 
 // @Database must sit directly above the RoomDatabase subclass it annotates - an
 // annotation binds to the very next declaration, and with DatabaseDowngradeException's
@@ -46,7 +46,8 @@ const val APP_DATABASE_VERSION = 18
         ChapterReadEventEntity::class,
         ChapterManifestMetaEntity::class,
         NovelAnnouncementEntity::class,
-        CatalogueEntryEntity::class
+        CatalogueEntryEntity::class,
+        ChapterUpdateEventEntity::class
     ],
     version = APP_DATABASE_VERSION
 )
@@ -63,6 +64,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun chapterManifestMetaDao(): ChapterManifestMetaDao
     abstract fun novelAnnouncementDao(): NovelAnnouncementDao
     abstract fun catalogueEntryDao(): CatalogueEntryDao
+    abstract fun chapterUpdateEventDao(): ChapterUpdateEventDao
 
     companion object {
         // Migration from v1 to v2: add new tables
@@ -420,6 +422,31 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v18 to v19: adds the chapter_update_events table backing
+        // Notice Board's Pigeon Rally page (docs/proposal/notice-board.md). Purely
+        // additive, new table starts empty for every existing install - nothing to
+        // backfill, since a past sync's "found new chapters" moment is gone the
+        // instant it happens today (see the proposal doc's "What's built today"
+        // section: entirely transient, nothing persisted anywhere). No FK to novels
+        // - see ChapterUpdateEventEntity's doc comment on why a cascading delete
+        // would be wrong here.
+        val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS chapter_update_events (
+                        id TEXT NOT NULL,
+                        novel_id TEXT NOT NULL,
+                        new_chapter_count INTEGER NOT NULL,
+                        latest_chapter_title TEXT,
+                        detected_at INTEGER NOT NULL,
+                        seen INTEGER NOT NULL DEFAULT 0,
+                        PRIMARY KEY(id)
+                    )
+                """.trimIndent())
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_chapter_update_events_novel_id` ON `chapter_update_events` (`novel_id`)")
+            }
+        }
+
         // Every migration, in order - the one list create() hands to Room, and the one
         // MigrationChainTest (JVM) and MigrationTest (instrumented) check. A new
         // MIGRATION_n_m only counts once it is added here.
@@ -427,7 +454,7 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
             MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
             MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15,
-            MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18
+            MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19
         )
 
         // NOTE: deliberately no fallbackToDestructiveMigration() here. That fallback
