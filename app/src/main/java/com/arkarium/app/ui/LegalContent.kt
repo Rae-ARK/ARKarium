@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material.icons.filled.Groups
@@ -140,6 +141,19 @@ object LegalContent {
                 "request is governed by Google's own privacy policy, not this one.",
             icon = Icons.Filled.Wifi,
             tldr = "Tap \"Fetch info\" and we ask Google Books for a cover and blurb - only if you ask us to."
+        ),
+        LegalSection(
+            "Feedback (optional, per chapter)",
+            "Each chapter includes a \"Send Feedback\" option. Selecting it opens " +
+                "your device's own default email app with the recipient and a " +
+                "subject line (naming only the fiction you were reading) already " +
+                "filled in. The App itself sends nothing: no message is transmitted " +
+                "unless and until you choose to send it yourself from within your " +
+                "email app, and the App does not see, store, or have any record of " +
+                "what you write. Any message you do send is received as an " +
+                "ordinary email, no different from one you addressed yourself.",
+            icon = Icons.Filled.Email,
+            tldr = "\"Send Feedback\" just opens your own email app with the address pre-filled - nothing sends until you do."
         ),
         LegalSection(
             "Information stored on your device",
