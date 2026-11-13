@@ -9,6 +9,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.AuthorEntity
+import com.arkarium.app.data.CatalogueStorage
 import com.arkarium.app.data.ChapterManifestMetaEntity
 import com.arkarium.app.data.FictionLut
 import com.arkarium.app.data.MissingLocalFolderException
@@ -97,7 +98,10 @@ class SyncViewModel(
     private val scanner: ScannerImpl,
     private val syncManager: SyncManager,
     private val libraryViewModel: LibraryViewModel,
-    private val metadataViewModel: MetadataViewModel
+    private val metadataViewModel: MetadataViewModel,
+    // Rung 3 of docs/implementation/catalogue-browse-redesign.md - defaulted so the
+    // Factory below (and any test) doesn't have to know about it.
+    private val catalogueStorage: CatalogueStorage = CatalogueStorage(application)
 ) : AndroidViewModel(application) {
 
     val syncAllState = mutableStateOf<SyncAllState>(SyncAllState.Idle)
@@ -524,7 +528,24 @@ class SyncViewModel(
         val (displayName, slug) = entry
         return try {
             val fetched = syncManager.fetchCatalogueEntry(slug, displayName)
-            db.catalogueEntryDao().upsert(fetched.entry)
+            // Rung 3: persist the cover/metadata bytes fetchCatalogueEntry hands back
+            // (C1's SyncPaths.sanitize is applied inside CatalogueStorage). A failed
+            // write only costs this entry its cover - the text metadata is still worth
+            // showing - so it falls back to coverPath = null instead of skipping the
+            // whole slug.
+            val coverPath = try {
+                withContext(Dispatchers.IO) {
+                    catalogueStorage.write(
+                        slug = slug,
+                        coverBytes = fetched.coverBytes,
+                        coverFileName = fetched.coverFileName,
+                        metadataBytes = fetched.metadataBytes
+                    )
+                }
+            } catch (e: IOException) {
+                null
+            }
+            db.catalogueEntryDao().upsert(fetched.entry.copy(coverPath = coverPath))
             CatalogueRefreshItemResult.Fetched
         } catch (e: Exception) {
             // C4: one slug's failure never aborts the rest - and deliberately broader
