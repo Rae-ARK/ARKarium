@@ -20,7 +20,7 @@ class DatabaseDowngradeException(message: String) : IllegalStateException(messag
 // list actually reaches it. @Database below reads it from here - bump this (and add the
 // matching MIGRATION_n_m + a committed app/schemas/.../n.json) together, never the
 // annotation alone.
-const val APP_DATABASE_VERSION = 15
+const val APP_DATABASE_VERSION = 16
 
 // @Database must sit directly above the RoomDatabase subclass it annotates - an
 // annotation binds to the very next declaration, and with DatabaseDowngradeException's
@@ -43,7 +43,9 @@ const val APP_DATABASE_VERSION = 15
         ScanFingerprintEntity::class,
         ReadingProgressEntity::class,
         SyncedFileEntity::class,
-        ChapterReadEventEntity::class
+        ChapterReadEventEntity::class,
+        ChapterManifestMetaEntity::class,
+        NovelAnnouncementEntity::class
     ],
     version = APP_DATABASE_VERSION
 )
@@ -57,6 +59,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun readingProgressDao(): ReadingProgressDao
     abstract fun syncedFileDao(): SyncedFileDao
     abstract fun chapterReadEventDao(): ChapterReadEventDao
+    abstract fun chapterManifestMetaDao(): ChapterManifestMetaDao
+    abstract fun novelAnnouncementDao(): NovelAnnouncementDao
 
     companion object {
         // Migration from v1 to v2: add new tables
@@ -326,13 +330,60 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v15 to v16: "Serial-fiction manifest metadata" (ideas.md /
+        // peer-app-survey.md Suggestion 1) - publication status, per-chapter word
+        // count/read time, and manifest-level announcements. Four purely additive
+        // changes, nothing existing is touched:
+        //
+        // - novels.publication_status: nullable, no backfill - every existing row
+        //   simply has no declared status until its next scan or sync populates one
+        //   (see NovelEntity.publicationStatus's doc comment).
+        // - chapters.relative_path: nullable, no backfill - recomputed for real on
+        //   each novel's next scan (see ChapterEntity.relativePath); until then it's
+        //   simply null, same as a brand-new column always is.
+        // - chapter_manifest_meta: new table, starts empty for every existing chapter
+        //   row - word_count/read_time_minutes only ever arrive via a sync pass (see
+        //   ChapterManifestMetaEntity's doc comment), so there's nothing to backfill
+        //   from existing data; a chapter gets a row here the next time its novel
+        //   syncs against a manifest that actually carries this data.
+        // - novel_announcements: new table, starts empty - same reasoning, and the
+        //   "wholesale replace per sync" shape (NovelAnnouncementDao.replaceForNovel)
+        //   means an empty starting state is indistinguishable from "synced once, zero
+        //   announcements," which is the correct behavior either way.
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE novels ADD COLUMN publication_status TEXT")
+                database.execSQL("ALTER TABLE chapters ADD COLUMN relative_path TEXT")
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS chapter_manifest_meta (
+                        chapter_id TEXT PRIMARY KEY NOT NULL,
+                        word_count INTEGER,
+                        read_time_minutes INTEGER,
+                        FOREIGN KEY(chapter_id) REFERENCES chapters(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                database.execSQL("""
+                    CREATE TABLE IF NOT EXISTS novel_announcements (
+                        id TEXT PRIMARY KEY NOT NULL,
+                        novel_id TEXT NOT NULL,
+                        text TEXT NOT NULL,
+                        published_at TEXT,
+                        fetched_at INTEGER NOT NULL,
+                        FOREIGN KEY(novel_id) REFERENCES novels(id) ON DELETE CASCADE
+                    )
+                """.trimIndent())
+                database.execSQL("CREATE INDEX IF NOT EXISTS `index_novel_announcements_novel_id` ON `novel_announcements` (`novel_id`)")
+            }
+        }
+
         // Every migration, in order - the one list create() hands to Room, and the one
         // MigrationChainTest (JVM) and MigrationTest (instrumented) check. A new
         // MIGRATION_n_m only counts once it is added here.
         val ALL_MIGRATIONS: Array<Migration> = arrayOf(
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
             MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
-            MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15
+            MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15,
+            MIGRATION_15_16
         )
 
         // NOTE: deliberately no fallbackToDestructiveMigration() here. That fallback

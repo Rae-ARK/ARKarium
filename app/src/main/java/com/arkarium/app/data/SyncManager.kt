@@ -29,15 +29,44 @@ import java.util.UUID
 // One entry from a manifest.json's "files" map - see docs/foundational/architecture.md, Sync: manifest. relativePath
 // here has already been through SyncPaths.sanitize by the time a Manifest exists; a
 // Manifest is never constructed with an unsafe path in it.
+//
+// wordCount/readTimeMinutes (ideas.md "Serial-fiction manifest metadata",
+// peer-app-survey.md Suggestion 1) are both optional, backward-compatible additions -
+// a manifest.json predating this field, or a file entry that simply omits it, parses
+// exactly as before with both left null (see parseManifest's optIntOrNull below).
+// Meaningful only for a chapter-file entry; a publisher putting them on cover.*/
+// metadata.json/etc. is harmless but ignored - nothing ever reads them off anything
+// but a path SyncViewModel resolves to a ChapterEntity.
 data class ManifestFileEntry(
     val relativePath: String,
     val size: Long,
-    val sha256: String
+    val sha256: String,
+    val wordCount: Int? = null,
+    val readTimeMinutes: Int? = null
 )
 
+// One manifest-level announcement entry - see NovelAnnouncementEntity's doc comment
+// for why this is deliberately not the in-chapter `<news>` callout. `text` is the only
+// required field; a bare JSON string in the manifest's "announcements" array (instead
+// of an {"text":...} object) is accepted too, with publishedAt left null - see
+// parseManifest, same string-or-object forgiveness ScannerImpl.readLocalMetadata
+// already extends to "genres".
+data class ManifestAnnouncement(
+    val text: String,
+    val publishedAt: String? = null
+)
+
+// `status`/`announcements` are both optional, root-level additions to manifest.json
+// (ideas.md "Serial-fiction manifest metadata") - absent entirely in a manifest
+// predating this field, same backward-compatibility contract as ManifestFileEntry's
+// new fields above. `status` is already normalized/validated (PublicationStatus.fromRaw)
+// by the time a Manifest exists - an unrecognized value is null here, not the raw
+// publisher string, so every caller downstream can treat it as a closed enum name.
 data class Manifest(
     val version: Int,
-    val files: List<ManifestFileEntry>
+    val files: List<ManifestFileEntry>,
+    val status: String? = null,
+    val announcements: List<ManifestAnnouncement>? = null
 )
 
 class ManifestParseException(message: String) : IOException(message)
@@ -194,11 +223,56 @@ class SyncClient {
                 ?: throw ManifestParseException("manifest.json entry \"$path\" is missing sha256")
             val size = entry.optLong("size", -1)
             if (size < 0) throw ManifestParseException("manifest.json entry \"$path\" is missing size")
-            files.add(ManifestFileEntry(relativePath = SyncPaths.sanitize(path), size = size, sha256 = sha256))
+            files.add(
+                ManifestFileEntry(
+                    relativePath = SyncPaths.sanitize(path),
+                    size = size,
+                    sha256 = sha256,
+                    wordCount = entry.optIntOrNull("wordCount"),
+                    readTimeMinutes = entry.optIntOrNull("readTimeMinutes")
+                )
+            )
         }
-        return Manifest(version = version, files = files)
+
+        // Both new, optional, root-level fields - see Manifest's doc comment. Neither
+        // one failing to parse takes down the whole manifest: a malformed
+        // "announcements" entry is just skipped (same forgiving-per-item philosophy as
+        // files/entry.optJSONObject(path) ?: continue above), and an unrecognized
+        // "status" string normalizes to null via PublicationStatus.fromRaw rather than
+        // throwing.
+        val status = PublicationStatus.fromRaw(root.optString("status").takeIf { it.isNotBlank() })
+        val announcementsArray = root.optJSONArray("announcements")
+        val announcements = if (announcementsArray != null) {
+            (0 until announcementsArray.length()).mapNotNull { i ->
+                // Accept either a bare string or {"text": ..., "publishedAt": ...} -
+                // see ManifestAnnouncement's doc comment.
+                val obj = announcementsArray.optJSONObject(i)
+                if (obj != null) {
+                    obj.optString("text").takeIf { it.isNotBlank() }?.let { text ->
+                        ManifestAnnouncement(text = text, publishedAt = obj.optString("publishedAt").takeIf { it.isNotBlank() })
+                    }
+                } else {
+                    announcementsArray.optString(i).takeIf { it.isNotBlank() }?.let { text ->
+                        ManifestAnnouncement(text = text)
+                    }
+                }
+            }
+        } else {
+            null
+        }
+
+        return Manifest(version = version, files = files, status = status, announcements = announcements)
     }
 }
+
+// JSONObject.optInt always returns a real Int (0 by default), which can't distinguish
+// "the manifest explicitly said 0" from "this field was never there" - exactly the gap
+// ManifestFileEntry.wordCount/readTimeMinutes need to stay null for an old manifest
+// instead of silently becoming "0 words, 0 minutes" for every chapter. org.json has no
+// built-in optIntOrNull, hence this tiny helper instead of a bare optInt call at either
+// of parseManifest's two call sites above.
+private fun JSONObject.optIntOrNull(name: String): Int? =
+    if (has(name) && !isNull(name)) optInt(name).takeIf { it >= 0 } else null
 
 // Result of one sync pass against a relay - callers persist this into
 // NovelDao.updateSyncState + SyncedFileDao themselves; SyncManager never writes to
@@ -215,7 +289,24 @@ data class SyncOutcome(
     // persist this into NovelEntity.syncFolderName so the *next* sync doesn't have to
     // re-derive the folder by name/id-hash guessing - see sync()'s folder-relocation
     // comment below.
-    val folderName: String? = null
+    val folderName: String? = null,
+    // Everything below is straight off the manifest this pass just fetched (Manifest.
+    // status/announcements/ManifestFileEntry.wordCount+readTimeMinutes) - see
+    // "Serial-fiction manifest metadata" in ideas.md. Populated even on the early
+    // "already up to date" return (unlike `files`/`folderName`, which have nothing new
+    // to report there): the manifest was still fetched and parsed on that path, so
+    // there's no reason to make the caller re-fetch it just to read these. SyncManager
+    // still never writes to Room itself (see the class doc comment) - the caller
+    // (SyncViewModel) is what turns these into NovelDao.updatePublicationStatus,
+    // NovelAnnouncementDao.replaceForNovel and ChapterDao.findByNovelAndRelativePath +
+    // ChapterManifestMetaDao.upsert calls, same division of labor as files/folderName.
+    val publicationStatus: String? = null,
+    val announcements: List<ManifestAnnouncement>? = null,
+    // relativePath -> (wordCount, readTimeMinutes), chapter-file entries only (a
+    // cover.*/metadata.json entry simply never has either field set, so it's harmless
+    // but pointless to include - callers only ever look this up by a ChapterEntity's
+    // own relativePath anyway).
+    val chapterManifestMeta: Map<String, Pair<Int?, Int?>> = emptyMap()
 )
 
 // Handles the file IO for a sync pass: downloading new/changed files into a novel's
@@ -333,8 +424,20 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         val folderName = folder.name ?: sanitizeFolderName(displayName)
 
         val records = downloadManifestFiles(baseUrl, manifest, folder, libraryRoot, existing = emptyList(), onProgress)
-        folderName to SyncOutcome(newVersion = manifest.version, files = records, changed = true, folderName = folderName)
+        folderName to SyncOutcome(
+            newVersion = manifest.version, files = records, changed = true, folderName = folderName,
+            publicationStatus = manifest.status, announcements = manifest.announcements,
+            chapterManifestMeta = manifestChapterMeta(manifest)
+        )
     }
+
+    // relativePath -> (wordCount, readTimeMinutes) for every manifest file entry that
+    // has at least one of the two set - shared by downloadInitial and sync below so
+    // the two don't drift into building this map two different ways.
+    private fun manifestChapterMeta(manifest: Manifest): Map<String, Pair<Int?, Int?>> =
+        manifest.files
+            .filter { it.wordCount != null || it.readTimeMinutes != null }
+            .associate { it.relativePath to (it.wordCount to it.readTimeMinutes) }
 
     // Re-syncs an already-added fiction. Fetches the manifest and returns immediately
     // (changed = false) if `novel.syncSourceVersion` already matches - see
@@ -362,7 +465,17 @@ class SyncManager(private val context: Context, private val client: SyncClient =
 
         if (novel.syncSourceVersion != null && novel.syncSourceVersion == manifest.version) {
             onProgress("Already up to date")
-            return@withContext SyncOutcome(newVersion = manifest.version, files = knownFiles, changed = false)
+            // Status/announcements/chapter meta are still reported here even though
+            // nothing else changed - see SyncOutcome's doc comment on why this branch
+            // doesn't skip them. A publisher can flip "ongoing" to "hiatus" without
+            // bumping the manifest version (nothing about files changed), and a reader
+            // checking for updates on an unrelated novel shouldn't have to separately
+            // re-check this one just to notice that.
+            return@withContext SyncOutcome(
+                newVersion = manifest.version, files = knownFiles, changed = false,
+                publicationStatus = manifest.status, announcements = manifest.announcements,
+                chapterManifestMeta = manifestChapterMeta(manifest)
+            )
         }
 
         // Folder relocation, in priority order:

@@ -69,6 +69,19 @@ fun mergeNovelForRescan(
         genres = if (remoteFetched) existing.genres else (scanned.genres ?: existing.genres),
         remoteCoverUrl = existing.remoteCoverUrl,
         publishedDate = if (remoteFetched) existing.publishedDate else (scanned.publishedDate ?: existing.publishedDate),
+        // publicationStatus can come from either a local metadata.json (this scan,
+        // `scanned`) or a prior sync pass's manifest (SyncViewModel's
+        // NovelDao.updatePublicationStatus call, already sitting in `existing` since
+        // that write happens outside this merge entirely). Not gated behind
+        // `remoteFetched` the way description/genres/publishedDate are - those three
+        // are specifically about NovelMetadataProvider's "Fetch info" result winning
+        // over a local file once the user has explicitly run it, which has no
+        // equivalent concept here. Simple fill-in-if-present instead: a local
+        // metadata.json edit always wins when it declares a status (an author/reader
+        // hand-editing the file is a deliberate override), and a plain rescan that
+        // finds no metadata.json (or one with no "status" key) never clobbers whatever
+        // the last sync already determined.
+        publicationStatus = scanned.publicationStatus ?: existing.publicationStatus,
         externalSourceUrl = existing.externalSourceUrl,
         metadataFetchedAt = existing.metadataFetchedAt,
         // Sync bookkeeping columns are never *overwritten* by a scan - always carry

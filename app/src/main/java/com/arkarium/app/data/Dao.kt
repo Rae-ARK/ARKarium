@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Upsert
 
 @Dao
@@ -51,6 +52,14 @@ interface NovelDao {
 
     @Query("UPDATE novels SET reading_status = :status WHERE id = :novelId")
     suspend fun updateReadingStatus(novelId: String, status: String)
+
+    // Author-declared publication status (NovelEntity.publicationStatus) - written by
+    // either a scan (metadata.json) or a sync pass (the manifest's own "status"
+    // field); see LibraryScan.kt's mergeNovelForRescan for how the two are arbitrated.
+    // `status` is nullable here (unlike updateReadingStatus above) since a manifest
+    // can legitimately stop declaring a status it previously had.
+    @Query("UPDATE novels SET publication_status = :status WHERE id = :novelId")
+    suspend fun updatePublicationStatus(novelId: String, status: String?)
 
     @Query("SELECT * FROM novels WHERE reading_status = :status ORDER BY title")
     suspend fun byStatus(status: String): List<NovelEntity>
@@ -258,6 +267,14 @@ interface ChapterDao {
     @Query("SELECT * FROM chapters WHERE id = :chapterId")
     suspend fun findById(chapterId: String): ChapterEntity?
 
+    // Resolves a manifest's relative path (ManifestFileEntry.relativePath, already
+    // SyncPaths.sanitize'd) back to the chapter row ScannerImpl's rescan just
+    // (re)created for it - see ChapterEntity.relativePath's doc comment. The caller
+    // (SyncViewModel) uses this chapter's id to write into chapter_manifest_meta;
+    // nothing here writes word_count/read_time_minutes directly.
+    @Query("SELECT * FROM chapters WHERE novel_id = :novelId AND relative_path = :relativePath")
+    suspend fun findByNovelAndRelativePath(novelId: String, relativePath: String): ChapterEntity?
+
     @Query("DELETE FROM chapters WHERE novel_id = :novelId")
     suspend fun deleteForNovel(novelId: String)
 
@@ -352,4 +369,43 @@ interface SyncedFileDao {
 
     @Query("DELETE FROM synced_files WHERE novel_id = :novelId")
     suspend fun deleteForNovel(novelId: String)
+}
+
+@Dao
+interface ChapterManifestMetaDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(meta: ChapterManifestMetaEntity)
+
+    @Query("SELECT * FROM chapter_manifest_meta WHERE chapter_id = :chapterId")
+    suspend fun forChapter(chapterId: String): ChapterManifestMetaEntity?
+
+    // Batch read for a chapter list (NovelDetailScreen) - one query for the whole
+    // visible list instead of one per row, same reasoning as every other F26-flagged
+    // per-row query in this codebase (see ScannerImpl's listFiles() sharing).
+    @Query("SELECT * FROM chapter_manifest_meta WHERE chapter_id IN (:chapterIds)")
+    suspend fun forChapters(chapterIds: List<String>): List<ChapterManifestMetaEntity>
+}
+
+@Dao
+interface NovelAnnouncementDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(announcements: List<NovelAnnouncementEntity>)
+
+    @Query("SELECT * FROM novel_announcements WHERE novel_id = :novelId ORDER BY fetched_at DESC")
+    suspend fun forNovel(novelId: String): List<NovelAnnouncementEntity>
+
+    @Query("DELETE FROM novel_announcements WHERE novel_id = :novelId")
+    suspend fun deleteForNovel(novelId: String)
+
+    // Wholesale replace, mirroring SyncedFileDao's contract: SyncOutcome documents its
+    // `files` as the manifest's complete current set, not a delta, and the same is
+    // true of a manifest's announcements list - this table should reflect exactly
+    // what the most recent manifest declared, never accumulate every announcement
+    // ever seen. @Transaction makes the delete+insert pair atomic, so a reader querying
+    // mid-sync never observes a transient "zero announcements" gap.
+    @Transaction
+    suspend fun replaceForNovel(novelId: String, announcements: List<NovelAnnouncementEntity>) {
+        deleteForNovel(novelId)
+        upsertAll(announcements)
+    }
 }
