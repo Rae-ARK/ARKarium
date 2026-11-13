@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Backs MainActivity.openLibraryFolderInFileManager() (LibrarySettingsScreen's
+     "Open library folder in file manager" action). external-media-path's `path="."`
+     maps the FileProvider's authority onto the whole of getExternalMediaDirs()[0] -
+     the same fixed Android/media/com.arkarium.app/ folder data/LibraryScan.kt's
+     resolveLibraryRoot and libraryRootFile both resolve - so FileProvider.getUriForFile
+     can mint a content:// Uri for that directory itself, not just files inside it. -->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <external-media-path name="library" path="." />
+</paths>
