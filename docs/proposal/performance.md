@@ -1,6 +1,6 @@
 # Performance: SAF I/O, build/startup, recomposition, images, database and scan cost
 
-> **Kind:** proposal · **Status:** F14, F15, F24, F25, F26 and F28 fixed in code (all unmeasured — no device/benchmark run); F27 reviewed and deferred, no code change (see below); everything else not yet built; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-13 @ b315244 (F24's migration, entity indices and exported `15.json` schema as of this patch — F15's shared `ImageLoader` and F25/F26/F28 fixes and F27's deferral as of the prior patch, the F14 additions/closure as of that same pass, everything else as of 2026-11-12)
+> **Kind:** proposal · **Status:** F14, F15, F24, F25, F26 and F28 fixed in code (all unmeasured — no device/benchmark run); F27 reviewed and deferred, no code change (see below); D4's toolchain bump (Kotlin 2.0.21, Compose BOM 2024.09.00, Navigation 2.8.3) fixed in code under F12, also unbuilt; F12's R8/baseline-profile/benchmark-module work still not built; D4 (toolchain) and D6 (splash policy) decided, measurement should come before the rest · **Verified:** 2026-11-13 @ b315244 (F12's D4 toolchain bump as of this patch — F24's migration, entity indices and exported `15.json` schema as of the prior patch, F15's shared `ImageLoader` and F25/F26/F28 fixes and F27's deferral as of the patch before that, the F14 additions/closure as of that same pass, everything else as of 2026-11-12)
 > **Origin:** [`engineering-review.md`](engineering-review.md) F5, F12–F15, F24–F28.
 
 ### F5. SAF scan and sync cost several provider queries per file
@@ -48,9 +48,11 @@ accumulate.
 
 **Severity:** Medium. **Tags:** V.
 **Where:** `app/build.gradle.kts` (`isMinifyEnabled = false`,
-`isShrinkResources = false`, Compose BOM `2023.10.01`, Kotlin `1.9.10`,
-`kotlinCompilerExtensionVersion = "1.5.3"`, `compileSdk`/`targetSdk` 34); no
-`benchmark` module or baseline profile anywhere in the project.
+`isShrinkResources = false`; `compileSdk`/`targetSdk` 34); no `benchmark`
+module or baseline profile anywhere in the project.
+**Status: the toolchain-bump part (D4, below) is fixed in code, unbuilt
+and unmeasured — the R8/baseline-profile/benchmark-module part of this
+finding is still open, see Direction below.**
 
 R8 is off by deliberate choice today (the comment in `build.gradle.kts` says
 proguard rules for Room/Compose reflection aren't written or tested yet), not
@@ -65,7 +67,7 @@ rules, turn `isMinifyEnabled` on; (2) add a `:benchmark` module with
 Macrobenchmark, starting with cold startup and a chapter-list scroll as the
 two journeys to track; (3) generate a baseline profile from those journeys.
 Measure before and after each step rather than assuming the commonly-cited
-improvement figures transfer to an app this size.
+improvement figures transfer to an app this size. None of this is built yet.
 
 **Bundled in the same toolchain bump (D4):** Kotlin 2.x (unlocks
 strong-skipping-by-default for F14), a current Compose BOM, and Navigation
@@ -81,6 +83,40 @@ Navigation, each as its own change. Benchmark (once the `:benchmark` module
 in step 2 above exists) between each step, so that if cold start or scroll
 performance regresses, there's exactly one suspect rather than three
 simultaneous candidate causes.
+
+**Built (all three D4 steps, same patch):** `root build.gradle.kts`'s Kotlin
+plugin is now `2.0.21` (from `1.9.10`), with the matching
+`org.jetbrains.kotlin.plugin.compose` Compose-compiler plugin added at the
+same version and KSP bumped to the matching `2.0.21-1.0.27`.
+`app/build.gradle.kts` applies that new compiler plugin and drops
+`composeOptions.kotlinCompilerExtensionVersion` (the compiler is no longer
+versioned that way). The Compose BOM moved from `2023.10.01` to `2024.09.00`
+(Compose 1.7.x, the first line built against Kotlin 2.0), and
+`navigation-compose` moved from `2.7.5` to `2.8.3`, paired with
+`android:enableOnBackInvokedCallback="true"` in `AndroidManifest.xml` for
+predictive back (F17's manifest-flag requirement). Every other dependency
+version (Room, lifecycle, WorkManager, Coil, DataStore, DocumentFile,
+Webkit) is untouched.
+
+**Not staged across separate commits, and not benchmarked between steps, as
+D4's own decision calls for:** the `:benchmark` module D4's staging depends
+on doesn't exist yet (that's the still-open R8/baseline-profile part of this
+same finding, above), and this sandbox has no network path to
+`google()`/`mavenCentral()` to run `./gradlew` at all — the same standing
+caveat every other rung in this doc and `engineering-backlog.md` carries.
+All three version bumps landed together in source as the closest available
+approximation of the staged plan; nothing here has been compiled, let alone
+run or measured. Treat this the way D4 asks to treat a single combined bump:
+if something regresses, the first build is the one to re-check against each
+step's diff individually, in the order Kotlin/compiler → BOM → Navigation,
+since that's still the order of risk even though it landed as one patch.
+**`Divider`/`Divider()`** (used in `AuthorPageScreen.kt`, `NovelDetailScreen.kt`,
+`ReaderSettingsScreen.kt`, `SettingsScreen.kt`) is deprecated as of Material3
+1.2 in favor of `HorizontalDivider`/`VerticalDivider` but still present and
+source-compatible in the `material3` version this BOM resolves to — left
+as-is rather than mass-renamed in a patch nobody can compile to confirm,
+flagged here as a small opportunistic cleanup for whoever next touches those
+files on a real toolchain.
 
 ### F13. Splash: ~2.75s per cold start, per-frame recomposition, main-thread synthesis
 
@@ -176,12 +212,16 @@ rather than a one-line change left pending per site. `MainActivity.kt`'s
 `collectAsState()` sites are outside this finding's stated scope (`ui/`) and
 are not touched here.
 
-The project is on Kotlin 1.9.10 / Compose compiler 1.5.3. "Strong skipping"
-became the Compose compiler's default behavior in Kotlin 2.0.20; before that,
-a composable taking an unstable parameter type (a plain `List<T>`, for
-example) is never skipped, so anything typed `List<ChapterEntity>` etc.
-recomposes whenever its caller does, keys or no keys. This is part of the
-same D4 toolchain-upgrade decision as F12.
+The project was on Kotlin 1.9.10 / Compose compiler 1.5.3, where "strong
+skipping" isn't the default — a composable taking an unstable parameter type
+(a plain `List<T>`, for example) is never skipped, so anything typed
+`List<ChapterEntity>` etc. recomposes whenever its caller does, keys or no
+keys. **Done in code, unbuilt:** the D4 toolchain bump in F12 above moves
+the project to Kotlin 2.0.21, where strong skipping is the Compose
+compiler's default behavior, so this should now apply without any call-site
+change — nothing here was touched beyond the version bump itself, and
+whether it actually helps is exactly what F12's still-missing benchmark
+module would need to confirm.
 
 **Before changing anything:** enable the Compose compiler's metrics/reports
 output to see which composables are actually non-skippable today, rather

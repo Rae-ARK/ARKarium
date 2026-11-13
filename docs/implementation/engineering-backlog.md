@@ -1,6 +1,6 @@
 # Engineering backlog: merged roadmap
 
-> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12 and 15 closed won't-fix (see below), 19 done in code, unmeasured, F24 now also done and dusted (see below), 18 done in code for F15/F16, unmeasured, F19 still open (see below), 13, 16, 17 queued · **Verified:** 2026-11-13 @ b315244 (rung 19's F24 portion as of this patch — rung 18's F15/F16 portion as of the prior patch, rung 19's F25/F26/F28 portion as of the patch before that, the rest as of 2026-11-12)
+> **Kind:** implementation · **Status:** rungs 1–11 done (9's schema export landed via the `room-schema.yml` workflow, see below), 14 done in code at paragraph granularity but still needs on-device verification (see below), 12 and 15 closed won't-fix (see below), 19 done in code, unmeasured, F24 now also done and dusted (see below), 18 done in code for F15/F16, unmeasured, F19 still open (see below), 16's toolchain bump done in code, unbuilt (see below), 13, 17 queued · **Verified:** 2026-11-13 @ b315244 (rung 16's toolchain bump as of this patch — rung 19's F24 portion as of the prior patch, rung 18's F15/F16 portion as of the patch before that, rung 19's F25/F26/F28 portion as of the patch before that, the rest as of 2026-11-12)
 > **Origin:** a follow-up review pass over the open findings in
 > [`../proposal/engineering-review.md`](../proposal/engineering-review.md) and its
 > detail docs, the two open entries in [`../proposal/bugs/`](../proposal/bugs/README.md),
@@ -37,7 +37,7 @@ and point this row at that instead.
 | 13 | F4 — manifest signing (D5 decided: key custody; ECDSA vs Ed25519 still open) | Large | queued — own ladder when started | [`../proposal/manifest-signing.md`](../proposal/manifest-signing.md) |
 | 14 | F9 — reading position drifts (scroll fraction → offset-based anchor; bundled with TTS controls/highlight) | Large | **done in code, at paragraph granularity - on-device verification still open, see below** | [`../proposal/reader-playback.md`](../proposal/reader-playback.md) |
 | 15 | F5 — SAF scan does ~3 provider queries per file (per-directory cache) | Large | **won't-fix — SAF support removed instead, see below** | [`../foundational/design-notes.md`](../foundational/design-notes.md) ("Settled decisions") |
-| 16 | F12/F14/F17 — Kotlin 2.x / Compose BOM / Navigation upgrade (D4 decided: staged) | Large | queued — own ladder when started | [`../proposal/performance.md`](../proposal/performance.md) |
+| 16 | F12/F14/F17 — Kotlin 2.x / Compose BOM / Navigation upgrade (D4 decided: staged) | Large | **toolchain bump done in code, unbuilt — see below; F12's R8/benchmark/baseline-profile work and F17's edge-to-edge work still queued** | [`../proposal/performance.md`](../proposal/performance.md) |
 | 17 | F13 — splash cold-start cost (D6 decided: policy) | Large | queued | [`../proposal/performance.md`](../proposal/performance.md) |
 | 18 | F15, F16, F19 — image crossfade, general animation, reader typography | Large | **F15 and F16 done in code, unmeasured; F19 still queued** | [`../proposal/performance.md`](../proposal/performance.md), [`../proposal/animation-and-polish.md`](../proposal/animation-and-polish.md) |
 | 19 | F24, F25, F26, F28 — missing FK indexes, scan transaction batching, redundant `listFiles()` calls, streak-calc eager date-key list (F27 reviewed, deferred — no code change) | Small | **done in code, unmeasured — see below** | [`../proposal/performance.md`](../proposal/performance.md) |
@@ -306,6 +306,40 @@ look correct against Room's and `DocumentFile`'s documented behavior, but "one
 commit instead of many" and "fewer `listFiles()` calls" are exactly the kind of
 claims that should be confirmed with a real library and (once the `:benchmark`
 module in rung 16 exists) a Macrobenchmark run, not just a code read.
+
+## Rung 16 — what changed
+
+The D4-decided toolchain bump (Kotlin 2.x + Compose compiler plugin, then
+Compose BOM, then Navigation — see
+[`../proposal/performance.md`](../proposal/performance.md) F12) landed in
+code: root `build.gradle.kts`'s Kotlin plugin is `2.0.21` (was `1.9.10`)
+with the matching `org.jetbrains.kotlin.plugin.compose` plugin added and
+KSP bumped to `2.0.21-1.0.27`; `app/build.gradle.kts` applies that compiler
+plugin and drops the now-obsolete
+`composeOptions.kotlinCompilerExtensionVersion`; the Compose BOM moved from
+`2023.10.01` to `2024.09.00`; `navigation-compose` moved from `2.7.5` to
+`2.8.3`; and `AndroidManifest.xml` gained
+`android:enableOnBackInvokedCallback="true"` for predictive back (F17).
+
+**Not actually staged across separate benchmarked commits, despite D4
+asking for that:** the `:benchmark` module the staging plan depends on
+doesn't exist yet (that's the still-open R8/baseline-profile/benchmark
+third of F12), and this sandbox has no network path to
+`google()`/`mavenCentral()` to run `./gradlew` at all, so there was nothing
+to benchmark between steps even if they'd landed separately. All three
+version bumps went into one patch instead, as the closest available
+approximation — nothing here has been compiled. The one source change
+beyond version numbers is the manifest flag; no `ui/` call site needed
+touching for either the compiler-plugin switch or the BOM/Navigation bumps.
+One pre-existing, unrelated-to-this-bump deprecation is flagged rather than
+touched: `Divider(...)` (used in four screens) is deprecated in favor of
+`HorizontalDivider`/`VerticalDivider` as of Material3 1.2 but still present
+and source-compatible in the version this BOM resolves to.
+
+This closes the F12/F14/F17 toolchain piece of this rung specifically —
+F12's R8/baseline-profile/benchmark-module work and F17's edge-to-edge work
+are each their own remaining scope, not part of this rung's "upgrade"
+item, and stay queued.
 
 ## Rungs 12 and 15 — won't-fix
 

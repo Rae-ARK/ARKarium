@@ -1,6 +1,6 @@
 # Animation, platform readiness, and reading typography
 
-> **Kind:** proposal · **Status:** F16 built in full; F17 and F19 still open · **Verified:** 2026-11-13 @ 99cb9ff
+> **Kind:** proposal · **Status:** F16 built in full; F17's predictive-back prerequisite (Navigation 2.8.3 + the manifest flag) fixed in code, unbuilt — its edge-to-edge half is still open; F19 still open · **Verified:** 2026-11-13 @ 99cb9ff
 > **Origin:** [`engineering-review.md`](engineering-review.md) F16, F17, F19.
 
 ### F16. Almost no animation outside the splash — built
@@ -49,8 +49,11 @@ accessibility settings:**
 **Severity:** Low. **Tags:** V for current versions/flags, E for the exact
 version/API requirements (re-check against current Android docs before
 scheduling this).
-**Where:** `app/build.gradle.kts` (`navigation-compose:2.7.5`);
-`AndroidManifest.xml` (no `android:enableOnBackInvokedCallback`);
+**Status: the predictive-back half is fixed in code, unbuilt (see below);
+the edge-to-edge half is still open.**
+**Where:** `app/build.gradle.kts` (`navigation-compose:2.8.3` as of this
+patch, was `2.7.5`); `AndroidManifest.xml`
+(`android:enableOnBackInvokedCallback="true"` as of this patch);
 display-cutout inset handling now exists app-wide (`WindowInsets.displayCutout`,
 built per [`landscape-tablet.md`](../far-future-concern/landscape-tablet.md)'s cutout fix) plus
 Reader's own status-bar show/hide for its full-screen toggle, but no general
@@ -59,18 +62,29 @@ anywhere under `ui/` — most screens zero out their `Scaffold`'s
 `windowInsets`/`contentWindowInsets` instead of consuming them.
 
 Predictive back in Navigation Compose needs `2.8.0-alpha06` or later plus the
-manifest flag; this project is on `2.7.5` with no flag, so it gets the plain
-back-stack pop with no predictive preview. Edge-to-edge: the display cutout is
-now handled app-wide, but general system-bar insets (status/navigation bars)
+manifest flag; this project was on `2.7.5` with no flag, so it got the plain
+back-stack pop with no predictive preview. **Built:** `navigation-compose`
+is now `2.8.3` (stable, well past the `2.8.0-alpha06` floor) and
+`AndroidManifest.xml`'s `<application>` tag now carries
+`android:enableOnBackInvokedCallback="true"` — landed together with F12's
+Kotlin/Compose-BOM bump in `performance.md` since all three share the D4
+toolchain decision and the same unbuilt caveat: this sandbox can't run
+`./gradlew`, so the predictive-back *preview* (the actual back-gesture
+animation on a device running 13+) is unverified, same as everything else
+in this pass. No app code called the old plain `BackHandler`/back-dispatcher
+APIs directly, so no call sites needed touching for this half. Edge-to-edge
+is unchanged by this patch and stays open below.
+
+Edge-to-edge: the display cutout is now handled app-wide, but general system-bar insets (status/navigation bars)
 still aren't formally handled, and — not re-verified this pass, flagged **E**
 — targeting a newer API level is expected to make edge-to-edge mandatory
 rather than opt-in, which would break layouts that don't already account for
 system bar insets. Confirm the exact enforcement version against current
 Android docs before `compileSdk`/`targetSdk` is bumped past 34.
 
-**Direction:** bundle with the Navigation upgrade in `performance.md` F12/D4
-(2.8+, the manifest flag) for predictive back. Edge-to-edge is a separate,
-larger pass — add `WindowInsets` handling screen by screen — and should be
+**Direction:** the Navigation upgrade and manifest flag for predictive back
+are done, above. Edge-to-edge is still a separate, larger pass — add
+`WindowInsets` handling screen by screen — and should be
 scheduled ahead of any `targetSdk` bump past whatever version makes it
 mandatory, not reactively after a bump breaks layouts.
 
@@ -91,6 +105,6 @@ uncomfortable to read in one pass.
 **Direction:** cap the text column's max width so lines stay in a reasonable
 reading-length range regardless of screen width, and enable hyphenation once
 on a Compose version that supports it (check the current Compose text API —
-this project is on an old BOM per `performance.md` F12, and hyphenation
+this project moved to Compose BOM 2024.09.00 per `performance.md` F12 — unbuilt, so not yet confirmed on a real toolchain — and hyphenation
 support has moved across Compose releases, so re-check rather than assuming
 this project's current version has it).
