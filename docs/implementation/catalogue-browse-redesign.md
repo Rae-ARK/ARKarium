@@ -1,9 +1,10 @@
 # Catalogue Browse: discovering fictions before you've followed them
 
-> **Kind:** proposal · **Status:** design only, nothing built · **Verified:** 2026-11-13 @ f0da12d
+> **Kind:** implementation · **Status:** not started, Rung 1 next · **Verified:** 2026-11-13 @ 64db766
 > **Origin:** owner request - Browse should show every fiction Rae ARK publishes,
 > not just the ones already synced into the library, with a Follow step that
-> gates reading.
+> gates reading. Promoted from `proposal/` once the field list below was
+> corrected (see "Catalogue ingestion" below) and staged into rungs.
 
 Per [`what-is-arkarium.md`](../foundational/what-is-arkarium.md): this is a
 catalogue of **one author's own fictions**, not a discovery surface across
@@ -62,12 +63,30 @@ followed novel, just without downloading every chapter file behind them:
 
 This deliberately reuses the one existing relay shape (`RELAY_HOST + slug +
 "/"`, manifest + optional metadata.json + cover) instead of asking for a new
-aggregate "catalogue.json" from the publisher side. The earlier framing of
-this idea (views/favorites/readers/reviews, ScribbleHub-shaped stats) is
-dropped entirely - per the correction above, ARKarium is a direct-to-reader
-app for one author's own readers, not a storefront aggregating platform
-metrics, and nothing in the existing manifest/metadata format carries that
-kind of data anyway.
+aggregate "catalogue.json" from the publisher side.
+
+The earlier framing of this idea (views/favorites/readers/reviews,
+ScribbleHub-shaped stats) stays dropped entirely - ARKarium is a
+direct-to-reader app for one author's own readers, not a storefront
+aggregating platform metrics, and that kind of data needs reader-side
+telemetry no backend here collects, not publish-time content. That's a
+structural gap, not a missing-field one, so it doesn't close just because
+the manifest grows.
+
+**Total word count, publication status and release cadence are different** -
+genuinely real, computable from the manifest as of the "Serial-fiction
+manifest metadata" work (`PublicationStatus`, `ChapterManifestMetaEntity.
+wordCount`, `Manifest.chaptersPerWeek` - see `NovelEntity`'s matching
+columns). A catalogue entry can show:
+
+- **Total words** - sum of `wordCount` across the manifest's chapter entries;
+  `null`, not a fabricated `0`, when none of them have it set.
+- **Status** - `PublicationStatus` name straight off the manifest's `status`.
+- **Chapters/week** - the author's own declared cadence
+  (`Manifest.chaptersPerWeek`), *not* computed from real publish timestamps -
+  the manifest has no per-chapter publish time, only a bumped `version`
+  integer, so this is "what the author says," same trust level as `status`,
+  not a derived figure.
 
 ### Storage
 
@@ -86,6 +105,10 @@ data class CatalogueEntryEntity(
     val coverPath: String?,     // file:// path under the app's private cache, below
     val chapterCount: Int,
     val publishedDate: String?,
+    // New vs. this doc's original sketch - see "Catalogue ingestion" above.
+    val totalWordCount: Int?,      // sum of chapter wordCount; null if none set
+    val status: String?,           // PublicationStatus name
+    val chaptersPerWeek: Double?,  // author-declared cadence
     val cachedAt: Long          // when this row was last refreshed - see C3
 )
 ```
@@ -203,6 +226,26 @@ The one open wrinkle: today `{id}` is always a real `NovelEntity.id`; a
 catalogue entry has a `slug` instead. Simplest fix once this is actually
 built: resolve `id` against `novels` first, falling back to
 `catalogue_entries.slug` if nothing matches - not designed further here.
+
+## Rungs
+
+Each rung below is independently shippable and behavior-preserving up to the
+point it lands - a rung marked `done` never leaves Browse or NovelDetail in a
+half-working state for a user who hasn't followed anything new yet. Rungs
+1-4 are backend/data-layer and independently testable without touching a
+screen; none of 5-7 is shippable alone before Rung 4 exists (a Browse grid
+showing catalogue cards with no deletion hook would leave a permanent
+duplicate the moment someone actually follows one).
+
+| Rung | Item | Depends on | Status | Target file(s) |
+|---|---|---|---|---|
+| 1 | `CatalogueEntryEntity` + `CatalogueEntryDao` + `MIGRATION_17_18` (schema above) | - | next | `Entities.kt`, `Dao.kt`, `AppDatabase.kt` |
+| 2 | Catalogue ingestion pass - per-slug fetch manifest/metadata/cover, compute `chapterCount`/`totalWordCount`, upsert; one slug's failure never aborts the rest (C4) | 1 | queued | `SyncManager.kt` (new `fetchCatalogueEntry(slug)`, reusing `fetchManifest`/`downloadFile`), `SyncViewModel.kt` (per-item loop, same shape as `downloadFiction`) |
+| 3 | Private-storage writer (`context.filesDir/catalogue/<slug>/`) for cover + metadata.json, slug through `SyncPaths.sanitize` first (C1) | 2 | queued | `SyncManager.kt` or new `CatalogueStorage.kt` |
+| 4 | C2 deletion hook: `addFictionByName` deletes the matching `catalogue_entries` row (+ cached files) on success | 1 | queued | `SyncViewModel.kt` |
+| 5 | `FictionBrowseScreen`: merge into one `sealed BrowseItem` list; catalogue cards get no status badge, no star row; `NEWEST`/alphabetical sort only for catalogue items | 1 | queued | `FictionBrowseScreen.kt` |
+| 6 | `NovelDetailScreen` catalogue-preview mode (above) - status/cadence row reads `CatalogueEntryEntity.status`/`chaptersPerWeek` the same way it already reads `NovelEntity`'s | 1, 4, 5 | queued | `NovelDetailScreen.kt` |
+| 7 | Navigation fallback: `novelDetail/{id}` resolves `novels` first, falls back to `catalogue_entries.slug`; recompose in place (no new back-stack entry) once Follow succeeds | 6 | queued | `MainActivity.kt` |
 
 ## Explicitly out of scope
 

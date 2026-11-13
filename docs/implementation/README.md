@@ -12,6 +12,7 @@ Each doc is one ladder: a table of rungs, each `done`, `current`, `next`,
 | [`engineering-backlog.md`](engineering-backlog.md) | 13 of 18 rungs done (1–11, 14, 19); 12 and 15 won't-fix; 18 partial (F15/F16 done, F19 open) | none — 13, 16, 17 queued pending their own ladder; 18's F19 remainder still queued |
 | [`multi-document-reader.md`](multi-document-reader.md) | rung 0 done | 1: loud (not silent) TTS listener collision |
 | [`ui-layer-reorg.md`](ui-layer-reorg.md) | not started | A1 (next): dialog host out of `MainActivity.renderMainContent()` |
+| [`catalogue-browse-redesign.md`](catalogue-browse-redesign.md) | not started | 1 (next): `CatalogueEntryEntity` + DAO + migration |
 
 **Rules for this folder**
 
