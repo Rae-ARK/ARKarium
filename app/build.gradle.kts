@@ -1,6 +1,10 @@
 plugins {
     id("com.android.application")
     kotlin("android")
+    // D4 step 1: the Compose compiler now ships as its own Kotlin-repo plugin, versioned
+    // with Kotlin itself, instead of AGP's old composeOptions.kotlinCompilerExtensionVersion
+    // (removed below). See the root build.gradle.kts plugins block for the version pin.
+    id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
 }
 
@@ -94,9 +98,9 @@ android {
         getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
 
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.3"
-    }
+    // composeOptions.kotlinCompilerExtensionVersion is gone as of D4 step 1 (Kotlin 2.0):
+    // the Compose compiler is now the org.jetbrains.kotlin.plugin.compose Gradle plugin
+    // applied above, versioned with Kotlin itself rather than pinned separately here.
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -125,7 +129,11 @@ android {
 }
 
 dependencies {
-    val composeBom = platform("androidx.compose:compose-bom:2023.10.01")
+    // D4 step 2: bumped from 2023.10.01 (Compose 1.5.x, Kotlin 1.9) to the first BOM
+    // built against Kotlin 2.0 (Compose 1.7.x), now that step 1 (Kotlin 2.0.21 + the
+    // Compose compiler plugin, above) has landed. See performance.md F12 for the staged
+    // plan; step 3 (Navigation, just below) is the last of the three.
+    val composeBom = platform("androidx.compose:compose-bom:2024.09.00")
     implementation(composeBom)
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
@@ -178,7 +186,10 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.4.0")
 
     // Navigation
-    implementation("androidx.navigation:navigation-compose:2.7.5")
+    // D4 step 3 (final step of the staged bump): 2.7.5 -> 2.8.3, the stable line that
+    // carries predictive back support (needs 2.8.0-alpha06+) - paired with the manifest
+    // flag in AndroidManifest.xml. See animation-and-polish.md F17 and performance.md F12.
+    implementation("androidx.navigation:navigation-compose:2.8.3")
 
     // DataStore
     implementation("androidx.datastore:datastore-preferences:1.0.0")
