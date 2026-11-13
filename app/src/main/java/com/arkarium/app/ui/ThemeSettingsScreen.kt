@@ -97,36 +97,6 @@ fun ThemeSettingsScreen(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // AMOLED mode - Dark's own sub-choice, same "reveal only under the row
-                // it belongs to" pattern as System Default's daytime-look picker below.
-                // Only shown while Dark is the active theme, since the override it
-                // controls (ui/theme/AppTheme.kt's applyAmoledMode) only ever applies
-                // on top of Theme.DARK's own resolved palette.
-                if (theme == Theme.DARK && currentTheme == Theme.DARK) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                "AMOLED mode",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                "True black background - deeper contrast and less " +
-                                    "battery use on OLED/AMOLED screens.",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                            )
-                        }
-                        Switch(checked = amoledModeEnabled, onCheckedChange = onAmoledModeToggle)
-                    }
-                    Spacer(modifier = Modifier.height(10.dp))
-                }
-
                 // System Default's own daytime-look sub-choice - indented under its
                 // parent option, a "reveal on select" pattern. Only shown right under
                 // SYSTEM_DEFAULT's own row (not e.g. after every row) so it reads as
@@ -149,6 +119,46 @@ fun ThemeSettingsScreen(
                             )
                             Spacer(modifier = Modifier.height(8.dp))
                         }
+                    }
+                }
+            }
+
+            // AMOLED mode - moved out from under Dark's own row (where it used to be
+            // nested inside the forEach above) to its own section below the whole
+            // theme list, matching the surfaceVariant-card switch-row idiom every
+            // other settings page (Splash, Library) already uses instead of a bare
+            // indented Row. Still only shown while Dark is the active theme, same
+            // "reveal on select" condition as before - the override it controls
+            // (ui/theme/AppTheme.kt's applyAmoledMode) only ever applies on top of
+            // Theme.DARK's own resolved palette, so there's nothing to toggle while
+            // any other theme is selected.
+            if (currentTheme == Theme.DARK) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 12.dp)
+                        ) {
+                            Text("AMOLED mode", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "True black background - deeper contrast and less " +
+                                    "battery use on OLED/AMOLED screens.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            )
+                        }
+                        Switch(checked = amoledModeEnabled, onCheckedChange = onAmoledModeToggle)
                     }
                 }
             }
