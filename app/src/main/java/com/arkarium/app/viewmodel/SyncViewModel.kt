@@ -12,6 +12,7 @@ import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.CatalogueEntryEntity
 import com.arkarium.app.data.CatalogueStorage
 import com.arkarium.app.data.ChapterManifestMetaEntity
+import com.arkarium.app.data.ChapterUpdateEventEntity
 import com.arkarium.app.data.FictionLut
 import com.arkarium.app.data.MissingLocalFolderException
 import com.arkarium.app.data.NovelAnnouncementEntity
@@ -661,6 +662,12 @@ class SyncViewModel(
                 val sourceUrl = novel.syncSourceUrl
                     ?: throw IllegalStateException("This novel has no sync source")
                 val knownFiles = db.syncedFileDao().forNovel(novel.id)
+                // Captured before the sync below can touch this novel's chapter rows at
+                // all - the same before/after diff NewChapterCheckWorker.checkOneNovel
+                // does, needed here to log a Notice Board entry for this manual path too
+                // (see docs/proposal/notice-board.md: "the manual path... doesn't even
+                // post a notification, let alone log anything" - this closes that gap).
+                val beforeChapterIds = db.chapterDao().forNovel(novel.id).map { it.id }.toSet()
                 val outcome = syncManager.sync(novel, libraryRoot, knownFiles, allowRecreateMissingFolder) { message ->
                     withContext(Dispatchers.Main) {
                         syncCheckState.value = SyncCheckState.InProgress(novel, message)
@@ -713,6 +720,30 @@ class SyncViewModel(
                         if (idx >= 0) libraryViewModel.novels[idx] = updated
                     }
                     refreshedNovel = updated
+                    // Notice Board (docs/proposal/notice-board.md) - same diff-and-log
+                    // NewChapterCheckWorker.checkOneNovel does for the background path,
+                    // gated on the same "Notify me" toggle so a manual check never logs
+                    // an entry the background pass itself would have skipped notifying
+                    // about. startScan above has already rewritten this novel's chapter
+                    // rows by this point, so beforeChapterIds (captured pre-sync) is the
+                    // correct "before" half of the diff.
+                    if (novel.notifyNewChapters) {
+                        val afterChapters = db.chapterDao().forNovel(novel.id)
+                        val newChapters = afterChapters.filterNot { it.id in beforeChapterIds }
+                        if (newChapters.isNotEmpty()) {
+                            val latest = newChapters.maxByOrNull { it.number ?: Int.MIN_VALUE }
+                                ?: newChapters.last()
+                            db.chapterUpdateEventDao().insert(
+                                ChapterUpdateEventEntity(
+                                    id = UUID.randomUUID().toString(),
+                                    novelId = novel.id,
+                                    newChapterCount = newChapters.size,
+                                    latestChapterTitle = latest.title,
+                                    detectedAt = System.currentTimeMillis()
+                                )
+                            )
+                        }
+                    }
                 }
                 // Bug fix: this used to pass the pre-sync `novel` parameter here, which
                 // still had the OLD coverUri/remoteCoverUrl captured before the sync ran -

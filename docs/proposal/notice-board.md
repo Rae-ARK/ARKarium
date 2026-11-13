@@ -1,10 +1,22 @@
 # Notice Board: a persistent new-chapters log (and, later, a home-screen widget)
 
-> **Kind:** proposal · **Status:** index page and Rae's Journal built; Pigeon Rally is still a stub (no data layer) · **Verified:** 2026-11-13 @ 66846bc
+> **Kind:** proposal · **Status:** index page, Rae's Journal, and Pigeon Rally (phase 1
+> of this doc) are all built. Phase 2 (the home-screen widget) is not. · **Verified:**
+> 2026-11-13
 > **Origin:** owner request - a dedicated screen listing which fictions have
 > received new chapters, explicitly scoped in two phases: the in-app screen
 > first, a launcher home-screen widget built on top of it once the screen
 > itself is working.
+>
+> **Build note:** `app/schemas/.../19.json` (the committed Room schema export for the
+> `chapter_update_events` table added below) was hand-written to match the entity/DAO
+> code, not exported by an actual KSP build - this sandbox has no Android SDK and no
+> network access to Google's Maven repo to run `./gradlew`. Its `identityHash` is a
+> placeholder and will not match what Room actually computes from the compiled
+> entities. Run a real build once and let KSP regenerate this one file
+> (`room.schemaLocation` in `app/build.gradle.kts`) before trusting the instrumented
+> `MigrationTest` against it; `MigrationChainTest` (JVM) doesn't depend on the JSON
+> content at all and should already pass as-is.
 
 ## Index and pages (stubs built)
 
@@ -15,12 +27,12 @@ fixed "physical" colors - only the cork's darkness follows the theme.
 
 | Note | Route | Screen | Status |
 |---|---|---|---|
-| **Pigeon Rally** | `noticeBoard/pigeonRally` | `PigeonRallyScreen.kt` | stub - the new-chapters log below, styled as scrolls delivered by pigeon (`ScrollPaper` is the shared look the real rows reuse) |
+| **Pigeon Rally** | `noticeBoard/pigeonRally` | `PigeonRallyScreen.kt` | built - the new-chapters log (see below), styled as scrolls delivered by pigeon (`ScrollPaper` is the shared look its rows reuse) |
 | **Rae's Journal** | `noticeBoard/journal` | `RaesJournalScreen.kt` | built - the author's writing journal, read from the RSS feed `https://rae-ark.horizonarkstudio.workers.dev/feed.xml` (see below) |
 
 Both sub-routes are drill-down pages, not tabs: the bottom bar hides on them and Back
-returns to the board. Pigeon Rally has nothing behind it yet - no `chapter_update_events`
-table or DAO.
+returns to the board. The index itself also shows an unseen-count badge on the Pigeon
+Rally note (`NoticeBoardScreen.pigeonRallyUnseenCount`) - see "The screen" below.
 
 ### Rae's Journal - built
 
@@ -61,30 +73,32 @@ Noted from the live feed:
 
 ## What's built today (for the new-chapters log)
 
-"New chapter available" is entirely **transient**. `NewChapterCheckWorker`
-(background, periodic via WorkManager) and `SyncViewModel.checkForUpdates`
-(foreground, the manual "Check for updates" action) both detect new chapters
-the same way - sync a novel, and if `SyncManager.sync`'s outcome says
-`changed`, rescan and diff the chapter id set before/after (chapter ids are
-deterministic, see `NewChapterCheckWorker.checkOneNovel`'s doc comment, so an
-existing chapter never shows up as "new" just because a rescan touched its
-row again). The background path's diff feeds straight into
-`NewChapterNotifier.notify` - one Android system notification, per novel,
-right then. The foreground path's `outcome.changed` only ever drives
-in-dialog progress text (`SyncCheckState.InProgress`/`Done`) - it doesn't
-even post a notification, let alone log anything.
+`NewChapterCheckWorker` (background, periodic via WorkManager) and
+`SyncViewModel.checkForUpdates` (foreground, the manual "Check for updates"
+action) both detect new chapters the same way - sync a novel, and if
+`SyncManager.sync`'s outcome says `changed`, rescan and diff the chapter id
+set before/after (chapter ids are deterministic, see
+`NewChapterCheckWorker.checkOneNovel`'s doc comment, so an existing chapter
+never shows up as "new" just because a rescan touched its row again). The
+background path's diff feeds `NewChapterNotifier.notify` - one Android
+system notification, per novel, right then - **and**, immediately after, a
+`chapter_update_events` insert with the same count/title that notification
+text used. The foreground path now does the same insert, gated on the same
+per-novel "Notify me" toggle (`novel.notifyNewChapters`) the background
+path's own `notifyEnabledSynced()` query already gates on - previously
+`outcome.changed` only drove in-dialog progress text
+(`SyncCheckState.InProgress`/`Done`), it never logged anything at all.
 
-Neither path writes the event anywhere. Dismiss or miss that one system
-notification (as any transient notification can be, swiped away, buried
-under others, phone was off) and the fact that novel X got a new chapter
-is gone - nothing in the app itself says "here's what you've missed." The
-closest existing thing, `LibraryViewModel.recentlyRead`/"Continue Reading"
-on Home, tracks what *you've read*, not what *arrived*; a novel with a new
-chapter you haven't opened yet doesn't move in that list at all.
+So "new chapter available" is no longer purely transient: dismissing or
+missing the one system notification (swiped away, buried under others,
+phone was off) no longer loses the fact that novel X got a new chapter -
+Pigeon Rally (below) is the persistent record of it. `LibraryViewModel.
+recentlyRead`/"Continue Reading" on Home is unchanged and still tracks what
+*you've read*, not what *arrived*; the two stay complementary, not merged.
 
-## What's proposed
+## What's built (originally "what's proposed")
 
-A new screen, **Notice Board**: a persistent, reverse-chronological log of
+**Notice Board**: a persistent, reverse-chronological log of
 "this fiction got new chapters" events - what most other apps would call a
 notifications/activity page, scoped specifically to new-chapter arrivals
 (not a general activity feed; sync errors, settings changes, etc. stay out

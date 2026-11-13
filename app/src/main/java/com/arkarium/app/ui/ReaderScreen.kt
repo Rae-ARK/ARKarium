@@ -2155,8 +2155,11 @@ private fun FeedbackCard(
     }
 }
 
+// internal, not private - also reused by PigeonRallyScreen's event rows (see its doc
+// comment) for exactly the same "novel/arc cover thumbnail, missing-image placeholder"
+// job this screen already uses it for.
 @Composable
-private fun ReaderCoverThumbnail(coverUri: String?, modifier: Modifier = Modifier) {
+internal fun ReaderCoverThumbnail(coverUri: String?, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))

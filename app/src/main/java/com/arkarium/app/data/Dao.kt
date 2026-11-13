@@ -420,6 +420,35 @@ interface CatalogueEntryDao {
 }
 
 @Dao
+interface ChapterUpdateEventDao {
+    // One row per sync that found new chapters (ChapterUpdateEventEntity's doc
+    // comment) - a plain insert, not an upsert: every call site builds a fresh
+    // UUID id (same convention as ChapterReadEventEntity), so there's never a
+    // conflicting primary key to replace.
+    @Insert
+    suspend fun insert(event: ChapterUpdateEventEntity)
+
+    // Plain suspend queries, not Flow<...> - see LibraryViewModel's own "mutableStateListOf/
+    // mutableStateOf, not StateFlow<List<...>>" convention (its class doc comment):
+    // NoticeBoardViewModel re-queries and repopulates its own SnapshotStateList/
+    // mutableIntStateOf after every write, the same pattern every other event table
+    // in this file (ChapterReadEventDao, ReadingProgressDao) already uses, rather than
+    // this being the one DAO in the project that hands the ViewModel a cold/hot Flow
+    // to collect instead.
+    @Query("SELECT COUNT(*) FROM chapter_update_events WHERE seen = 0")
+    suspend fun unseenCount(): Int
+
+    @Query("SELECT * FROM chapter_update_events ORDER BY detected_at DESC LIMIT :limit")
+    suspend fun recent(limit: Int = 100): List<ChapterUpdateEventEntity>
+
+    @Query("UPDATE chapter_update_events SET seen = 1 WHERE id = :id")
+    suspend fun markSeen(id: String)
+
+    @Query("UPDATE chapter_update_events SET seen = 1 WHERE seen = 0")
+    suspend fun markAllSeen()
+}
+
+@Dao
 interface NovelAnnouncementDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(announcements: List<NovelAnnouncementEntity>)

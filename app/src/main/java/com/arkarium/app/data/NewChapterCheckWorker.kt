@@ -15,6 +15,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 // Background half of "Notify me when new chapters are available" (see
@@ -141,6 +142,22 @@ class NewChapterCheckWorker(
         // notification when there's more than one.
         val latest = newChapters.maxByOrNull { it.number ?: Int.MIN_VALUE } ?: newChapters.last()
         NewChapterNotifier.notify(applicationContext, novel, newChapters.size, latest.title)
+        // Notice Board's persistent copy of the same "new chapters arrived" moment
+        // (docs/proposal/notice-board.md) - logged right alongside the transient
+        // system notification above, from the same newChapters/latest this function
+        // already computed. Only reached when notify is already reached (this whole
+        // function only runs for `candidates` from notifyEnabledSynced()), so this is
+        // already gated on the per-novel "Notify me" toggle the same way the
+        // notification itself is - no separate check needed here.
+        db.chapterUpdateEventDao().insert(
+            ChapterUpdateEventEntity(
+                id = UUID.randomUUID().toString(),
+                novelId = novel.id,
+                newChapterCount = newChapters.size,
+                latestChapterTitle = latest.title,
+                detectedAt = System.currentTimeMillis()
+            )
+        )
     }
 
     companion object {
