@@ -19,6 +19,7 @@ import com.arkarium.app.data.ChapterOverrideEntity
 import com.arkarium.app.data.ChapterReadEventEntity
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.NovelStatus
+import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.ReaderPosition
 import com.arkarium.app.data.ReadingProgressEntity
 import com.arkarium.app.data.ReadingStats
@@ -83,7 +84,15 @@ sealed class ChapterRestore {
 
 class LibraryViewModel(
     private val db: AppDatabase,
-    private val scanner: ScannerImpl
+    private val scanner: ScannerImpl,
+    // Added for the Library Settings screen's "Last scanned ..." row (startScan below
+    // records completion time+duration here, same as LibraryScanWorker's own headless
+    // pass does) and its "Remove missing novels" action's eventual counterpart - see
+    // removeMissingNovels. Not used for anything scan-*behavior* related (auto-scan-
+    // on-launch, background scan, file-change watching are all read directly by
+    // MainActivity, which already holds the one PreferencesManager instance) - only
+    // for recording this one piece of result state.
+    private val prefsManager: PreferencesManager
 ) : ViewModel() {
 
     // Local (non-synced) novel ids that were missing from the most recently completed
@@ -303,6 +312,12 @@ class LibraryViewModel(
         // Set by handleAuthorsDiscovered below, which ScannerImpl.scanRoot fires
         // exactly once before the per-novel onDiscovered loop starts.
         var authorsFolderFound = false
+        // Library Settings screen's "Last scanned ..." row (PreferencesManager.
+        // lastScanInfo) - recorded on both the success and failure paths below, since
+        // even a failed pass still "ran" in the sense that row is trying to report;
+        // only reportScanSetupError's caller-side failures (which never reach this
+        // function at all) are not reflected here.
+        val startedAt = System.currentTimeMillis()
         try {
             scanner.scanRoot(root,
                 // Adding to seenNovelIds here, not only inside
@@ -334,11 +349,13 @@ class LibraryViewModel(
                 _scanProgress.value = null
                 _scanMessage.value = ""
             }
+            prefsManager.recordScanCompleted(System.currentTimeMillis(), System.currentTimeMillis() - startedAt)
         } catch (e: Exception) {
             withContext(Dispatchers.Main) {
                 _scanProgress.value = null
                 _scanMessage.value = "Library scan failed: ${e.message}"
             }
+            prefsManager.recordScanCompleted(System.currentTimeMillis(), System.currentTimeMillis() - startedAt)
         }
     }
 
@@ -592,17 +609,60 @@ class LibraryViewModel(
         return if (dbNovel != null) ChapterRestore.FallbackToNovel(dbNovel.id) else ChapterRestore.FallbackToHome
     }
 
+    // "Remove missing novels" (LibrarySettingsScreen's "Library health / maintenance"
+    // section): explicit, user-initiated control over every novel the app currently
+    // believes is missing from disk, rather than that cleanup only ever happening
+    // silently as a side effect of the next scan (see handleScanCompleted above).
+    // Covers two different "missing" states, each cascade-deleted (chapters/arcs/
+    // overrides/reading_progress/chapter_read_events, via the FK cascades in
+    // Entities.kt) the same way handleScanCompleted's own confirmedMissingLocal
+    // branch already does:
+    //   - synced novels the last scan marked SyncStatus.MISSING_LOCALLY - these are
+    //     never auto-deleted (their folder is always re-fetchable from the relay, see
+    //     handleScanCompleted's staleSynced branch), so without this button the only
+    //     way to actually remove one is unlinking it by hand.
+    //   - local (non-synced) novels missing on exactly one scan so far
+    //     (missingLocalOnce) - normally given one more scan's benefit of the doubt
+    //     before handleScanCompleted cascade-deletes them itself; this button skips
+    //     that wait for someone who has already confirmed the folder is really gone.
+    // Deliberately does NOT rescan first - this acts on whatever the most recent scan
+    // already found, same "state as of the last scan" contract every other library
+    // screen in this app already has.
+    suspend fun removeMissingNovels(): Int {
+        val missingSynced = withContext(Dispatchers.IO) {
+            db.novelDao().bySyncStatus(SyncStatus.MISSING_LOCALLY.name)
+        }
+        val missingLocalIds = missingLocalOnce.toSet()
+        val missingLocal = withContext(Dispatchers.IO) {
+            missingLocalIds.mapNotNull { db.novelDao().findById(it) }
+        }
+        val toRemove = missingSynced + missingLocal
+        if (toRemove.isEmpty()) return 0
+
+        withContext(Dispatchers.IO) {
+            toRemove.forEach { db.novelDao().delete(it.id) }
+        }
+        missingLocalOnce.removeAll(missingLocalIds)
+        withContext(Dispatchers.Main) {
+            val removedIds = toRemove.map { it.id }.toSet()
+            novels.removeAll { it.id in removedIds }
+            recentlyRead.removeAll { it.id in removedIds }
+            inProgressNovels.removeAll { it.id in removedIds }
+        }
+        return toRemove.size
+    }
+
     companion object {
         // Same manual-Factory shape as SettingsViewModel.factory (rule 4 - no DSL
         // needed for one Factory method). Takes the Activity's existing AppDatabase/
         // ScannerImpl instances rather than constructing its own, same "share the
         // Activity's one instance of each service" pattern SettingsViewModel.factory
         // uses for PreferencesManager.
-        fun factory(db: AppDatabase, scanner: ScannerImpl): ViewModelProvider.Factory =
+        fun factory(db: AppDatabase, scanner: ScannerImpl, prefsManager: PreferencesManager): ViewModelProvider.Factory =
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return LibraryViewModel(db, scanner) as T
+                    return LibraryViewModel(db, scanner, prefsManager) as T
                 }
             }
     }

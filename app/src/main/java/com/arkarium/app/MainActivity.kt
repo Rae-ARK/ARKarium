@@ -83,6 +83,11 @@ import com.arkarium.app.data.resolveLibraryRoot
 import com.arkarium.app.data.ReaderPosition
 import com.arkarium.app.data.ScannerImpl
 import com.arkarium.app.data.NewChapterCheckWorker
+import com.arkarium.app.data.LibraryFileWatcher
+import com.arkarium.app.data.LibraryScanWorker
+import com.arkarium.app.data.clearImageCaches
+import com.arkarium.app.data.computeStorageBreakdown
+import com.arkarium.app.data.libraryRootFile
 import com.arkarium.app.data.ReadingProgressSaveWorker
 import com.arkarium.app.data.NewChapterNotifier
 import com.arkarium.app.data.NovelEntity
@@ -102,6 +107,9 @@ import com.arkarium.app.viewmodel.ReaderViewModel
 import com.arkarium.app.viewmodel.SettingsViewModel
 import com.arkarium.app.viewmodel.SyncViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -205,6 +213,21 @@ class MainActivity : ComponentActivity() {
     private lateinit var scanner: ScannerImpl
     private lateinit var prefsManager: PreferencesManager
     private lateinit var syncManager: SyncManager
+    // "Scan on file change" (LibrarySettingsScreen) - null whenever the preference is
+    // off or onStop has torn it down; see LibraryFileWatcher's own doc comment for why
+    // this is only ever live between onStart and onStop, not onCreate/onDestroy.
+    // Rebuilt from scratch in onStart rather than paused/resumed, since a
+    // FileObserver's watch can't be suspended and resumed anyway - starting a fresh
+    // one is exactly as cheap.
+    private var libraryFileWatcher: LibraryFileWatcher? = null
+    // Debounces LibraryFileWatcher's onChanged callback: a drag-and-drop of many files,
+    // or a sync writing a chapter at a time, fires that callback once per file, and
+    // launching a full rescan on every single one would make the "instant" feel of
+    // this feature actively worse than the periodic/manual alternatives. Cancelling
+    // and relaunching this job on every callback collapses any burst within
+    // FILE_CHANGE_DEBOUNCE_MS of the last one into a single rescan, fired once things
+    // go quiet.
+    private var fileChangeRescanJob: Job? = null
     // Stage 2.2 of Phase 2 (docs/foundational/design-notes.md) - the first ViewModel
     // pulled out of MainActivity. Constructed in onCreate right after prefsManager
     // (its only dependency), same lateinit-set-in-onCreate pattern as the services
@@ -504,7 +527,7 @@ class MainActivity : ComponentActivity() {
             val contentRepo = TextChapterContentRepository(applicationContext)
             settingsViewModel = ViewModelProvider(this, SettingsViewModel.factory(prefsManager))
                 .get(SettingsViewModel::class.java)
-            libraryViewModel = ViewModelProvider(this, LibraryViewModel.factory(db, scanner))
+            libraryViewModel = ViewModelProvider(this, LibraryViewModel.factory(db, scanner, prefsManager))
                 .get(LibraryViewModel::class.java)
             metadataViewModel = ViewModelProvider(
                 this,

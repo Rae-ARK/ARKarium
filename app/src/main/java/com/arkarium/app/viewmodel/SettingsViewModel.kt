@@ -14,9 +14,9 @@ import kotlinx.coroutines.launch
 // Stage 2.2 of Phase 2 (docs/foundational/design-notes.md) - the first of the plan's four
 // feature-scoped ViewModels pulled out of MainActivity. Deliberately the smallest of
 // the four: it owns no state MainActivity didn't already have (currentTheme,
-// currentSystemDefaultLightVariant, and - per the SAF-removal decision, see
-// "Settled decisions" in docs/foundational/design-notes.md -
-// shouldShowSafRemovedNotice in place of the old useCustomFolder/savedUri pair), it just re-exposes
+// currentSystemDefaultLightVariant - the old shouldShowSafRemovedNotice member was
+// dropped once the SAF-removal notice had shipped for a while, see
+// PreferencesManager's doc comment on the keys it backed), it just re-exposes
 // SettingsPreferences' Flows as StateFlows - so call sites keep reading `.value` via
 // collectAsState() the same way they read the old mutableStateOf fields - and
 // forwards writes back to it. All persistence/validation logic stays on
@@ -46,22 +46,12 @@ class SettingsViewModel(private val prefs: SettingsPreferences) : ViewModel() {
     val currentSystemDefaultLightVariant: StateFlow<Theme> = prefs.systemDefaultLightVariant
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Theme.LIGHT)
 
-    // Seeded false (don't show) rather than true, so the dialog never flashes on
-    // first composition before DataStore's real value has loaded - the same
-    // "show nothing until we actually know" posture every other StateFlow here uses.
-    val shouldShowSafRemovedNotice: StateFlow<Boolean> = prefs.shouldShowSafRemovedNotice
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), false)
-
     fun setTheme(theme: Theme) {
         viewModelScope.launch { prefs.setTheme(theme) }
     }
 
     fun setSystemDefaultLightVariant(variant: Theme) {
         viewModelScope.launch { prefs.setSystemDefaultLightVariant(variant) }
-    }
-
-    fun dismissSafRemovedNotice() {
-        viewModelScope.launch { prefs.dismissSafRemovedNotice() }
     }
 
     companion object {

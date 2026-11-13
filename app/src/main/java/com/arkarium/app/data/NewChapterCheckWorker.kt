@@ -170,23 +170,28 @@ class NewChapterCheckWorker(
 
         private const val UNIQUE_WORK_NAME = "new_chapter_check"
 
-        // Called once from MainActivity.onCreate. ExistingPeriodicWorkPolicy.KEEP means
-        // a build that's already scheduled this (from a previous launch) doesn't get a
-        // duplicate or reset one - only the very first call after install actually
-        // enqueues anything. Runs at most every 6 hours (WorkManager periodic work is
-        // inexact - the real interval can run longer depending on Doze/battery
-        // optimization, never shorter), and only when a network is available, since a
-        // manifest fetch with none would just fail immediately anyway.
-        fun schedule(context: Context) {
+        // Called once from MainActivity.onCreate with the current value of
+        // PreferencesManager.wifiOnlySync (LibrarySettingsScreen's "Wi-Fi-only sync"
+        // toggle), and again every time that toggle changes - MainActivity passes a
+        // fresh value either way, this just decides the WorkManager policy to apply it
+        // with. ExistingPeriodicWorkPolicy.KEEP for the former call: a build that's
+        // already scheduled this (from a previous launch, with whatever constraint was
+        // in effect then) doesn't get a duplicate or reset one just because onCreate
+        // ran again. ExistingPeriodicWorkPolicy.UPDATE for the latter: a toggle flip
+        // should actually take effect on the already-queued request's constraints
+        // rather than no-op against it the way KEEP would. Runs at most every 6 hours
+        // (WorkManager periodic work is inexact - the real interval can run longer
+        // depending on Doze/battery optimization, never shorter) either way.
+        fun schedule(context: Context, wifiOnly: Boolean, replaceExisting: Boolean = false) {
             val constraints = Constraints.Builder()
-                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
                 .build()
             val request = PeriodicWorkRequestBuilder<NewChapterCheckWorker>(6, TimeUnit.HOURS)
                 .setConstraints(constraints)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
+                if (replaceExisting) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP,
                 request
             )
         }

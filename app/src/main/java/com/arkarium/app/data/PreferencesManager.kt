@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -182,15 +183,16 @@ enum class Theme {
 interface SettingsPreferences {
     val theme: Flow<Theme>
     val systemDefaultLightVariant: Flow<Theme>
-    // One-time "custom folder support was removed" notice - see "Settled
-    // decisions" in docs/foundational/design-notes.md. True exactly once,
-    // for an install that had USE_CUSTOM_FOLDER_KEY set before the toggle was
-    // removed, until dismissSafRemovedNotice() is called.
-    val shouldShowSafRemovedNotice: Flow<Boolean>
     suspend fun setTheme(theme: Theme)
     suspend fun setSystemDefaultLightVariant(variant: Theme)
-    suspend fun dismissSafRemovedNotice()
 }
+
+// Library Settings screen state the UI reads in one shot rather than as four separate
+// StateFlows - see PreferencesManager.lastScanInfo below. Null (rather than a sentinel
+// Long) for "no scan has completed yet this install", which is the one case the
+// screen's "Last scanned ..." row actually needs to render differently (no row at all)
+// rather than a fabricated "0 seconds ago".
+data class LastScanInfo(val completedAtMillis: Long, val durationMillis: Long)
 
 class PreferencesManager(private val context: Context) : SettingsPreferences {
     companion object {
@@ -202,18 +204,44 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         // lose whichever daytime look the user last chose.
         private val SYSTEM_DEFAULT_LIGHT_VARIANT_KEY = stringPreferencesKey("system_default_light_variant")
         private val DEFAULT_PAGE_SIZE_KEY = intPreferencesKey("default_page_size")
-        // Retired per the SAF-removal decision (see "Settled decisions" in
-        // docs/foundational/design-notes.md): the
-        // opt-in flag for pointing the scanner at a user-picked SAF folder, and the URI
-        // it pointed at. Neither key is written anymore - the library root is now the
-        // single fixed Android/media/com.arkarium.app/ folder (see
-        // data/LibraryScan.kt's resolveLibraryRoot). Both keys are kept here, private
-        // and read-only, purely so an install that had USE_CUSTOM_FOLDER_KEY set before
-        // this change can be shown the one-time removal notice below; they are never
-        // written to again and can be dropped entirely once that notice has shipped for
-        // a while.
-        private val USE_CUSTOM_FOLDER_KEY = booleanPreferencesKey("use_custom_folder")
-        private val HAS_SHOWN_SAF_REMOVED_NOTICE_KEY = booleanPreferencesKey("has_shown_saf_removed_notice")
+        // Library Settings screen (see ui/LibrarySettingsScreen.kt). The old
+        // USE_CUSTOM_FOLDER_KEY/HAS_SHOWN_SAF_REMOVED_NOTICE_KEY pair - the opt-in flag
+        // for a user-picked SAF folder, and the one-time "that was removed" notice it
+        // drove - has been dropped entirely now that the notice has shipped for a
+        // while: the library root is permanently the fixed Android/media/
+        // com.arkarium.app/ folder (data/LibraryScan.kt's resolveLibraryRoot), so
+        // there's nothing left to migrate away from.
+        //
+        // Default true: scanning on every cold launch is today's actual behavior
+        // (MainActivity.onCreate), so an upgrading install must keep seeing it happen
+        // without needing to opt back in - only a fresh switch to `false` changes
+        // anything.
+        private val AUTO_SCAN_ON_LAUNCH_KEY = booleanPreferencesKey("auto_scan_on_launch")
+        // Gates LibraryScanWorker's periodic background rescan (data/LibraryScanWorker.kt)
+        // - off by default, same "opt into a new background behavior" posture as
+        // ttsAutoContinue/ttsKeepScreenOn above. Unlike auto-scan-on-launch, a periodic
+        // background scan is new work WorkManager wakes the process for, so it shouldn't
+        // start happening to an existing install just because this key rolled out.
+        private val BACKGROUND_SCAN_ENABLED_KEY = booleanPreferencesKey("background_scan_enabled")
+        // Gates the FileObserver-backed watcher (data/LibraryFileWatcher.kt) that
+        // triggers a rescan as soon as a file changes under the library root, instead of
+        // waiting for the next launch/periodic pass. Off by default - same reasoning as
+        // BACKGROUND_SCAN_ENABLED_KEY, plus it only ever runs while the process is alive
+        // (see that file's doc comment), so it's an opt-in "keep ARKarium open and it'll
+        // notice" convenience rather than something to turn on silently for everyone.
+        private val SCAN_ON_FILE_CHANGE_ENABLED_KEY = booleanPreferencesKey("scan_on_file_change_enabled")
+        // Restricts NewChapterCheckWorker's periodic "new chapter" check to an unmetered
+        // (Wi-Fi) network instead of any connected one - see that worker's schedule().
+        // Off by default: the check is a small manifest fetch per followed novel, not
+        // bulk data, so defaulting to "any network" matches today's actual behavior for
+        // an upgrading install.
+        private val WIFI_ONLY_SYNC_KEY = booleanPreferencesKey("wifi_only_sync")
+        // "Last scanned ..." row (LastScanInfo above) - written by both the interactive
+        // scan path (LibraryViewModel.startScan) and the background one
+        // (LibraryScanWorker), so either one keeps this current regardless of which
+        // triggered the most recent scan.
+        private val LAST_SCAN_COMPLETED_AT_KEY = longPreferencesKey("last_scan_completed_at")
+        private val LAST_SCAN_DURATION_MS_KEY = longPreferencesKey("last_scan_duration_ms")
         // Splash-screen behavior toggles (see SettingsScreen's "Splash Screen"
         // section). Both default to true - the line-reconstruction animation
         // and its guitar-chord score are the intended out-of-the-box
@@ -259,12 +287,33 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         if (e is IOException) emit(emptyPreferences()) else throw e
     }
 
-    // See USE_CUSTOM_FOLDER_KEY/HAS_SHOWN_SAF_REMOVED_NOTICE_KEY's doc comment above -
-    // true exactly once, for an install that had the old SAF toggle on, until
-    // dismissSafRemovedNotice() below is called. LibrarySettingsScreen shows the
-    // one-time notice dialog when this is true.
-    override val shouldShowSafRemovedNotice: Flow<Boolean> = safePrefs.map { prefs ->
-        (prefs[USE_CUSTOM_FOLDER_KEY] ?: false) && !(prefs[HAS_SHOWN_SAF_REMOVED_NOTICE_KEY] ?: false)
+    // See AUTO_SCAN_ON_LAUNCH_KEY's doc comment above - default true.
+    val autoScanOnLaunch: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[AUTO_SCAN_ON_LAUNCH_KEY] ?: true
+    }
+
+    // See BACKGROUND_SCAN_ENABLED_KEY's doc comment above - default false.
+    val backgroundScanEnabled: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[BACKGROUND_SCAN_ENABLED_KEY] ?: false
+    }
+
+    // See SCAN_ON_FILE_CHANGE_ENABLED_KEY's doc comment above - default false.
+    val scanOnFileChangeEnabled: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[SCAN_ON_FILE_CHANGE_ENABLED_KEY] ?: false
+    }
+
+    // See WIFI_ONLY_SYNC_KEY's doc comment above - default false.
+    val wifiOnlySync: Flow<Boolean> = safePrefs.map { prefs ->
+        prefs[WIFI_ONLY_SYNC_KEY] ?: false
+    }
+
+    // Null until the very first scan (interactive or background) completes and calls
+    // recordScanCompleted below - see LastScanInfo's own doc comment for why that's a
+    // real, distinct state rather than a fabricated default duration/timestamp.
+    val lastScanInfo: Flow<LastScanInfo?> = safePrefs.map { prefs ->
+        val completedAt = prefs[LAST_SCAN_COMPLETED_AT_KEY] ?: return@map null
+        val duration = prefs[LAST_SCAN_DURATION_MS_KEY] ?: return@map null
+        LastScanInfo(completedAt, duration)
     }
 
     // Defaults to SYSTEM_DEFAULT (follow the device's day/night setting) on a fresh
@@ -379,12 +428,36 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     val readerBrightnessSliderEnabled: Flow<Boolean> = safePrefs.map(::readerBrightnessSliderEnabledOf)
     val readerBrightness: Flow<Float> = safePrefs.map(::readerBrightnessOf)
 
-    // Called once, when LibrarySettingsScreen's one-time SAF-removed notice is
-    // dismissed - see HAS_SHOWN_SAF_REMOVED_NOTICE_KEY's doc comment above. There's
-    // deliberately no setter to flip this back to false.
-    override suspend fun dismissSafRemovedNotice() {
+    suspend fun setAutoScanOnLaunch(enabled: Boolean) {
         context.dataStore.edit { prefs ->
-            prefs[HAS_SHOWN_SAF_REMOVED_NOTICE_KEY] = true
+            prefs[AUTO_SCAN_ON_LAUNCH_KEY] = enabled
+        }
+    }
+
+    suspend fun setBackgroundScanEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[BACKGROUND_SCAN_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun setScanOnFileChangeEnabled(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[SCAN_ON_FILE_CHANGE_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun setWifiOnlySync(enabled: Boolean) {
+        context.dataStore.edit { prefs ->
+            prefs[WIFI_ONLY_SYNC_KEY] = enabled
+        }
+    }
+
+    // Called by both startScan (LibraryViewModel) and LibraryScanWorker right after a
+    // scan pass finishes - see LAST_SCAN_COMPLETED_AT_KEY's doc comment above.
+    suspend fun recordScanCompleted(completedAtMillis: Long, durationMillis: Long) {
+        context.dataStore.edit { prefs ->
+            prefs[LAST_SCAN_COMPLETED_AT_KEY] = completedAtMillis
+            prefs[LAST_SCAN_DURATION_MS_KEY] = durationMillis
         }
     }
 
