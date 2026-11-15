@@ -1,5 +1,6 @@
 package com.arkarium.app.data
 
+import com.arkarium.app.data.sync.UnsafePathException
 import java.io.File
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
