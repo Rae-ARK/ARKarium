@@ -1,6 +1,6 @@
 <table>
   <tr>
-    <td width="12%">
+    <td width="15%">
       <img src="assets/app-icon-source.png" alt="ARKarium Logo" />
     </td>
     <td align="center">
