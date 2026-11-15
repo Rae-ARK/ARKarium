@@ -14,6 +14,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -89,7 +90,7 @@ fun AppNavGraph(
     navController: NavHostController,
     resolvedTheme: Theme,
     currentTheme: State<Theme>,
-    currentSystemDefaultLightVariant: State<Boolean>,
+    currentSystemDefaultLightVariant: State<Theme>,
     amoledModeEnabled: State<Boolean>,
     splashAnimationEnabled: State<Boolean>,
     splashMusicEnabled: State<Boolean>,
