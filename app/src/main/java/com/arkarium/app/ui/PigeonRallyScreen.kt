@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arkarium.app.data.ChapterUpdateEventEntity
 import com.arkarium.app.data.NovelEntity
+import com.arkarium.app.ui.components.CoverThumbnail
 
 private val ScrollPaperColor = Color(0xFFF6EBD0)
 private val ScrollRollColor = Color(0xFFD9C49A)

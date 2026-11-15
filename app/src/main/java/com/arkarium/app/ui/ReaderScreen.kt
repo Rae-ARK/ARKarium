@@ -106,6 +106,7 @@ import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.ReaderPosition
 import com.arkarium.app.data.ReadingModeDefault
 import com.arkarium.app.data.Theme
+import com.arkarium.app.ui.components.CoverThumbnail
 import com.arkarium.app.util.WordLookup
 import kotlinx.coroutines.flow.first
 

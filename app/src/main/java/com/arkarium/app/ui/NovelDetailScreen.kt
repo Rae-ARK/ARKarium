@@ -85,6 +85,7 @@ import com.arkarium.app.data.ChapterEntity
 import com.arkarium.app.data.ChapterManifestMetaEntity
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.PublicationStatus
+import com.arkarium.app.ui.components.CoverThumbnail
 
 // "---" is the shared placeholder for every "Serial-fiction manifest metadata" field
 // below that's legitimately absent (not declared by the manifest/metadata.json, or

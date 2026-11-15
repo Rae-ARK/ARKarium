@@ -1,4 +1,4 @@
-package com.arkarium.app.ui
+package com.arkarium.app.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
