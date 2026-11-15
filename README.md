@@ -97,6 +97,8 @@ The V1 isn't done yet. Bugs are normal.
 
 ## License
 
+[![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](LICENSE)
+
 Copyright © 2026 Rae-ARK. All rights reserved.
 
 This software and its source code are proprietary.
