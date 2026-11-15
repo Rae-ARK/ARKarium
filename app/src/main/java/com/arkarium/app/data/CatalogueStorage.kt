@@ -1,6 +1,8 @@
 package com.arkarium.app.data
 
 import android.content.Context
+import com.arkarium.app.data.sync.SyncPaths
+import com.arkarium.app.data.sync.UnsafePathException
 import java.io.File
 import java.io.IOException
 
