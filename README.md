@@ -1,4 +1,4 @@
- <p align="center">
+<p align="center">
   <img src="assets/app-icon-source.png" width="150" alt="ARKarium icon">
 </p>
 
