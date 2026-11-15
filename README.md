@@ -1,4 +1,13 @@
-# ![Logo](assets/app-icon-source.png) ARKarium
+<table>
+  <tr>
+    <td width="15%">
+      <img src="assets/app-icon-source.png" alt="ARKarium Logo" />
+    </td>
+    <td align="center">
+      <h1>ARKarium</h1>
+    </td>
+  </tr>
+</table>
 
 A native reading experience for Rae ARK's published fiction.
 
