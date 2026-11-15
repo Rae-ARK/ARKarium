@@ -1,23 +1,34 @@
-<p align="center"><img src="assets/app-icon-source.png" width="150"></p>
-<h1 align="center"><b>ARKarium</b></h1>
-<h4 align="center">A native reading experience for Rae ARK's published fiction.</h4>
-<p align="center">
-    <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85">
-        <img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat">
-    </a>
-    <a href="https://github.com/Rae-ARK/ARKarium/releases">
-    <img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat">
-    </a>
-    <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+ <p align="center">
+  <img src="assets/app-icon-source.png" width="150" alt="ARKarium icon">
 </p>
-<h4 align="center"><a href="/docs/foundational/what-is-arkarium.md">What is ARKarium</a> | <a href="/docs">Documentation</a> | <a href="/docs/foundation">For Settled Decisions</a></h4>
+
+<h1 align="center"><b>ARKarium</b></h1>
+
+<h4 align="center">A native reading experience for Rae ARK's published fiction.</h4>
+
 <p align="center">
-    <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522ARKarium%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FRae-ARK%252FARKarium%2522%252C%2522author%2522%253A%2522Rae-ARK%2522%252C%2522name%2522%253A%2522ARKarium%2522%257D">
-        <img src="assets/badge_obtainium.png" alt="Get it on Obtainium" height="80">
-    </a>
-    <a href="https://github.com/Rae-ARK/ARKarium/releases/">
-        <img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Get it on GitHub" height="80">
-    </a>
+  <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85">
+    <img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat">
+  </a>
+  <a href="https://github.com/Rae-ARK/ARKarium/releases">
+    <img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat">
+  </a>
+  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+</p>
+
+<h4 align="center">
+  <a href="/docs/foundational/what-is-arkarium.md">What is ARKarium</a> |
+  <a href="/docs">Documentation</a> |
+  <a href="/docs/foundation">For Settled Decisions</a>
+</h4>
+
+<p align="center">
+  <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522ARKarium%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FRae-ARK%252FARKarium%2522%252C%2522author%2522%253A%2522Rae-ARK%2522%252C%2522name%2522%253A%2522ARKarium%2522%257D">
+    <img src="assets/badge_obtainium.png" alt="Get it on Obtainium" height="80">
+  </a>
+  <a href="https://github.com/Rae-ARK/ARKarium/releases/">
+    <img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Get it on GitHub" height="80">
+  </a>
 </p>
 
 ## What it is
@@ -38,16 +49,16 @@ Content is published as files in a relay and synchronized to the reader's local 
     <td colspan="2" align="center"><sub>Home</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="assets/Fiction-Browse.jpg" alt="Browsing page" /></td>
-    <td width="50%"><img src="assets/Fiction-Page.jpg" alt="Fiction Page" /></td>
+    <td width="50%"><img src="assets/Fiction-Browse.jpg" alt="Browsing page"></td>
+    <td width="50%"><img src="assets/Fiction-Page.jpg" alt="Fiction page"></td>
   </tr>
   <tr>
     <td align="center"><sub>Browse</sub></td>
     <td align="center"><sub>Fictions</sub></td>
   </tr>
   <tr>
-    <td width="50%"><img src="assets/Author-Page.jpg" alt="Author Page" /></td>
-    <td width="50%"><img src="assets/Settings-Page.jpg" alt="Settings page" /></td>
+    <td width="50%"><img src="assets/Author-Page.jpg" alt="Author page"></td>
+    <td width="50%"><img src="assets/Settings-Page.jpg" alt="Settings page"></td>
   </tr>
   <tr>
     <td align="center"><sub>Rae ARK</sub></td>
@@ -98,7 +109,4 @@ Copyright © 2026 Rae-ARK. All rights reserved.
 
 This software and its source code are proprietary.
 
-No permission is granted to copy, modify, distribute,
-sublicense, or use this software or its source code,
-in whole or in part, without prior written permission
-from the copyright holder.
+No permission is granted to copy, modify, distribute, sublicense, or use this software or its source code, in whole or in part, without prior written permission from the copyright holder.
