@@ -249,16 +249,19 @@ fun NovelDetailScreen(
                 Row(modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp)) {
-                    NovelCoverThumb(
+                    CoverThumbnail(
                         // Local cover.png from the scanned folder takes priority over a
                         // remote metadata cover (only present after "Fetch info" has
                         // been run) - the local file is the one the user actually
                         // placed there.
-                        coverUrl = novel.coverUri ?: novel.remoteCoverUrl,
+                        url = novel.coverUri ?: novel.remoteCoverUrl,
                         // 2:3 full-size cover aspect ratio (96dp wide -> 144dp tall).
                         modifier = Modifier
                             .width(96.dp)
-                            .height(144.dp)
+                            .height(144.dp),
+                        cornerRadius = 6.dp,
+                        placeholderEmoji = "📚",
+                        placeholderFontSize = 32.sp
                     )
                     Column(
                         modifier = Modifier
@@ -562,7 +565,7 @@ fun NovelDetailScreen(
                                     // Arc cover first; if this arc's folder had no cover.* file,
                                     // fall back to the fiction's own cover rather than dropping
                                     // straight to the placeholder - only when neither exists does
-                                    // ArcTabCard/NovelCoverThumb show the 📚 emoji. Same order as
+                                    // ArcTabCard/CoverThumbnail show the 📚 emoji. Same order as
                                     // the reader screen's readerCoverUri resolution in
                                     // MainActivity (arc -> fiction -> null, bugs.md Bug 3b).
                                     coverUrl = arc.coverUri ?: novel.coverUri ?: novel.remoteCoverUrl,
@@ -879,8 +882,8 @@ private fun ArcTabCard(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Box(contentAlignment = Alignment.Center) {
-            NovelCoverThumb(
-                coverUrl = coverUrl,
+            CoverThumbnail(
+                url = coverUrl,
                 // 2:3 full-size cover aspect ratio (92dp wide -> 138dp tall), matching the
                 // novel header cover above exactly rather than approximately.
                 modifier = Modifier
@@ -892,7 +895,10 @@ private fun ArcTabCard(
                         } else {
                             base
                         }
-                    }
+                    },
+                cornerRadius = 6.dp,
+                placeholderEmoji = "📚",
+                placeholderFontSize = 32.sp
             )
             // Replaces the old magnifier badge: a one-time ripple instead of a
             // permanent overlay on every cover. Only drawn when there's a cover to
@@ -1072,31 +1078,3 @@ private fun EnlargedCoverDialog(coverUrl: String, onDismiss: () -> Unit) {
     }
 }
 
-@Composable
-private fun NovelCoverThumb(
-    coverUrl: String?,
-    modifier: Modifier = Modifier
-) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(6.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center
-    ) {
-        if (coverUrl != null) {
-            // Fill whatever size the caller's `modifier` already established on the
-            // outer Box, rather than a hardcoded 136dp height - this composable is
-            // reused at a smaller size for the per-arc cover header below, and a fixed
-            // height here would have clipped/overflowed at that size instead of
-            // actually resizing.
-            AsyncImage(
-                model = coverUrl,
-                contentDescription = null,
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            Text("📚", fontSize = 32.sp)
-        }
-    }
-}
