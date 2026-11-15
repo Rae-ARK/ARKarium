@@ -91,12 +91,12 @@ import com.arkarium.app.data.libraryRootFile
 import com.arkarium.app.data.ReadingProgressSaveWorker
 import com.arkarium.app.data.NewChapterNotifier
 import com.arkarium.app.data.NovelEntity
-import com.arkarium.app.data.relayBaseUrlForSlug
+import com.arkarium.app.data.sync.relayBaseUrlForSlug
 import com.arkarium.app.data.PreferencesManager
 import com.arkarium.app.data.Theme
 import com.arkarium.app.data.LastScanInfo
 import com.arkarium.app.data.StorageBreakdown
-import com.arkarium.app.data.SyncManager
+import com.arkarium.app.data.sync.SyncManager
 import com.arkarium.app.data.TextChapterContentRepository
 import com.arkarium.app.ui.formatBytes
 import androidx.core.content.FileProvider

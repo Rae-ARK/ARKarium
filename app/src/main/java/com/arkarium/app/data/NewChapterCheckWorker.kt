@@ -9,6 +9,9 @@ import androidx.work.NetworkType
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.arkarium.app.data.sync.MissingLocalFolderException
+import com.arkarium.app.data.sync.SourceGoneException
+import com.arkarium.app.data.sync.SyncManager
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
