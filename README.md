@@ -1,7 +1,7 @@
 <table>
   <tr>
     <td width="15%"><img src="assets/app-icon-source.png" alt="ARKarium Logo" /></td>
-    <td><b>ARKarium</b></td>
+    <td><h1>ARKarium</h1></td>
   </tr>
 </table>
 
