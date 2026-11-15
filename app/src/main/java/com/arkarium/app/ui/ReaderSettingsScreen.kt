@@ -43,6 +43,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.arkarium.app.data.ReadingModeDefault
+import com.arkarium.app.ui.reader.ReaderFontFamily
+import com.arkarium.app.ui.reader.extraLetterSpacing
+import com.arkarium.app.ui.reader.resolveFontFamily
 
 // docs/proposal/reader-settings.md, "Page shape" + suggested-order
 // items 1-5 (the "cheap" batch the owner approved; multi-document, the

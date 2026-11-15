@@ -63,9 +63,9 @@ import com.arkarium.app.ui.LibrarySettingsScreen
 import com.arkarium.app.ui.NovelDetailScreen
 import com.arkarium.app.data.ChapterLoadResult
 import com.arkarium.app.ui.ChapterLoadErrorScreen
-import com.arkarium.app.ui.ReaderFontFamily
-import com.arkarium.app.ui.ReaderScreen
-import com.arkarium.app.ui.applyWindowLayout
+import com.arkarium.app.ui.reader.ReaderFontFamily
+import com.arkarium.app.ui.reader.ReaderScreen
+import com.arkarium.app.ui.reader.applyWindowLayout
 import com.arkarium.app.ui.ReaderSettingsScreen
 import com.arkarium.app.ui.SettingsScreen
 import com.arkarium.app.ui.SplashScreen
