@@ -1,30 +1,24 @@
-<table>
-  <tr>
-    <td width="15%">
-      <img src="assets/app-icon-source.png" alt="ARKarium Logo" />
-    </td>
-    <td align="center">
-      <h1>ARKarium</h1>
-    </td>
-  </tr>
-</table>
-
-A native reading experience for Rae ARK's published fiction.
-
-<table align="center">
-  <tr>
-    <td align="center">
-      <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522ARKarium%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FRae-ARK%252FARKarium%2522%252C%2522author%2522%253A%2522Rae-ARK%2522%252C%2522name%2522%253A%2522ARKarium%2522%257D">
+<p align="center"><img src="assets/app-icon-source.png" width="150"></p>
+<h1 align="center"><b>ARKarium</b></h1>
+<h4 align="center">A native reading experience for Rae ARK's published fiction.</h4>
+<p align="center">
+    <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85">
+        <img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat">
+    </a>
+    <a href="https://github.com/Rae-ARK/ARKarium/releases">
+    <img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat">
+    </a>
+    <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+</p>
+<h4 align="center"><a href="/docs/foundational/what-is-arkarium.md">What is ARKarium</a> | <a href="/docs">Documentation</a> | <a href="/docs/foundation">For Settled Decisions</a></h4>
+<p align="center">
+    <a href="https://apps.obtainium.imranr.dev/redirect?r=obtainium%3A%2F%2Fapp%2F%257B%2522id%2522%253A%2522ARKarium%2522%252C%2522url%2522%253A%2522https%253A%252F%252Fgithub.com%252FRae-ARK%252FARKarium%2522%252C%2522author%2522%253A%2522Rae-ARK%2522%252C%2522name%2522%253A%2522ARKarium%2522%257D">
         <img src="assets/badge_obtainium.png" alt="Get it on Obtainium" height="80">
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/Rae-ARK/ARKarium/releases/">
+    </a>
+    <a href="https://github.com/Rae-ARK/ARKarium/releases/">
         <img src="https://raw.githubusercontent.com/machiav3lli/oandbackupx/034b226cea5c1b30eb4f6a6f313e4dadcbb0ece4/badge_github.png" alt="Get it on GitHub" height="80">
-      </a>
-    </td>
-  </tr>
-</table>
+    </a>
+</p>
 
 ## What it is
 
