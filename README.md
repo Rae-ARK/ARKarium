@@ -15,10 +15,6 @@ A native reading experience for Rae ARK's published fiction.
       </a>
     </td>
   </tr>
-  <tr>
-    <td align="center"><sub>Obtainium</sub></td>
-    <td align="center"><sub>GitHub</sub></td>
-  </tr>
 </table>
 
 ## What it is
