@@ -13,7 +13,7 @@
 </p>
 
 <h4 align="center">
-  <a href="/docs/foundational/what-is-arkarium.md">What is ARKarium</a> |
+  <a href="/docs/foundational/what-is-arkarium.md">What is ARKarium?</a> |
   <a href="/docs">Documentation</a> |
   <a href="/docs/foundation">For Settled Decisions</a>
 </h4>
