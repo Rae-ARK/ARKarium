@@ -52,6 +52,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.arkarium.app.data.NovelEntity
+import com.arkarium.app.ui.components.CoverThumbnail
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
