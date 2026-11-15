@@ -1,4 +1,9 @@
-# ARKarium
+<table>
+  <tr>
+    <td width="50%"><img src="assets/app-icon-source.png" alt="ARKarium Logo" /></td>
+    <td align="center"><b># ARKarium</b></td>
+  </tr>
+</table>
 
 A native reading experience for Rae ARK's published fiction.
 
