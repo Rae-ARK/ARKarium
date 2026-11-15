@@ -317,7 +317,7 @@ private fun AuthorAvatar(avatarUrl: String?, modifier: Modifier = Modifier) {
             )
         } else {
             // Same "emoji placeholder when there's no local image" pattern
-            // NovelCoverThumb (NovelDetailScreen.kt) already uses for missing covers.
+            // CoverThumbnail (CoverThumbnail.kt) already uses for missing covers.
             Text("🖋️", fontSize = 28.sp)
         }
     }

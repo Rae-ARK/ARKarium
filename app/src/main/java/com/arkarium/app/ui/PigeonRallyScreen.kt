@@ -179,8 +179,8 @@ private fun ScrollRow(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                ReaderCoverThumbnail(
-                    coverUri = novel.coverUri ?: novel.remoteCoverUrl,
+                CoverThumbnail(
+                    url = novel.coverUri ?: novel.remoteCoverUrl,
                     modifier = Modifier.size(width = 40.dp, height = 56.dp)
                 )
                 Column(

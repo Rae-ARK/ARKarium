@@ -1184,7 +1184,7 @@ fun ReaderScreen(
                                 .padding(horizontal = 24.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.Top
                         ) {
-                            ReaderCoverThumbnail(coverUri = coverUri, modifier = Modifier.size(width = 40.dp, height = 56.dp))
+                            CoverThumbnail(url = coverUri, modifier = Modifier.size(width = 40.dp, height = 56.dp))
                             Column(modifier = Modifier.padding(start = 12.dp)) {
                                 Row(
                                     // The row's only visible text is the fiction's title,
@@ -2009,7 +2009,7 @@ private fun AuthorNoteCallout(author: AuthorEntity?, body: String, textColor: Co
 
 // <news> callout - same card shape as AuthorNoteCallout above, but generic (no author
 // identity attached): icon + heading, same emoji-glyph convention
-// ReaderAuthorAvatar/ReaderCoverThumbnail already use elsewhere on this screen rather
+// ReaderAuthorAvatar/CoverThumbnail already use elsewhere on this screen rather
 // than pulling in new icon assets. A blank body (e.g. "<news></news>" with nothing
 // inside) renders nothing rather than an empty card.
 @Composable
@@ -2151,34 +2151,6 @@ private fun FeedbackCard(
                 color = textColor.copy(alpha = 0.85f),
                 modifier = Modifier.padding(top = 4.dp)
             )
-        }
-    }
-}
-
-// internal, not private - also reused by PigeonRallyScreen's event rows (see its doc
-// comment) for exactly the same "novel/arc cover thumbnail, missing-image placeholder"
-// job this screen already uses it for.
-@Composable
-internal fun ReaderCoverThumbnail(coverUri: String?, modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant),
-        contentAlignment = Alignment.Center
-    ) {
-        if (coverUri != null) {
-            AsyncImage(
-                model = coverUri,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
-            )
-        } else {
-            // Same missing-image placeholder pattern as ReaderAuthorAvatar / the rest of
-            // the app - see bugs.md Bug 3b. The caller (MainActivity) is responsible for
-            // resolving arc cover -> fiction cover -> null before this is reached, so a
-            // null here genuinely means neither exists, not that resolution was skipped.
-            Text("📕", fontSize = 20.sp)
         }
     }
 }

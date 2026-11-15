@@ -570,26 +570,16 @@ fun NovelCardVertical(
             // neither a local cover.png (from the scanned folder) nor a remote cover
             // (from "Fetch info").
             val coverUrl = novel.coverUri ?: novel.remoteCoverUrl
-            Box(
+            CoverThumbnail(
+                url = coverUrl,
                 modifier = Modifier
                     .fillMaxWidth()
                     // 2:3 full-size cover aspect ratio (140dp wide -> 210dp tall).
-                    .height(210.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)),
-                contentAlignment = Alignment.Center
-            ) {
-                if (coverUrl != null) {
-                    AsyncImage(
-                        model = coverUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Text("📚", fontSize = 40.sp)
-                }
-            }
+                    .height(210.dp),
+                placeholderEmoji = "📚",
+                placeholderFontSize = 40.sp,
+                backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+            )
 
             Column(modifier = Modifier.fillMaxWidth()) {
                 Text(
