@@ -35,7 +35,8 @@ ARKarium được xây dựng xoay quanh việc phân phối trực tiếp từ 
 
 Nội dung được xuất bản dưới dạng tệp trên một relay và đồng bộ hóa với thư viện cục bộ của độc giả. Ứng dụng khách xử lý trải nghiệm đọc, thay vì yêu cầu một backend nền tảng thường trực.
 
-## Ảnh chụp màn hình
+<details>
+<summary><b>Ảnh chụp màn hình</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ Nội dung được xuất bản dưới dạng tệp trên một relay và đ�
   </tr>
 </table>
 
+</details>
+
 ## Điểm nổi bật
 
 - Ưu tiên đọc cục bộ (local-first)
@@ -74,10 +77,10 @@ Nội dung được xuất bản dưới dạng tệp trên một relay và đ�
 
 ### Định hướng tương lai
 
-- Chuyển văn bản thành giọng nói có nhận biết nhân vật
-- Đọc với nhiều giọng khác nhau
-- Được thiết kế cho trải nghiệm hư cấu phong phú
-- Ứng dụng khách cho máy tính để bàn
+- [ ] Chuyển văn bản thành giọng nói có nhận biết nhân vật
+- [ ] Đọc với nhiều giọng khác nhau
+- [ ] Được thiết kế cho trải nghiệm hư cấu phong phú
+- [ ] Ứng dụng khách cho máy tính để bàn
 
 ## Cài đặt
 
@@ -96,17 +99,19 @@ Ngoài ra, bạn có thể tải xuống bản phát hành mới nhất trực t
 
 ## Trạng thái
 
-Giai đoạn phát triển sớm. Giai đoạn Beta.
-
-Bản phát hành hiện tại của ứng dụng hoạt động tốt và có thể sử dụng để đọc.  
-Phiên bản V1 vẫn chưa hoàn thiện. Lỗi là điều bình thường.
+> [!WARNING]
+> Giai đoạn phát triển sớm. Giai đoạn Beta.
+>
+> Bản phát hành hiện tại của ứng dụng hoạt động tốt và có thể sử dụng để đọc.
+> Phiên bản V1 vẫn chưa hoàn thiện. Lỗi là điều bình thường.
 
 ## Giấy phép
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](../../LICENSE)
 
-Copyright © 2026 Rae-ARK. Bảo lưu mọi quyền.
-
-Phần mềm này và mã nguồn của nó là tài sản độc quyền.
-
-Không được phép sao chép, sửa đổi, phân phối, cấp phép lại hoặc sử dụng phần mềm này hoặc mã nguồn của nó, toàn bộ hoặc một phần, nếu không có sự cho phép bằng văn bản trước từ chủ sở hữu bản quyền.
+> [!IMPORTANT]
+> Copyright © 2026 Rae-ARK. Bảo lưu mọi quyền.
+>
+> Phần mềm này và mã nguồn của nó là tài sản độc quyền.
+>
+> Không được phép sao chép, sửa đổi, phân phối, cấp phép lại hoặc sử dụng phần mềm này hoặc mã nguồn của nó, toàn bộ hoặc một phần, nếu không có sự cho phép bằng văn bản trước từ chủ sở hữu bản quyền.

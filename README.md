@@ -35,7 +35,8 @@ ARKarium is built around direct distribution from Rae ARK to his reader.
 
 Content is published as files in a relay and synchronized to the reader's local library. The client handles the reading experience, rather than requiring a permanent platform backend.
 
-## Screenshots
+<details>
+<summary><b>Screenshots</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ Content is published as files in a relay and synchronized to the reader's local 
   </tr>
 </table>
 
+</details>
+
 ## Highlights
 
 - Local-first reading
@@ -74,10 +77,10 @@ Content is published as files in a relay and synchronized to the reader's local 
 
 ### At a Future Point
 
-- Character-aware text-to-speech
-- Multi-voice reading
-- Designed for rich fiction experience
-- Desktop Client
+- [ ] Character-aware text-to-speech
+- [ ] Multi-voice reading
+- [ ] Designed for rich fiction experience
+- [ ] Desktop Client
 
 ## Installation
 
@@ -96,17 +99,19 @@ Alternatively, download the latest release directly from [GitHub Releases](https
 
 ## Status
 
-Early development. Beta Stage.
-
-The current release app itself works fine, and it can be used for reading.  
-The V1 isn't done yet. Bugs are normal.
+> [!WARNING]
+> Early development. Beta Stage.
+>
+> The current release app itself works fine, and it can be used for reading.
+> The V1 isn't done yet. Bugs are normal.
 
 ## License
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](LICENSE)
 
-Copyright © 2026 Rae-ARK. All rights reserved.
-
-This software and its source code are proprietary.
-
-No permission is granted to copy, modify, distribute, sublicense, or use this software or its source code, in whole or in part, without prior written permission from the copyright holder.
+> [!IMPORTANT]
+> Copyright © 2026 Rae-ARK. All rights reserved.
+>
+> This software and its source code are proprietary.
+>
+> No permission is granted to copy, modify, distribute, sublicense, or use this software or its source code, in whole or in part, without prior written permission from the copyright holder.

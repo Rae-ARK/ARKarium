@@ -35,7 +35,8 @@ ARKarium, Rae ARK'tan okuyucusuna doğrudan dağıtım etrafında inşa edilmiş
 
 İçerik bir röleye dosyalar olarak yayımlanır ve okuyucunun yerel kitaplığına senkronize edilir. İstemci, kalıcı bir platform arka ucuna ihtiyaç duymak yerine okuma deneyimini kendisi yönetir.
 
-## Ekran Görüntüleri
+<details>
+<summary><b>Ekran Görüntüleri</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ ARKarium, Rae ARK'tan okuyucusuna doğrudan dağıtım etrafında inşa edilmiş
   </tr>
 </table>
 
+</details>
+
 ## Öne Çıkanlar
 
 - Yerelden önce okuma
@@ -74,10 +77,10 @@ ARKarium, Rae ARK'tan okuyucusuna doğrudan dağıtım etrafında inşa edilmiş
 
 ### Gelecekte
 
-- Karakter farkındalıklı metinden sese dönüştürme
-- Çoklu seslendirmeli okuma
-- Zengin bir kurgu deneyimi için tasarlandı
-- Masaüstü istemcisi
+- [ ] Karakter farkındalıklı metinden sese dönüştürme
+- [ ] Çoklu seslendirmeli okuma
+- [ ] Zengin bir kurgu deneyimi için tasarlandı
+- [ ] Masaüstü istemcisi
 
 ## Kurulum
 
@@ -96,17 +99,19 @@ Alternatif olarak, en son sürümü doğrudan [GitHub Releases](https://github.c
 
 ## Durum
 
-Erken geliştirme aşaması. Beta sürümü.
-
-Mevcut sürüm uygulaması kendi başına sorunsuz çalışıyor ve okuma için kullanılabilir.  
-V1 henüz tamamlanmadı. Hatalarla karşılaşmak normaldir.
+> [!WARNING]
+> Erken geliştirme aşaması. Beta sürümü.
+>
+> Mevcut sürüm uygulaması kendi başına sorunsuz çalışıyor ve okuma için kullanılabilir.
+> V1 henüz tamamlanmadı. Hatalarla karşılaşmak normaldir.
 
 ## Lisans
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](../../LICENSE)
 
-Telif Hakkı © 2026 Rae-ARK. Tüm hakları saklıdır.
-
-Bu yazılım ve kaynak kodu mülkiyete tabidir (proprietary).
-
-Telif hakkı sahibinin önceden yazılı izni olmadan bu yazılımın veya kaynak kodunun tamamının veya bir kısmının kopyalanmasına, değiştirilmesine, dağıtılmasına, alt lisanslanmasına veya kullanılmasına izin verilmez.
+> [!IMPORTANT]
+> Telif Hakkı © 2026 Rae-ARK. Tüm hakları saklıdır.
+>
+> Bu yazılım ve kaynak kodu mülkiyete tabidir (proprietary).
+>
+> Telif hakkı sahibinin önceden yazılı izni olmadan bu yazılımın veya kaynak kodunun tamamının veya bir kısmının kopyalanmasına, değiştirilmesine, dağıtılmasına, alt lisanslanmasına veya kullanılmasına izin verilmez.

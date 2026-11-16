@@ -35,7 +35,8 @@ O ARKarium é construído em torno da distribuição direta de Rae ARK para seu 
 
 O conteúdo é publicado como arquivos em um relay e sincronizado com a biblioteca local do leitor. O cliente cuida da experiência de leitura, em vez de exigir um backend de plataforma permanente.
 
-## Capturas de tela
+<details>
+<summary><b>Capturas de tela</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ O conteúdo é publicado como arquivos em um relay e sincronizado com a bibliote
   </tr>
 </table>
 
+</details>
+
 ## Destaques
 
 - Leitura local-first
@@ -74,10 +77,10 @@ O conteúdo é publicado como arquivos em um relay e sincronizado com a bibliote
 
 ### Para o futuro
 
-- Texto para voz com reconhecimento de personagens
-- Leitura com múltiplas vozes
-- Projetado para uma experiência rica de ficção
-- Cliente para desktop
+- [ ] Texto para voz com reconhecimento de personagens
+- [ ] Leitura com múltiplas vozes
+- [ ] Projetado para uma experiência rica de ficção
+- [ ] Cliente para desktop
 
 ## Instalação
 
@@ -96,17 +99,19 @@ Alternativamente, baixe a versão mais recente diretamente do [GitHub Releases](
 
 ## Status
 
-Desenvolvimento inicial. Estágio beta.
-
-O aplicativo da versão atual funciona bem e já pode ser usado para leitura.  
-A V1 ainda não está pronta. Bugs são normais.
+> [!WARNING]
+> Desenvolvimento inicial. Estágio beta.
+>
+> O aplicativo da versão atual funciona bem e já pode ser usado para leitura.
+> A V1 ainda não está pronta. Bugs são normais.
 
 ## Licença
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](../../LICENSE)
 
-Copyright © 2026 Rae-ARK. Todos os direitos reservados.
-
-Este software e seu código-fonte são proprietários.
-
-Não é concedida permissão para copiar, modificar, distribuir, sublicenciar ou usar este software ou seu código-fonte, no todo ou em parte, sem autorização prévia por escrito do titular dos direitos autorais.
+> [!IMPORTANT]
+> Copyright © 2026 Rae-ARK. Todos os direitos reservados.
+>
+> Este software e seu código-fonte são proprietários.
+>
+> Não é concedida permissão para copiar, modificar, distribuir, sublicenciar ou usar este software ou seu código-fonte, no todo ou em parte, sem autorização prévia por escrito do titular dos direitos autorais.
