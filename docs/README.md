@@ -10,6 +10,7 @@ because it still matters).
 | [`far-future-concern/`](far-future-concern/README.md) | future, not near-term | Proposals that are interesting but not a candidate for any near-future work. |
 | [`implementation/`](implementation/README.md) | present | Work in progress as a staged rung ladder. |
 | [`foundational/`](foundational/README.md) | past, permanent | What ARKarium is, how it is built, why. |
+| [`multi-lang-readme/`](multi-lang-readme/README.md)| past, permanent | Contains the Repo Readme in multiple languages. |
 
 Start with [`foundational/what-is-arkarium.md`](foundational/what-is-arkarium.md).
 
