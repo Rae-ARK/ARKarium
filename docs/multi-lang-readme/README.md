@@ -28,4 +28,4 @@ This directory holds the same README in multiple languages. Pick a language belo
 | Roman Urdu | [README_ur-Latn.md](README_ur-Latn.md) |
 | Română | [README_ro.md](README_ro.md) |
 | Български | [README_bg.md](README_bg.md) |
-| வாசிப்புக்குறிப்பு | [README_ta.md](README_ta.md) |
+| தமிழ் | [README_ta.md](README_ta.md) |
