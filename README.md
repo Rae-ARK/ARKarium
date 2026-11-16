@@ -1,9 +1,3 @@
-<div align="center">
-
-**English** | [简体中文](docs/multi-lang-readme/README_zh.md) | [繁體中文](docs/multi-lang-readme/README_zh-TW.md) | [日本語](docs/multi-lang-readme/README_ja.md) | [한국어](docs/multi-lang-readme/README_ko.md) | [Türkçe](docs/multi-lang-readme/README_tr.md) | [Русский](docs/multi-lang-readme/README_ru.md) | [Tiếng Việt](docs/multi-lang-readme/README_vi.md) | [ไทย](docs/multi-lang-readme/README_th.md) | [Deutsch](docs/multi-lang-readme/README_de.md) | [Español](docs/multi-lang-readme/README_es.md) | [Français](docs/multi-lang-readme/README_fr.md) | [Українська](docs/multi-lang-readme/README_uk.md) | [Polski](docs/multi-lang-readme/README_pl.md) | [Português (Brasil)](docs/multi-lang-readme/README_pt-BR.md) | [العربية](docs/multi-lang-readme/README_ar.md) | [فارسی](docs/multi-lang-readme/README_fa.md) | [Bahasa Indonesia](docs/multi-lang-readme/README_id.md) | [Italiano](docs/multi-lang-readme/README_it.md) | [Ελληνικά](docs/multi-lang-readme/README_el.md) | [മലയാളം](docs/multi-lang-readme/README_ml.md) | [Roman Urdu](docs/multi-lang-readme/README_ur-Latn.md) | [Română](docs/multi-lang-readme/README_ro.md) | [Български](docs/multi-lang-readme/README_bg.md) | [தமிழ்](docs/multi-lang-readme/README_ta.md)
-
-</div>
-
 <p align="center">
   <img src="assets/app-icon-source.png" width="150" alt="ARKarium icon">
 </p>
@@ -16,6 +10,7 @@
   <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85"><img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat"></a>
   <a href="https://github.com/Rae-ARK/ARKarium/releases"><img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat"></a>
   <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+  <a href="#languages"><img alt="languages" src="https://img.shields.io/badge/Languages-Click%20Me%2B-2750A8?style=flat"></a>
 </p>
 
 <h4 align="center">
@@ -115,3 +110,17 @@ Alternatively, download the latest release directly from [GitHub Releases](https
 > This software and its source code are proprietary.
 >
 > No permission is granted to copy, modify, distribute, sublicense, or use this software or its source code, in whole or in part, without prior written permission from the copyright holder.
+
+---
+
+<div align="center">
+
+<a id="languages"></a>
+
+🌐 **English** | [简体中文](docs/multi-lang-readme/README_zh.md) | [繁體中文](docs/multi-lang-readme/README_zh-TW.md) | [日本語](docs/multi-lang-readme/README_ja.md) | [한국어](docs/multi-lang-readme/README_ko.md) | [Türkçe](docs/multi-lang-readme/README_tr.md) | [Русский](docs/multi-lang-readme/README_ru.md) | [Tiếng Việt](docs/multi-lang-readme/README_vi.md) | [ไทย](docs/multi-lang-readme/README_th.md) | [Deutsch](docs/multi-lang-readme/README_de.md) | [Español](docs/multi-lang-readme/README_es.md) | [Français](docs/multi-lang-readme/README_fr.md) | [Українська](docs/multi-lang-readme/README_uk.md) | [Polski](docs/multi-lang-readme/README_pl.md) | [Português (Brasil)](docs/multi-lang-readme/README_pt-BR.md) | [العربية](docs/multi-lang-readme/README_ar.md) | [فارسی](docs/multi-lang-readme/README_fa.md) | [Bahasa Indonesia](docs/multi-lang-readme/README_id.md) | [Italiano](docs/multi-lang-readme/README_it.md) | [Ελληνικά](docs/multi-lang-readme/README_el.md) | [മലയാളം](docs/multi-lang-readme/README_ml.md) | [Roman Urdu](docs/multi-lang-readme/README_ur-Latn.md) | [Română](docs/multi-lang-readme/README_ro.md) | [Български](docs/multi-lang-readme/README_bg.md) | [தமிழ்](docs/multi-lang-readme/README_ta.md)
+
+<a href="#top">⬆️ Back to top</a>
+
+Made by Rae ARK
+
+</div>
