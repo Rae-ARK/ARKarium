@@ -10,7 +10,7 @@
   <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85"><img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat"></a>
   <a href="https://github.com/Rae-ARK/ARKarium/releases"><img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat"></a>
   <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
-  <a href="#languages"><img alt="languages" src="https://img.shields.io/badge/Languages-Click%20Me%2R-2750A8?style=flat"></a>
+  <a href="#languages"><img alt="languages" src="https://img.shields.io/static/v1?label=Languages&message=Click%20Me&color=990000&style=flat"></a>
 </p>
 
 <h4 align="center">
