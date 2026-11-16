@@ -35,7 +35,8 @@ ARKarium est conçu autour d'une distribution directe de Rae ARK vers son lecteu
 
 Le contenu est publié sous forme de fichiers sur un relais et synchronisé avec la bibliothèque locale du lecteur. Le client gère l'expérience de lecture, sans nécessiter de backend de plateforme permanent.
 
-## Captures d'écran
+<details>
+<summary><b>Captures d'écran</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ Le contenu est publié sous forme de fichiers sur un relais et synchronisé avec
   </tr>
 </table>
 
+</details>
+
 ## Points forts
 
 - Lecture axée sur le local
@@ -74,10 +77,10 @@ Le contenu est publié sous forme de fichiers sur un relais et synchronisé avec
 
 ### À plus long terme
 
-- Synthèse vocale sensible aux personnages
-- Lecture multi-voix
-- Conçu pour une expérience de fiction riche
-- Client de bureau
+- [ ] Synthèse vocale sensible aux personnages
+- [ ] Lecture multi-voix
+- [ ] Conçu pour une expérience de fiction riche
+- [ ] Client de bureau
 
 ## Installation
 
@@ -96,17 +99,19 @@ Vous pouvez également télécharger la dernière version directement depuis [Gi
 
 ## Statut
 
-Développement précoce. Stade bêta.
-
-L'application de la version actuelle fonctionne bien et peut être utilisée pour la lecture.  
-La V1 n'est pas encore terminée. Des bugs sont normaux.
+> [!WARNING]
+> Développement précoce. Stade bêta.
+>
+> L'application de la version actuelle fonctionne bien et peut être utilisée pour la lecture.
+> La V1 n'est pas encore terminée. Des bugs sont normaux.
 
 ## Licence
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](../../LICENSE)
 
-Copyright © 2026 Rae-ARK. Tous droits réservés.
-
-Ce logiciel et son code source sont propriétaires.
-
-Aucune autorisation n'est accordée pour copier, modifier, distribuer, sous-licencier ou utiliser ce logiciel ou son code source, en tout ou en partie, sans l'autorisation écrite préalable du titulaire des droits d'auteur.
+> [!IMPORTANT]
+> Copyright © 2026 Rae-ARK. Tous droits réservés.
+>
+> Ce logiciel et son code source sont propriétaires.
+>
+> Aucune autorisation n'est accordée pour copier, modifier, distribuer, sous-licencier ou utiliser ce logiciel ou son code source, en tout ou en partie, sans l'autorisation écrite préalable du titulaire des droits d'auteur.

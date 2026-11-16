@@ -35,7 +35,8 @@ ARKarium, Rae ARK se qari tak direct distribution ke gird bana gaya hai.
 
 Content ek relay par files ki surat mein publish hota hai aur qari ki local library ke sath sync ho jata hai. Client khud reading experience ko handle karta hai, is liye kisi permanent platform backend ki zaroorat nahi parti.
 
-## Screenshots
+<details>
+<summary><b>Screenshots</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ Content ek relay par files ki surat mein publish hota hai aur qari ki local libr
   </tr>
 </table>
 
+</details>
+
 ## Khas Baatein
 
 - Local-first reading
@@ -74,10 +77,10 @@ Content ek relay par files ki surat mein publish hota hai aur qari ki local libr
 
 ### Mustaqbil Mein
 
-- Character-aware text-to-speech
-- Multi-voice reading
-- Rich fiction experience ke liye design kiya gaya
-- Desktop client
+- [ ] Character-aware text-to-speech
+- [ ] Multi-voice reading
+- [ ] Rich fiction experience ke liye design kiya gaya
+- [ ] Desktop client
 
 ## Installation
 
@@ -96,17 +99,19 @@ Ya phir, latest release seedha [GitHub Releases](https://github.com/Rae-ARK/ARKa
 
 ## Status
 
-Early development. Beta stage.
-
-Current release app theek tarah kaam karta hai, aur isay reading ke liye istemal kiya ja sakta hai.  
-V1 abhi mukammal nahi hua. Bugs ka milna normal baat hai.
+> [!WARNING]
+> Early development. Beta stage.
+>
+> Current release app theek tarah kaam karta hai, aur isay reading ke liye istemal kiya ja sakta hai.
+> V1 abhi mukammal nahi hua. Bugs ka milna normal baat hai.
 
 ## License
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](../../LICENSE)
 
-Copyright © 2026 Rae-ARK. Tamam huqooq mehfooz hain.
-
-Yeh software aur iska source code proprietary hai.
-
-Copyright holder ki pehle se tehreeri ijazat ke baghair, is software ya iske source code ko, mukammal ya kisi hisse mein, copy, modify, distribute, sub-license ya istemal karne ki ijazat nahi di jati.
+> [!IMPORTANT]
+> Copyright © 2026 Rae-ARK. Tamam huqooq mehfooz hain.
+>
+> Yeh software aur iska source code proprietary hai.
+>
+> Copyright holder ki pehle se tehreeri ijazat ke baghair, is software ya iske source code ko, mukammal ya kisi hisse mein, copy, modify, distribute, sub-license ya istemal karne ki ijazat nahi di jati.

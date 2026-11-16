@@ -35,7 +35,8 @@ ARKarium è costruito attorno alla distribuzione diretta da Rae ARK al lettore.
 
 I contenuti vengono pubblicati come file su un relay e sincronizzati con la libreria locale del lettore. Il client gestisce l'esperienza di lettura, senza richiedere un backend di piattaforma permanente.
 
-## Screenshot
+<details>
+<summary><b>Screenshot</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ I contenuti vengono pubblicati come file su un relay e sincronizzati con la libr
   </tr>
 </table>
 
+</details>
+
 ## Punti salienti
 
 - Lettura local-first
@@ -74,10 +77,10 @@ I contenuti vengono pubblicati come file su un relay e sincronizzati con la libr
 
 ### In prospettiva futura
 
-- Sintesi vocale consapevole dei personaggi
-- Lettura multi-voce
-- Progettato per un'esperienza narrativa ricca
-- Client desktop
+- [ ] Sintesi vocale consapevole dei personaggi
+- [ ] Lettura multi-voce
+- [ ] Progettato per un'esperienza narrativa ricca
+- [ ] Client desktop
 
 ## Installazione
 
@@ -96,17 +99,19 @@ In alternativa, scarica l'ultima versione direttamente da [GitHub Releases](http
 
 ## Stato
 
-Sviluppo iniziale. Fase beta.
-
-L'app della versione attuale funziona correttamente e può già essere usata per leggere.  
-La V1 non è ancora completa. I bug sono normali.
+> [!WARNING]
+> Sviluppo iniziale. Fase beta.
+>
+> L'app della versione attuale funziona correttamente e può già essere usata per leggere.
+> La V1 non è ancora completa. I bug sono normali.
 
 ## Licenza
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](../../LICENSE)
 
-Copyright © 2026 Rae-ARK. Tutti i diritti riservati.
-
-Questo software e il relativo codice sorgente sono proprietari.
-
-Non viene concesso alcun permesso di copiare, modificare, distribuire, concedere in sublicenza o utilizzare questo software o il suo codice sorgente, in tutto o in parte, senza previa autorizzazione scritta del titolare del copyright.
+> [!IMPORTANT]
+> Copyright © 2026 Rae-ARK. Tutti i diritti riservati.
+>
+> Questo software e il relativo codice sorgente sono proprietari.
+>
+> Non viene concesso alcun permesso di copiare, modificare, distribuire, concedere in sublicenza o utilizzare questo software o il suo codice sorgente, in tutto o in parte, senza previa autorizzazione scritta del titolare del copyright.

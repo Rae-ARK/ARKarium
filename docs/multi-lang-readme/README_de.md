@@ -35,7 +35,8 @@ ARKarium basiert auf der direkten Verteilung von Rae ARK an seine Leser.
 
 Inhalte werden als Dateien auf einem Relay veröffentlicht und mit der lokalen Bibliothek des Lesers synchronisiert. Der Client übernimmt das Leseerlebnis, sodass kein dauerhaftes Plattform-Backend erforderlich ist.
 
-## Screenshots
+<details>
+<summary><b>Screenshots</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ Inhalte werden als Dateien auf einem Relay veröffentlicht und mit der lokalen B
   </tr>
 </table>
 
+</details>
+
 ## Highlights
 
 - Lokal-first-Lesen
@@ -74,10 +77,10 @@ Inhalte werden als Dateien auf einem Relay veröffentlicht und mit der lokalen B
 
 ### Für die Zukunft geplant
 
-- Charakterbewusste Text-zu-Sprache-Umwandlung
-- Vorlesen mit mehreren Stimmen
-- Entwickelt für ein umfassendes Fiction-Erlebnis
-- Desktop-Client
+- [ ] Charakterbewusste Text-zu-Sprache-Umwandlung
+- [ ] Vorlesen mit mehreren Stimmen
+- [ ] Entwickelt für ein umfassendes Fiction-Erlebnis
+- [ ] Desktop-Client
 
 ## Installation
 
@@ -96,17 +99,19 @@ Alternativ kann die neueste Version direkt über [GitHub Releases](https://githu
 
 ## Status
 
-Frühe Entwicklungsphase. Beta-Stadium.
-
-Die aktuell veröffentlichte App funktioniert einwandfrei und kann zum Lesen verwendet werden.  
-V1 ist noch nicht fertig. Fehler sind normal.
+> [!WARNING]
+> Frühe Entwicklungsphase. Beta-Stadium.
+>
+> Die aktuell veröffentlichte App funktioniert einwandfrei und kann zum Lesen verwendet werden.
+> V1 ist noch nicht fertig. Fehler sind normal.
 
 ## Lizenz
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](../../LICENSE)
 
-Copyright © 2026 Rae-ARK. Alle Rechte vorbehalten.
-
-Diese Software und ihr Quellcode sind proprietär.
-
-Es wird keine Erlaubnis erteilt, diese Software oder ihren Quellcode ganz oder teilweise zu kopieren, zu verändern, zu verbreiten, unterzulizenzieren oder zu verwenden, ohne vorherige schriftliche Genehmigung des Urheberrechtsinhabers.
+> [!IMPORTANT]
+> Copyright © 2026 Rae-ARK. Alle Rechte vorbehalten.
+>
+> Diese Software und ihr Quellcode sind proprietär.
+>
+> Es wird keine Erlaubnis erteilt, diese Software oder ihren Quellcode ganz oder teilweise zu kopieren, zu verändern, zu verbreiten, unterzulizenzieren oder zu verwenden, ohne vorherige schriftliche Genehmigung des Urheberrechtsinhabers.

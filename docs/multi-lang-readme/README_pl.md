@@ -35,7 +35,8 @@ ARKarium opiera się na bezpośredniej dystrybucji od Rae ARK do czytelnika.
 
 Treści są publikowane jako pliki na przekaźniku (relay) i synchronizowane z lokalną biblioteką czytelnika. To klient obsługuje doświadczenie czytania, zamiast wymagać stałego backendu platformy.
 
-## Zrzuty ekranu
+<details>
+<summary><b>Zrzuty ekranu</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ Treści są publikowane jako pliki na przekaźniku (relay) i synchronizowane z l
   </tr>
 </table>
 
+</details>
+
 ## Najważniejsze cechy
 
 - Czytanie z priorytetem lokalnym
@@ -74,10 +77,10 @@ Treści są publikowane jako pliki na przekaźniku (relay) i synchronizowane z l
 
 ### W dalszej perspektywie
 
-- Zamiana tekstu na mowę z uwzględnieniem postaci
-- Czytanie wieloma głosami
-- Zaprojektowane z myślą o bogatym doświadczeniu beletrystycznym
-- Klient na komputery stacjonarne
+- [ ] Zamiana tekstu na mowę z uwzględnieniem postaci
+- [ ] Czytanie wieloma głosami
+- [ ] Zaprojektowane z myślą o bogatym doświadczeniu beletrystycznym
+- [ ] Klient na komputery stacjonarne
 
 ## Instalacja
 
@@ -96,17 +99,19 @@ Alternatywnie pobierz najnowsze wydanie bezpośrednio z [GitHub Releases](https:
 
 ## Status
 
-Wczesny etap rozwoju. Etap beta.
-
-Obecna wydana wersja aplikacji działa poprawnie i można jej używać do czytania.  
-Wersja V1 nie jest jeszcze gotowa. Błędy są czymś normalnym.
+> [!WARNING]
+> Wczesny etap rozwoju. Etap beta.
+>
+> Obecna wydana wersja aplikacji działa poprawnie i można jej używać do czytania.
+> Wersja V1 nie jest jeszcze gotowa. Błędy są czymś normalnym.
 
 ## Licencja
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](../../LICENSE)
 
-Copyright © 2026 Rae-ARK. Wszelkie prawa zastrzeżone.
-
-To oprogramowanie i jego kod źródłowy mają charakter zastrzeżony (proprietary).
-
-Nie udziela się zezwolenia na kopiowanie, modyfikowanie, dystrybuowanie, sublicencjonowanie ani wykorzystywanie tego oprogramowania lub jego kodu źródłowego, w całości lub w części, bez uprzedniej pisemnej zgody posiadacza praw autorskich.
+> [!IMPORTANT]
+> Copyright © 2026 Rae-ARK. Wszelkie prawa zastrzeżone.
+>
+> To oprogramowanie i jego kod źródłowy mają charakter zastrzeżony (proprietary).
+>
+> Nie udziela się zezwolenia na kopiowanie, modyfikowanie, dystrybuowanie, sublicencjonowanie ani wykorzystywanie tego oprogramowania lub jego kodu źródłowego, w całości lub w części, bez uprzedniej pisemnej zgody posiadacza praw autorskich.

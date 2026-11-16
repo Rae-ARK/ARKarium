@@ -35,7 +35,8 @@ ARKarium este construit în jurul distribuției directe de la Rae ARK către cit
 
 Conținutul este publicat sub formă de fișiere pe un relay și sincronizat cu biblioteca locală a cititorului. Clientul gestionează experiența de citire, fără a necesita un backend de platformă permanent.
 
-## Capturi de ecran
+<details>
+<summary><b>Capturi de ecran</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ Conținutul este publicat sub formă de fișiere pe un relay și sincronizat cu 
   </tr>
 </table>
 
+</details>
+
 ## Puncte forte
 
 - Citire cu prioritate locală
@@ -74,10 +77,10 @@ Conținutul este publicat sub formă de fișiere pe un relay și sincronizat cu 
 
 ### Pe viitor
 
-- Conversie text-în-vorbire conștientă de personaje
-- Citire cu mai multe voci
-- Conceput pentru o experiență bogată de ficțiune
-- Client desktop
+- [ ] Conversie text-în-vorbire conștientă de personaje
+- [ ] Citire cu mai multe voci
+- [ ] Conceput pentru o experiență bogată de ficțiune
+- [ ] Client desktop
 
 ## Instalare
 
@@ -96,17 +99,19 @@ Alternativ, descărcați cea mai recentă versiune direct de pe [GitHub Releases
 
 ## Stare
 
-Dezvoltare timpurie. Etapă beta.
-
-Aplicația din versiunea curentă funcționează bine și poate fi folosită pentru citit.  
-V1 nu este încă finalizată. Erorile sunt normale.
+> [!WARNING]
+> Dezvoltare timpurie. Etapă beta.
+>
+> Aplicația din versiunea curentă funcționează bine și poate fi folosită pentru citit.
+> V1 nu este încă finalizată. Erorile sunt normale.
 
 ## Licență
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](../../LICENSE)
 
-Drepturi de autor © 2026 Rae-ARK. Toate drepturile rezervate.
-
-Acest software și codul său sursă sunt proprietare.
-
-Nu se acordă nicio permisiune de a copia, modifica, distribui, sublicenția sau utiliza acest software sau codul său sursă, integral sau parțial, fără permisiunea scrisă prealabilă a deținătorului drepturilor de autor.
+> [!IMPORTANT]
+> Drepturi de autor © 2026 Rae-ARK. Toate drepturile rezervate.
+>
+> Acest software și codul său sursă sunt proprietare.
+>
+> Nu se acordă nicio permisiune de a copia, modifica, distribui, sublicenția sau utiliza acest software sau codul său sursă, integral sau parțial, fără permisiunea scrisă prealabilă a deținătorului drepturilor de autor.

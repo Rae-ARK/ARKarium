@@ -35,7 +35,8 @@ ARKarium dibangun di sekitar distribusi langsung dari Rae ARK ke pembacanya.
 
 Konten dipublikasikan sebagai berkas pada sebuah relay dan disinkronkan ke pustaka lokal pembaca. Klien yang menangani pengalaman membaca, bukan memerlukan backend platform yang permanen.
 
-## Tangkapan Layar
+<details>
+<summary><b>Tangkapan Layar</b></summary>
 
 <table>
   <tr>
@@ -64,6 +65,8 @@ Konten dipublikasikan sebagai berkas pada sebuah relay dan disinkronkan ke pusta
   </tr>
 </table>
 
+</details>
+
 ## Sorotan
 
 - Membaca yang mengutamakan data lokal
@@ -74,10 +77,10 @@ Konten dipublikasikan sebagai berkas pada sebuah relay dan disinkronkan ke pusta
 
 ### Rencana ke Depan
 
-- Text-to-speech yang menyadari karakter
-- Pembacaan dengan banyak suara
-- Dirancang untuk pengalaman fiksi yang kaya
-- Klien desktop
+- [ ] Text-to-speech yang menyadari karakter
+- [ ] Pembacaan dengan banyak suara
+- [ ] Dirancang untuk pengalaman fiksi yang kaya
+- [ ] Klien desktop
 
 ## Instalasi
 
@@ -96,17 +99,19 @@ Sebagai alternatif, unduh rilis terbaru langsung dari [GitHub Releases](https://
 
 ## Status
 
-Tahap pengembangan awal. Tahap beta.
-
-Aplikasi rilis saat ini berfungsi dengan baik dan sudah dapat digunakan untuk membaca.  
-V1 belum selesai. Bug adalah hal yang wajar.
+> [!WARNING]
+> Tahap pengembangan awal. Tahap beta.
+>
+> Aplikasi rilis saat ini berfungsi dengan baik dan sudah dapat digunakan untuk membaca.
+> V1 belum selesai. Bug adalah hal yang wajar.
 
 ## Lisensi
 
 [![Proprietary](https://img.shields.io/badge/License-Proprietary-8B0000?style=flat)](../../LICENSE)
 
-Hak Cipta © 2026 Rae-ARK. Semua hak dilindungi.
-
-Perangkat lunak ini dan kode sumbernya bersifat proprietary.
-
-Tidak ada izin yang diberikan untuk menyalin, memodifikasi, mendistribusikan, mensublisensikan, atau menggunakan perangkat lunak ini atau kode sumbernya, baik sebagian maupun seluruhnya, tanpa izin tertulis sebelumnya dari pemegang hak cipta.
+> [!IMPORTANT]
+> Hak Cipta © 2026 Rae-ARK. Semua hak dilindungi.
+>
+> Perangkat lunak ini dan kode sumbernya bersifat proprietary.
+>
+> Tidak ada izin yang diberikan untuk menyalin, memodifikasi, mendistribusikan, mensublisensikan, atau menggunakan perangkat lunak ini atau kode sumbernya, baik sebagian maupun seluruhnya, tanpa izin tertulis sebelumnya dari pemegang hak cipta.
