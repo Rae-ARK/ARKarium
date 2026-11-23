@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 """
+[!Warning] This file was created before gen_logo_strokes.py. 
+The migration to make this file to legacy and its termination 
+is yet to be decided.
+
 Regenerates the point data in
 app/src/main/java/com/arkarium/app/ui/LogoPoints.kt from
 app/src/main/res/drawable-nodpi/ic_splash_logo.png.
