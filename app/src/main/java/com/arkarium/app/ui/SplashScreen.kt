@@ -42,6 +42,9 @@ import androidx.compose.ui.unit.sp
 import com.arkarium.app.R
 import com.arkarium.app.audio.GuitarChordSynth
 import com.arkarium.app.audio.SplashChordPlayer
+import com.arkarium.app.data.AppScope
+import com.arkarium.app.data.SplashAnimationMode
+import com.arkarium.app.data.SplashMusicMode
 import kotlin.math.sqrt
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -108,24 +111,31 @@ private const val BRIDGE_FRACTION = 0.18f
 private val SplashBackground = Color(0xFF000000)
 private val SplashForeground = Color(0xFFFFFFFF)
 
+// R8 fix (urgent-review.md, F8): how long SplashMusicMode.SHORT fades the chord
+// out over, once the splash itself starts tearing down - roughly FADE_OUT_MS's
+// own duration, so the music dies away over about the same window the picture
+// does, rather than being timed to some unrelated duration.
+private const val SHORT_MUSIC_FADE_MS = 320L
+
 @Composable
 fun SplashScreen(
-    // See SettingsScreen's "Splash Screen" section / PreferencesManager -
-    // both default to true (D6, revised: the chord is scored to the
-    // animation, so it stays on by default rather than being muted
-    // out-of-the-box). animationEnabled=false skips straight to a plain
-    // fade-in of the real logo (see SIMPLE_FADE_IN_MS); musicEnabled=false
-    // just never starts the AudioTrack. The two are independent of each
-    // other.
-    animationEnabled: Boolean = true,
-    musicEnabled: Boolean = true,
+    // See SplashSettingsScreen / PreferencesManager.splashAnimationMode. Default
+    // ONCE_PER_UPDATE matches the pre-R8 behavior for a user who's never touched
+    // this setting. EVERY_LAUNCH always plays the full whoosh-and-cross sequence
+    // (see isFirstLaunchSinceUpdate below for how OFF/ONCE_PER_UPDATE instead
+    // collapse to the plain SIMPLE_FADE_IN_MS fade).
+    animationMode: SplashAnimationMode = SplashAnimationMode.ONCE_PER_UPDATE,
+    // See SplashSettingsScreen / PreferencesManager.splashMusicMode. OFF never
+    // starts the AudioTrack; SHORT and FULL both start it, differing only in how
+    // playback ends (see the DisposableEffect/LaunchedEffect below). Independent
+    // of animationMode either way.
+    musicMode: SplashMusicMode = SplashMusicMode.SHORT,
     // D6 (docs/proposal/performance.md, F13): true exactly once per
-    // install/update (see PreferencesManager.shouldShowFullSplash) - plays the
-    // full whoosh-and-cross sequence. false on every other cold start, which
-    // collapses to the same short SIMPLE_FADE_IN_MS fade animationEnabled=false
-    // already uses, regardless of animationEnabled's own value - a user who
-    // wants the animation still gets it on the one launch it's meant for.
-    fullSequence: Boolean = true,
+    // install/update (see PreferencesManager.shouldShowFullSplash) - whether
+    // animationMode == ONCE_PER_UPDATE should play the full whoosh-and-cross
+    // sequence on this particular launch. Ignored by EVERY_LAUNCH (always true)
+    // and OFF (always false) - see playFullSequence below.
+    isFirstLaunchSinceUpdate: Boolean = true,
     onFinished: () -> Unit
 ) {
     // Single linear timeline driver - every phase below derives its own
@@ -151,37 +161,74 @@ fun SplashScreen(
     // Dispatchers.Default here; only the AudioTrack construct/write/play in
     // SplashChordPlayer.playPcm (comparatively cheap) still touches the main
     // thread, via the LaunchedEffect's resumption after withContext returns.
-    // Skipped entirely when musicEnabled is false, and released via
-    // DisposableEffect regardless of whether synthesis had finished yet by the
-    // time the splash tears down, so the AudioTrack can never leak or keep
-    // playing past the splash itself.
+    // Skipped entirely when musicMode is OFF.
+    //
+    // R8 fix (urgent-review.md, F8): SHORT and FULL now diverge in how playback
+    // ends rather than both being hard-stopped. chordPlayer.value is set to null
+    // the moment either effect has handed the AudioTrack off to its own ending
+    // (FULL's AppScope.io self-release below, or the fade this DisposableEffect
+    // kicks off for SHORT) - whichever runs second (teardown order between a
+    // DisposableEffect and a still-running LaunchedEffect isn't guaranteed) finds
+    // nothing left to double-release.
     val chordPlayer = remember { mutableStateOf<SplashChordPlayer?>(null) }
-    DisposableEffect(musicEnabled) {
+    DisposableEffect(musicMode) {
         onDispose {
-            chordPlayer.value?.release()
+            val player = chordPlayer.value
             chordPlayer.value = null
+            when (musicMode) {
+                SplashMusicMode.SHORT -> if (player != null) {
+                    // onDispose itself can't suspend - the fade runs on the
+                    // process-lifetime AppScope rather than this composable's own
+                    // (already-cancelled-by-now) coroutine scope.
+                    AppScope.io.launch { player.fadeOutAndRelease(SHORT_MUSIC_FADE_MS) }
+                }
+                // FULL: nothing to do here - the LaunchedEffect below already
+                // detached the player to self-release once the clip naturally
+                // ends, specifically so this dispose does NOT cut it off.
+                SplashMusicMode.FULL -> {}
+                SplashMusicMode.OFF -> {}
+            }
         }
     }
-    LaunchedEffect(musicEnabled) {
-        if (!musicEnabled) return@LaunchedEffect
+    LaunchedEffect(musicMode) {
+        if (musicMode == SplashMusicMode.OFF) return@LaunchedEffect
         try {
             val pcm = withContext(Dispatchers.Default) {
                 GuitarChordSynth.buildCMajorStrumPcm16()
             }
             val player = SplashChordPlayer()
             player.playPcm(pcm)
-            chordPlayer.value = player
+            if (musicMode == SplashMusicMode.FULL) {
+                // R8 fix (urgent-review.md, F8): "Full lets the audio outlive the
+                // splash" - rather than handing this to the DisposableEffect
+                // above (which tears down with the splash), schedule its release
+                // on the process-lifetime AppScope for exactly the clip's own
+                // duration from now, and never store it in chordPlayer at all, so
+                // nothing tied to this composable's lifecycle can stop it early.
+                val clipMs = pcm.size * 1000L / GuitarChordSynth.SAMPLE_RATE
+                AppScope.io.launch {
+                    delay(clipMs)
+                    player.release()
+                }
+            } else {
+                chordPlayer.value = player
+            }
         } catch (_: Exception) {
             // An unusual/missing audio output shouldn't be able to crash the
             // splash - the visual whoosh still runs fine without sound.
         }
     }
 
-    // Whoosh + crossfade collapse into a single quick fade-in whenever the
-    // full sequence shouldn't play this launch - either the user turned the
-    // animation off, or (D6) this isn't the first launch since an
-    // install/update. See SIMPLE_FADE_IN_MS.
-    val playFullSequence = animationEnabled && fullSequence
+    // Whoosh + crossfade collapse into a single quick fade-in whenever the full
+    // sequence shouldn't play this launch. R8 fix (urgent-review.md, F8):
+    // EVERY_LAUNCH always plays it, OFF never does, and ONCE_PER_UPDATE keeps the
+    // pre-R8 behavior of deferring to isFirstLaunchSinceUpdate. See
+    // SIMPLE_FADE_IN_MS for what "collapse" renders instead.
+    val playFullSequence = when (animationMode) {
+        SplashAnimationMode.EVERY_LAUNCH -> true
+        SplashAnimationMode.OFF -> false
+        SplashAnimationMode.ONCE_PER_UPDATE -> isFirstLaunchSinceUpdate
+    }
     val whooshDurationMs = if (playFullSequence) WHOOSH_MS else 0
     val crossfadeDurationMs = if (playFullSequence) CROSSFADE_MS else SIMPLE_FADE_IN_MS
     val totalMs = whooshDurationMs + crossfadeDurationMs + HOLD_MS + FADE_OUT_MS

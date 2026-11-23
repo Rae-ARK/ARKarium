@@ -4,6 +4,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioTrack
+import kotlinx.coroutines.delay
 
 // Plays the synthesized C major strum (see GuitarChordSynth) once, backing
 // SplashScreen's line-reconstruction animation. The whole clip is a few
@@ -54,6 +55,36 @@ class SplashChordPlayer {
         track.write(pcm, 0, pcm.size)
         track.play()
         audioTrack = track
+    }
+
+    // R8 fix (urgent-review.md, F8): "the chord ... is stopped hard when the
+    // splash ends" - an audible click/cutoff mid-note. Used for
+    // SplashMusicMode.SHORT instead of a plain release(): ramps the track's
+    // volume down to 0 over `durationMs` in a handful of steps before actually
+    // stopping it, so the note dies away instead of cutting off. Safe to call
+    // from any coroutine (SplashScreen calls it from a DisposableEffect's
+    // onDispose via AppScope.io, since onDispose itself can't suspend).
+    // setVolume() can throw IllegalStateException on an already-stopped/
+    // uninitialized track (e.g. a second caller racing this one) - caught the
+    // same way release() below guards its own stop() call, and just falls
+    // through to release() either way.
+    suspend fun fadeOutAndRelease(durationMs: Long) {
+        val track = audioTrack
+        if (track == null || durationMs <= 0L) {
+            release()
+            return
+        }
+        val steps = 12
+        val stepMs = durationMs / steps
+        for (i in steps downTo 0) {
+            try {
+                track.setVolume(i.toFloat() / steps)
+            } catch (_: IllegalStateException) {
+                break
+            }
+            if (stepMs > 0L) delay(stepMs)
+        }
+        release()
     }
 
     // Stops and releases the underlying AudioTrack. Safe to call more than

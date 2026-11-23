@@ -94,6 +94,8 @@ import com.arkarium.app.data.NewChapterNotifier
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.sync.relayBaseUrlForSlug
 import com.arkarium.app.data.PreferencesManager
+import com.arkarium.app.data.SplashAnimationMode
+import com.arkarium.app.data.SplashMusicMode
 import com.arkarium.app.data.Theme
 import com.arkarium.app.data.LastScanInfo
 import com.arkarium.app.data.StorageBreakdown
@@ -876,14 +878,19 @@ class MainActivity : ComponentActivity() {
                 // of Stage 3.4; Stage 3.5 removed the manual currentScreen/Screen fallback
                 // this comment used to describe.
                 val navController = rememberNavController()
-                // Splash-screen behavior toggles (see SettingsScreen's "Splash Screen"
-                // section) - both default to true to match PreferencesManager's own default.
-                val splashAnimationEnabled = prefsManager.splashAnimationEnabled.collectAsState(initial = true)
-                val splashMusicEnabled = prefsManager.splashMusicEnabled.collectAsState(initial = true)
+                // Splash-screen behavior (see SplashSettingsScreen / PreferencesManager) -
+                // R8 fix (urgent-review.md, F8): now a three-way mode each, rather than a
+                // plain on/off. Initial values match PreferencesManager's own defaults.
+                val splashAnimationMode = prefsManager.splashAnimationMode.collectAsState(
+                    initial = SplashAnimationMode.ONCE_PER_UPDATE
+                )
+                val splashMusicMode = prefsManager.splashMusicMode.collectAsState(
+                    initial = SplashMusicMode.SHORT
+                )
                 // D6 (docs/proposal/performance.md, F13): whether this launch is the
-                // first one since an install/update, in which case the full
-                // whoosh-and-cross sequence plays; every other launch collapses to a
-                // short fade regardless of splashAnimationEnabled's own value. Initial
+                // first one since an install/update - only consulted by
+                // SplashAnimationMode.ONCE_PER_UPDATE (see SplashScreen's
+                // playFullSequence); EVERY_LAUNCH/OFF ignore this entirely. Initial
                 // true matches "a fresh process always assumes full until proven
                 // otherwise" - the same direction PreferencesManager's -1 sentinel
                 // resolves on an unset key, so there's no first-frame flash from true
@@ -1047,9 +1054,9 @@ class MainActivity : ComponentActivity() {
                         window.statusBarColor = Color.Black.toArgb()
                     }
                     SplashScreen(
-                        animationEnabled = splashAnimationEnabled.value,
-                        musicEnabled = splashMusicEnabled.value,
-                        fullSequence = fullSplashSequence.value,
+                        animationMode = splashAnimationMode.value,
+                        musicMode = splashMusicMode.value,
+                        isFirstLaunchSinceUpdate = fullSplashSequence.value,
                         onFinished = {
                             showSplash.value = false
                             // Record this version as having shown the full sequence
@@ -1216,8 +1223,8 @@ class MainActivity : ComponentActivity() {
                     currentTheme = currentTheme,
                     currentSystemDefaultLightVariant = currentSystemDefaultLightVariant,
                     amoledModeEnabled = amoledModeEnabled,
-                    splashAnimationEnabled = splashAnimationEnabled,
-                    splashMusicEnabled = splashMusicEnabled,
+                    splashAnimationMode = splashAnimationMode,
+                    splashMusicMode = splashMusicMode,
                     ttsDefaultRate = ttsDefaultRate,
                     ttsPitch = ttsPitch,
                     ttsAutoContinue = ttsAutoContinue,

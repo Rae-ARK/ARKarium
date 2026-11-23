@@ -161,6 +161,14 @@ fun NovelDetailScreen(
     // the reader doesn't need to know which case produced it, just that something
     // needs their attention.
     notifyBlockedReason: String? = null,
+    // R6 fix (urgent-review.md): "explain the denial and offer a shortcut to system
+    // settings." True only for the permission-denied flavor of notifyBlockedReason
+    // (not the sync-status one from F7, which a settings shortcut can't fix) - lets
+    // this composable show an actionable "Open settings" link instead of a dead-end
+    // warning. onOpenNotificationSettings is null whenever this is false, following
+    // the same non-null-gates-visibility pattern as onToggleNotify/onSyncClick.
+    notifyPermissionBlocked: Boolean = false,
+    onOpenNotificationSettings: (() -> Unit)? = null,
     // uiux.md's "Arc cover enlarger is undiscoverable" - true means the
     // one-time ripple-plus-tooltip hint has already played, false plays it
     // on the "All Chapters" cover below. The caller owns persistence
@@ -478,6 +486,23 @@ fun NovelDetailScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error
                             )
+                            // R6 fix (urgent-review.md): the permission-denial flavor of
+                            // this warning is otherwise a dead end - the reader is told
+                            // what's wrong but has no way to act on it from here, since
+                            // the in-app permission dialog won't be shown again after two
+                            // denials. A direct link to this app's system notification
+                            // settings closes that loop.
+                            if (notifyPermissionBlocked && onOpenNotificationSettings != null) {
+                                Text(
+                                    "Open settings",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .padding(top = 2.dp)
+                                        .clickable { onOpenNotificationSettings() }
+                                )
+                            }
                         } else if (notifyEnabled && lastCheckError != null) {
                             Text(
                                 "Last check failed: $lastCheckError",

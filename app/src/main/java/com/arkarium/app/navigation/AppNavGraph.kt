@@ -1,9 +1,12 @@
 package com.arkarium.app.navigation
 
 import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.LaunchedEffect
@@ -26,6 +29,8 @@ import com.arkarium.app.data.ChapterLoadResult
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.ReaderPosition
 import com.arkarium.app.data.ReadingProgressSaveWorker
+import com.arkarium.app.data.SplashAnimationMode
+import com.arkarium.app.data.SplashMusicMode
 import com.arkarium.app.data.StorageBreakdown
 import com.arkarium.app.data.SyncStatus
 import com.arkarium.app.data.Theme
@@ -93,8 +98,8 @@ fun AppNavGraph(
     currentTheme: State<Theme>,
     currentSystemDefaultLightVariant: State<Theme>,
     amoledModeEnabled: State<Boolean>,
-    splashAnimationEnabled: State<Boolean>,
-    splashMusicEnabled: State<Boolean>,
+    splashAnimationMode: State<SplashAnimationMode>,
+    splashMusicMode: State<SplashMusicMode>,
     ttsDefaultRate: State<Float>,
     ttsPitch: State<Float>,
     ttsAutoContinue: State<Boolean>,
@@ -313,6 +318,13 @@ fun AppNavGraph(
                     androidx.compose.material3.CircularProgressIndicator()
                 }
             } else {
+                // F6/F7 fix (urgent-review.md): shared by both the warning text and the
+                // "Open settings" shortcut below - computed once per recomposition
+                // rather than twice.
+                val notifyPermissionDenied = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(
+                        activity, Manifest.permission.POST_NOTIFICATIONS
+                    ) != PackageManager.PERMISSION_GRANTED
                 Column(modifier = Modifier.fillMaxSize()) {
                     NovelDetailScreen(
                         novel = novel,
@@ -407,7 +419,7 @@ fun AppNavGraph(
                             }
                         } else null,
                         // F3/R3 and F6/F7 fixes (urgent-review.md) - see
-                        // NovelDetailScreen's own doc comments on these three params.
+                        // NovelDetailScreen's own doc comments on these params.
                         lastCheckedAt = novel.lastNotifyCheckAt,
                         lastCheckError = novel.lastNotifyCheckError,
                         notifyBlockedReason = if (novel.notifyNewChapters) {
@@ -415,10 +427,7 @@ fun AppNavGraph(
                                 // F6: the permission was denied (or revoked later from
                                 // system settings) - the toggle shows ON but nothing will
                                 // ever actually notify until it's re-granted.
-                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-                                    ContextCompat.checkSelfPermission(
-                                        activity, Manifest.permission.POST_NOTIFICATIONS
-                                    ) != PackageManager.PERMISSION_GRANTED ->
+                                notifyPermissionDenied ->
                                     "Notifications are turned off for ARKarium in system settings - " +
                                         "turn them on to actually get notified."
                                 // F7: the toggle is on but this novel's sync itself needs
@@ -431,6 +440,25 @@ fun AppNavGraph(
                                 else -> null
                             }
                         } else null,
+                        // R6 fix (urgent-review.md): only the permission-denied branch
+                        // above gets an "Open settings" shortcut - the sync-status
+                        // branch has nothing a settings screen can fix.
+                        notifyPermissionBlocked = novel.notifyNewChapters && notifyPermissionDenied,
+                        onOpenNotificationSettings = {
+                            try {
+                                activity.startActivity(
+                                    Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                        .putExtra(Settings.EXTRA_APP_PACKAGE, activity.packageName)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            } catch (e: ActivityNotFoundException) {
+                                activity.startActivity(
+                                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                                        .setData(Uri.fromParts("package", activity.packageName, null))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                            }
+                        },
                         hasSeenCoverEnlargeHint = hasSeenCoverEnlargeHint.value ?: true, // null = still loading, show nothing
                         onCoverEnlargeHintDismissed = {
                             activity.lifecycleScope.launch { activity.prefsManager.setHasSeenCoverEnlargeHint() }
@@ -1001,16 +1029,16 @@ fun AppNavGraph(
                 // callback wiring, unchanged from the old "settings" composable - just
                 // terminating on this screen instead of the index.
                 SplashSettingsScreen(
-                    splashAnimationEnabled = splashAnimationEnabled.value,
-                    splashMusicEnabled = splashMusicEnabled.value,
-                    onSplashAnimationToggle = { enabled ->
+                    splashAnimationMode = splashAnimationMode.value,
+                    splashMusicMode = splashMusicMode.value,
+                    onSplashAnimationModeChange = { mode ->
                         activity.lifecycleScope.launch {
-                            activity.prefsManager.setSplashAnimationEnabled(enabled)
+                            activity.prefsManager.setSplashAnimationMode(mode)
                         }
                     },
-                    onSplashMusicToggle = { enabled ->
+                    onSplashMusicModeChange = { mode ->
                         activity.lifecycleScope.launch {
-                            activity.prefsManager.setSplashMusicEnabled(enabled)
+                            activity.prefsManager.setSplashMusicMode(mode)
                         }
                     },
                     onBack = { navController.popBackStack() }
