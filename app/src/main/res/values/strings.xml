@@ -15,4 +15,24 @@
          launchers' shortcut picker) - this is the one users actually read, so it
          spells out what the shortcut does. -->
     <string name="shortcut_continue_reading_long_label">Continue Reading</string>
+
+    <!-- About screen (ui/AboutScreen.kt). Pulled out of Kotlin so this one screen's
+         copy can't quietly drift between call sites the way inline literals can -
+         everything else in the app stays hardcoded for now (see this file's own
+         doc comment above), this is just the one screen with enough repeated/
+         user-facing strings to be worth it. -->
+    <string name="about_title">About</string>
+    <string name="about_back_content_description">Back</string>
+    <string name="about_version_label">Version</string>
+    <string name="about_build_label">Build</string>
+    <string name="about_package_label">Package</string>
+    <string name="about_maintainer_row_title">About Rae ARK</string>
+    <string name="about_privacy_policy_row_title">Privacy Policy</string>
+    <string name="about_terms_row_title">Terms &amp; Conditions</string>
+    <string name="about_acknowledgements_row_title">Acknowledgements</string>
+    <string name="about_acknowledgements_row_subtitle">Coming soon</string>
+    <string name="about_os_recommended_label">Recommended</string>
+    <string name="about_os_minimum_label">Minimum</string>
+    <string name="about_os_recommended_version">Android 14+</string>
+    <string name="about_os_minimum_version">Android 7.0+</string>
 </resources>

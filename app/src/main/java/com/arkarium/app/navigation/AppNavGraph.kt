@@ -889,8 +889,26 @@ fun AppNavGraph(
                         // (notice-board.md's "List" bullet): a reader who wants the new
                         // chapter itself is one more tap in via Continue Reading/the
                         // chapter list.
-                        navController.navigate("novelDetail/${event.novelId}") {
-                            launchSingleTop = true
+                        //
+                        // Bug fix: this used to navigate straight away without ever
+                        // calling loadNovelDetails() first - the same "page reads from
+                        // chapters/arcs, nothing refreshed them" defect as F2 (see
+                        // MainActivity's pendingNotificationNovelId effect) and F1
+                        // (SyncViewModel.checkForUpdates), just reached from a Pigeon
+                        // Rally tap instead. NovelDetailScreen rendered whatever
+                        // chapters/arcs happened to already be loaded for some other
+                        // novel - empty on a cold board visit, since nothing had loaded
+                        // detail for *any* novel yet. Matches the loadNovelDetails()
+                        // -before-navigating sequencing every other novel-tap entry
+                        // point already follows (see Home's onNovelClick above).
+                        val novel = activity.libraryViewModel.novels.firstOrNull { it.id == event.novelId }
+                        if (novel != null) {
+                            activity.lifecycleScope.launch {
+                                activity.libraryViewModel.loadNovelDetails(novel)
+                                navController.navigate("novelDetail/${event.novelId}") {
+                                    launchSingleTop = true
+                                }
+                            }
                         }
                     },
                     onMarkAllRead = { activity.noticeBoardViewModel.markAllSeen() }

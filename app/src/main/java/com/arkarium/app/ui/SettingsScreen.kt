@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bolt
@@ -22,8 +23,8 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -31,6 +32,8 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -89,18 +92,42 @@ fun SettingsIconBadge(icon: ImageVector) {
 // hairline that separates it from the next row in the same card - omitted
 // after the last row in a card so the card's own rounded bottom edge is the
 // visual stop instead of a divider running right up against it.
+//
+// `isFirstInCard`/`isLastInCard` fix the row's press ripple: `.clickable()`
+// alone ripples a plain rectangle sized to the row's own bounds, with no idea
+// the row sits inside SettingsCard's rounded corners. On the top or bottom
+// row of a card that rectangle's corners poke past the card's rounded edge
+// mid-ripple - a square-cornered flash cutting across a round one, easy to
+// read as a stray highlight rather than the row itself responding. Clipping
+// each row to a shape that matches whichever of the card's corners it's
+// actually sitting against (both callers below pass these for the first/last
+// row of each SettingsCard) keeps the ripple inside the same rounded outline
+// the card itself draws, same "clip before clickable" fix Compose's own
+// ripple-shape guidance calls for. Every row not at either end of its card
+// stays a plain rectangle (RectangleShape), same as before.
 @Composable
 fun SettingsCardRow(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
     onClick: () -> Unit,
-    showDivider: Boolean
+    showDivider: Boolean,
+    isFirstInCard: Boolean = false,
+    isLastInCard: Boolean = false
 ) {
+    val cardShape = MaterialTheme.shapes.medium
+    val rowShape = when {
+        isFirstInCard && isLastInCard -> cardShape
+        isFirstInCard -> cardShape.copy(bottomStart = CornerSize(0.dp), bottomEnd = CornerSize(0.dp))
+        isLastInCard -> cardShape.copy(topStart = CornerSize(0.dp), topEnd = CornerSize(0.dp))
+        else -> RectangleShape
+    }
+
     Column {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(rowShape)
                 .clickable(onClick = onClick)
                 .padding(horizontal = 12.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -127,7 +154,7 @@ fun SettingsCardRow(
             )
         }
         if (showDivider) {
-            Divider(
+            HorizontalDivider(
                 modifier = Modifier.padding(start = 62.dp),
                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)
             )
