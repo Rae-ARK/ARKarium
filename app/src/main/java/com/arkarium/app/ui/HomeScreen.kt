@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -42,6 +43,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -98,7 +100,12 @@ fun HomeScreen(
     // fiction by typed name.
     onSyncAllClick: () -> Unit = {}
 ) {
-    val searchQuery = remember { mutableStateOf("") }
+    // F9 fix (urgent-review.md): rememberSaveable instead of plain remember - a
+    // plain remember loses whatever the reader typed the moment this composable
+    // leaves composition (process death, or Android recreating the Activity on
+    // rotation/config change), which is the "unsaved state" half of F9. The typed
+    // query itself (a String) is directly Bundle-savable, no custom Saver needed.
+    val searchQuery = rememberSaveable { mutableStateOf("") }
     // Snapshot `novels` (a SnapshotStateList) into a plain List before using it as a
     // remember() key. SnapshotStateList doesn't override equals()/hashCode() - it's
     // compared by reference, and that reference never changes as items are added to it
@@ -113,8 +120,18 @@ fun HomeScreen(
     // remember() correctly recomputes only when the actual contents change - while
     // still not reshuffling on every unrelated recomposition (e.g. typing in search).
     val novelsSnapshot = novels.toList()
-    val trendingNovels = remember(novelsSnapshot) { novelsSnapshot.shuffled().take(6) }
-    val newReleases = remember(novelsSnapshot) { novelsSnapshot.shuffled().take(4) }
+    // F9 fix (urgent-review.md): keying the shuffle on novelsSnapshot itself (a
+    // List<NovelEntity>) means NovelEntity's own structural equals() - covering
+    // every field, not just id - decides whether to reshuffle. Reading progress,
+    // last-notify-check timestamps, cover URLs, anything on any novel changing
+    // reshuffles Featured/Trending/New Releases out from under the reader, even
+    // though none of that touched which novels exist. The set of ids is the only
+    // thing a "did the library's membership change" check actually needs -
+    // keying on that instead means a field update on an existing novel no longer
+    // recomputes the shuffle at all, while a novel being added/removed still does.
+    val novelIds = novelsSnapshot.map { it.id }
+    val trendingNovels = remember(novelIds) { novelsSnapshot.shuffled().take(6) }
+    val newReleases = remember(novelIds) { novelsSnapshot.shuffled().take(4) }
 
     Column(modifier = Modifier.fillMaxSize()) {
         // Top bar
@@ -175,12 +192,32 @@ fun HomeScreen(
             EmptyLibraryPrompt(onSyncAllClick = onSyncAllClick)
         } else {
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(bottom = 16.dp)
+            // F9 fix (urgent-review.md): this used to be Modifier.padding(bottom =
+            // 16.dp), which shrinks the LazyColumn's own viewport by 16dp rather than
+            // just padding its scrolling content - the last pixels of the New
+            // Releases row sat under an invisible dead zone the list itself could
+            // never scroll into. contentPadding adds that space around the content
+            // instead, inside the full-size viewport, the same way a
+            // ScrollView/RecyclerView's clipToPadding="false" + padding would.
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(bottom = 16.dp)
         ) {
-            // Search bar
-            item {
+            // F9 fix (urgent-review.md): every top-level section below now gets an
+            // explicit, stable `key` - previously these were plain `item { ... }`
+            // calls with no key, so LazyColumn could only identify them by their
+            // position in the list. Continue Reading is conditional on
+            // continueReadingNovels, which (see its own param doc comment above)
+            // loads asynchronously from reading_progress and so can go from absent
+            // to present *after* HomeScreen's first frame - every item below it then
+            // shifts down one slot. Without a key, Compose has no way to tell that
+            // shift apart from "the item that used to be at this position changed
+            // its content," so it reuses (and visually relocates) compositions by
+            // position rather than identity: exactly the "content shifts under the
+            // reader's finger" jank. A literal string key per section is enough -
+            // these are fixed, named sections, not a dynamic data-driven list - and
+            // keeps each section's own composition (and any internal scroll/animation
+            // state) tied to what it actually is rather than where it happens to sit.
+            item(key = "search_bar") {
                 SearchBar(
                     query = searchQuery.value,
                     onQueryChange = { searchQuery.value = it },
@@ -203,7 +240,7 @@ fun HomeScreen(
             // Placed right under search, above Featured, so it's the first thing a
             // returning reader sees on Home - the moment it's most likely to
             // actually nudge a same-day return visit.
-            item {
+            item(key = "reading_stats") {
                 ReadingStatsCard(
                     streakDays = streakDays,
                     chaptersReadThisWeek = chaptersReadThisWeek
@@ -211,7 +248,7 @@ fun HomeScreen(
             }
 
             // Featured section (hero carousel)
-            item {
+            item(key = "featured") {
                 FeaturedSection(
                     featured = trendingNovels.take(1),
                     onNovelClick = onNovelClick
@@ -220,7 +257,7 @@ fun HomeScreen(
 
             // Continue Reading section
             if (continueReadingNovels.isNotEmpty()) {
-                item {
+                item(key = "continue_reading") {
                     Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                         Text(
                             "Continue Reading",
@@ -247,7 +284,7 @@ fun HomeScreen(
             }
 
             // Trending section
-            item {
+            item(key = "trending") {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Row(
                         modifier = Modifier
@@ -286,7 +323,7 @@ fun HomeScreen(
             }
 
             // New releases section
-            item {
+            item(key = "new_releases") {
                 Column(modifier = Modifier.padding(horizontal = 16.dp)) {
                     Text(
                         "New Releases",
