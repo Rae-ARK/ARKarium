@@ -924,6 +924,17 @@ class MainActivity : ComponentActivity() {
                     if (showSplash.value) return@LaunchedEffect
                     val novelId = pendingNotificationNovelId.value ?: return@LaunchedEffect
                     val target = libraryViewModel.novels.firstOrNull { it.id == novelId } ?: return@LaunchedEffect
+                    // F2 fix (urgent-review.md): this used to navigate straight away
+                    // without ever populating libraryViewModel.chapters/arcs for `target` -
+                    // the exact same "page reads from chapters/arcs, nothing refreshed
+                    // them" defect class as F1 (see SyncViewModel.checkForUpdates), just
+                    // reached from a notification tap instead of a manual sync. On a cold
+                    // start the list was simply empty (table of contents and Start Reading
+                    // button both missing); with the app alive in the background it showed
+                    // whatever was last loaded for some other novel. Matches the
+                    // loadNovelDetails()-before-navigating sequencing every other entry
+                    // point into this page already follows (see AppNavGraph's onNovelClick).
+                    libraryViewModel.loadNovelDetails(target)
                     // Stage 3.3 (see docs/foundational/design-notes.md): NovelDetail is now
                     // its own "novelDetail/{novelId}" route rather than "legacy" - a cold
                     // start from a notification tap begins on "home" (the NavHost's

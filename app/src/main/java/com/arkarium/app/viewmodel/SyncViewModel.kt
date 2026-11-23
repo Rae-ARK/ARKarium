@@ -745,6 +745,18 @@ class SyncViewModel(
                         }
                     }
                 }
+                // F1 fix (urgent-review.md): a successful manual "Check for updates"
+                // wrote the new chapters/arcs to the DB (via startScan above) and patched
+                // libraryViewModel.novels, but never touched libraryViewModel.chapters/arcs
+                // - the only state NovelDetailScreen actually reads its chapter list from
+                // (see LibraryViewModel.loadNovelDetails). So the fiction page kept showing
+                // the stale chapter list until the reader left and re-entered it. Scoped to
+                // exactly this single-novel path (never from syncAllRaeArkNovels' batch
+                // loop) so a background "sync all" can't clobber the in-memory list for a
+                // novel the reader isn't currently viewing - loadNovelDetails replaces
+                // libraryViewModel.chapters/arcs wholesale, which is only safe for whichever
+                // novel is on-screen right now.
+                refreshedNovel?.let { libraryViewModel.loadNovelDetails(it) }
                 // Bug fix: this used to pass the pre-sync `novel` parameter here, which
                 // still had the OLD coverUri/remoteCoverUrl captured before the sync ran -
                 // so SyncProgressDialog fell back to the placeholder emoji even right after

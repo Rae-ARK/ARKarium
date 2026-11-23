@@ -140,31 +140,52 @@ interface NovelDao {
     // still responsible for clearing this novel's SyncedFileEntity rows if desired;
     // leaving them behind is harmless (they just become inert once sync_source_url is
     // null, since nothing reads them for a non-synced novel).
-    // Known gap: ScannerImpl.buildNovelEntity now re-recognizes a FictionLut title
-    // match on every rescan (see its comment), and mergeNovelForRescan only ever
-    // keeps an existing non-null syncSourceUrl, never a "this was deliberately
-    // unlinked" fact - there's no column for that. So if the bundled fiction_lut.dat
-    // still lists this exact title (it's a point-in-time snapshot of the relay's
-    // catalog, not refreshed live), the very next rescan can re-link a novel someone
-    // just unlinked here. In practice this only matters for a SOURCE_GONE unlink
-    // whose title is *also* still in an already-installed build's bundled LUT, which
-    // should be rare and self-corrects on the LUT's own next regeneration - flagged
-    // here rather than solved with a new column until it actually bites someone.
-
+    //
+    // F5 fix (urgent-review.md): this used to leave sync_unlinked unset and
+    // notify_new_chapters untouched, which caused two separate bugs. First,
+    // ScannerImpl.buildNovelEntity re-recognizes a FictionLut title match on every
+    // rescan, and mergeNovelForRescan only ever kept an existing non-null
+    // syncSourceUrl, with no way to tell "never synced" apart from "deliberately
+    // unlinked" - so the very next rescan could silently re-link a novel the reader
+    // just unlinked here, if the bundled fiction_lut.dat still listed this exact
+    // title. sync_unlinked = 1 now gives mergeNovelForRescan that fact explicitly to
+    // check before ever filling syncSourceUrl back in (see its own comment). Second,
+    // the row was left with a checked-but-now-disabled "Notify me" switch (nothing
+    // left to check for updates against) - notify_new_chapters = 0 here turns the
+    // toggle off along with the unlink itself.
     @Query("""
         UPDATE novels SET
             sync_source_url = NULL,
             sync_source_version = NULL,
-            sync_status = 'ACTIVE'
+            sync_status = 'ACTIVE',
+            sync_unlinked = 1,
+            notify_new_chapters = 0
         WHERE id = :novelId
     """)
     suspend fun unlinkSyncSource(novelId: String)
 
     // Backs NovelDetailScreen's "Notify me when new chapters are available" toggle
     // (see docs/foundational/architecture.md, Sync: entry points). A plain UPDATE, same rationale as
-    // updatePageSize/updateReadingStatus above.
+    // updatePageSize/updateReadingStatus above. Re-enabling after a previous unlink
+    // only matters once the novel is actually re-synced from somewhere again -
+    // mergeNovelForRescan/ScannerImpl clear sync_unlinked themselves the moment a
+    // real syncSourceUrl is re-established (see their own comments), so this never
+    // needs to touch sync_unlinked itself.
     @Query("UPDATE novels SET notify_new_chapters = :enabled WHERE id = :novelId")
     suspend fun updateNotifyNewChapters(novelId: String, enabled: Boolean)
+
+    // F3/R3 fix (urgent-review.md): written after every attempt (success or failure)
+    // to check a novel for new chapters, by both NewChapterCheckWorker's periodic
+    // pass and SyncViewModel's manual "Check for updates" - see NovelEntity's own doc
+    // comments on these two columns. `error` null clears any previously-recorded
+    // failure; non-null records what went wrong this time.
+    @Query("""
+        UPDATE novels SET
+            last_notify_check_at = :checkedAt,
+            last_notify_check_error = :error
+        WHERE id = :novelId
+    """)
+    suspend fun updateNotifyCheckResult(novelId: String, checkedAt: Long, error: String?)
 
     // Every novel NewChapterCheckWorker's periodic background pass needs to check:
     // opted into notifications, actually synced from somewhere, and not already known

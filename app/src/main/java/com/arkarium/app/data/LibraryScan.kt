@@ -182,14 +182,30 @@ fun mergeNovelForRescan(
         // folder's title is a FictionLut match (a Rae ARK fiction that reached this
         // folder by some route other than this app's own sync, so it never got a
         // chance to earn this column the normal way - see that function's comment).
-        // `existing.syncSourceUrl` still wins whenever it's already set, so this can
-        // never clobber a different source or silently re-link a novel the user
-        // deliberately unlinked; it only ever turns a *null* into a value a plain
-        // rescan newly recognized.
-        syncSourceUrl = existing.syncSourceUrl ?: scanned.syncSourceUrl,
+        // `existing.syncSourceUrl` still wins whenever it's already set.
+        //
+        // F5 fix (urgent-review.md): this previously had no way to distinguish "never
+        // synced" from "the user explicitly unlinked this" - both look identical as a
+        // null syncSourceUrl - so a FictionLut match could silently re-link a novel
+        // right after NovelDao.unlinkSyncSource cleared it. existing.syncUnlinked is
+        // exactly that missing fact (set by unlinkSyncSource, see its own comment):
+        // when true, the fill-in is skipped entirely and syncSourceUrl stays null,
+        // same as any other sync bookkeeping column a scan must never clobber.
+        syncSourceUrl = if (existing.syncUnlinked) null else (existing.syncSourceUrl ?: scanned.syncSourceUrl),
         syncSourceVersion = existing.syncSourceVersion,
         lastSyncedAt = existing.lastSyncedAt,
         syncStatus = existing.syncStatus,
+        // Once a real sync source is re-established some other way (the user
+        // explicitly re-adds/re-follows this fiction, which writes syncSourceUrl
+        // through SyncManager rather than through this merge), the "deliberately
+        // unlinked" fact is stale and should stop suppressing the FictionLut fill-in
+        // above. A scan on its own never re-establishes syncSourceUrl while
+        // syncUnlinked is still true (the line above guarantees that), so this only
+        // ever clears once something outside this function has already set a fresh
+        // syncSourceUrl onto `existing` directly.
+        syncUnlinked = existing.syncUnlinked && existing.syncSourceUrl == null,
+        lastNotifyCheckAt = existing.lastNotifyCheckAt,
+        lastNotifyCheckError = existing.lastNotifyCheckError,
         // Settings-wipe bug: neither of these was listed here before, so the
         // result silently kept `scanned`'s value for them - and ScannerImpl.
         // buildNovelEntity never sets either one, so `scanned` always has them at

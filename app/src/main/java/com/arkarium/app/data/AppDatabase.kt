@@ -20,7 +20,7 @@ class DatabaseDowngradeException(message: String) : IllegalStateException(messag
 // list actually reaches it. @Database below reads it from here - bump this (and add the
 // matching MIGRATION_n_m + a committed app/schemas/.../n.json) together, never the
 // annotation alone.
-const val APP_DATABASE_VERSION = 19
+const val APP_DATABASE_VERSION = 20
 
 // @Database must sit directly above the RoomDatabase subclass it annotates - an
 // annotation binds to the very next declaration, and with DatabaseDowngradeException's
@@ -447,6 +447,24 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        // Migration from v19 to v20: backs the urgent-review.md fixes for F3/F5 - three
+        // purely additive columns on novels, same shape as MIGRATION_16_17 (one
+        // nullable/defaulted column, no backfill possible/needed).
+        // - sync_unlinked: defaults to 0 (false) for every existing row. A previously
+        //   unlinked novel simply isn't marked as such retroactively - it can re-link
+        //   on its very next rescan same as before, exactly once, which is no worse
+        //   than today's behavior; only a *future* unlink is protected from here on.
+        // - last_notify_check_at / last_notify_check_error: both default to NULL
+        //   ("never checked yet" / "no error"), populated from each novel's next
+        //   NewChapterCheckWorker pass or manual "Check for updates".
+        val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE novels ADD COLUMN sync_unlinked INTEGER NOT NULL DEFAULT 0")
+                database.execSQL("ALTER TABLE novels ADD COLUMN last_notify_check_at INTEGER")
+                database.execSQL("ALTER TABLE novels ADD COLUMN last_notify_check_error TEXT")
+            }
+        }
+
         // Every migration, in order - the one list create() hands to Room, and the one
         // MigrationChainTest (JVM) and MigrationTest (instrumented) check. A new
         // MIGRATION_n_m only counts once it is added here.
@@ -454,7 +472,8 @@ abstract class AppDatabase : RoomDatabase() {
             MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6,
             MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11,
             MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15,
-            MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19
+            MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19,
+            MIGRATION_19_20
         )
 
         // NOTE: deliberately no fallbackToDestructiveMigration() here. That fallback

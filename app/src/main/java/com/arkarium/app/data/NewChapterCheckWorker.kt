@@ -56,6 +56,18 @@ class NewChapterCheckWorker(
         val candidates = db.novelDao().notifyEnabledSynced()
         if (candidates.isEmpty()) return Result.success()
 
+        // F3/R3 fix (urgent-review.md): a novel whose checkOneNovel attempt throws a
+        // genuine (non-cancellation) exception used to be silently swallowed here -
+        // no notification, no Pigeon Rally entry, no error, no timestamp, and the
+        // worker still reported Result.success() regardless. checkOneNovel itself now
+        // always records last_notify_check_at/last_notify_check_error before
+        // returning or rethrowing (see its own doc comment), so the UI can already
+        // show *that* something failed and why; this flag additionally tells
+        // WorkManager to actually retry the pass (with backoff) instead of waiting
+        // out the full periodic interval again, same as any other transient
+        // failure (network blip, relay hiccup) deserves.
+        val anyTransientFailure = java.util.concurrent.atomic.AtomicBoolean(false)
+
         // Bounded fan-out instead of one novel at a time - same bottleneck
         // SyncViewModel.syncAllRaeArkNovels fixes for the user-facing batch add: each
         // novel's manifest fetch used to wait for the previous novel's entire
@@ -85,13 +97,16 @@ class NewChapterCheckWorker(
                             // being checked - same "report and move on" tradeoff
                             // syncAllRaeArkNovels makes for SourceGoneException, just
                             // broadened to any failure since there's no dialog here to
-                            // report a per-novel error into.
+                            // report a per-novel error into. checkOneNovel has already
+                            // persisted the per-novel error before rethrowing; this just
+                            // decides the worker-level Result below.
+                            anyTransientFailure.set(true)
                         }
                     }
                 }
             }.awaitAll()
         }
-        return Result.success()
+        return if (anyTransientFailure.get()) Result.retry() else Result.success()
     }
 
     // Syncs one novel and, only if that sync actually pulled down changes, rescans its
@@ -101,6 +116,26 @@ class NewChapterCheckWorker(
     // same id across rescans and never shows up as "new" here even though upsert()
     // touches its row again. A manifest version bump with no net-new chapter (e.g. a
     // metadata.json tweak or a chapter edit) correctly produces zero notifications.
+    //
+    // F3/R3 fix (urgent-review.md), two changes from the original version:
+    //
+    // 1. Observability: every exit path now calls
+    //    db.novelDao().updateNotifyCheckResult(...) before returning, recording
+    //    `now` and either null (success/no-op) or a message (failure) - surfaced by
+    //    NovelDetailScreen under the "Notify me" toggle so a reader can tell the
+    //    feature is actually running, instead of a silent background pass that
+    //    either works or doesn't with no visible difference.
+    //
+    // 2. Lost-notification fix: the sync-state commit (updateSyncState/
+    //    updateSyncStatus/syncedFileDao writes) now happens AFTER the rescan and
+    //    diff succeed, not before. Previously the new sync version was committed as
+    //    soon as the manifest download finished; if the novel-folder lookup then
+    //    returned null, or scanChaptersForNovel threw, the function exited with that
+    //    version already saved - so the next run saw an unchanged version, skipped
+    //    the diff entirely, and the new chapters were never announced or logged,
+    //    permanently. Reordering means a mid-flight failure here leaves the old
+    //    version in place, so the next run's sync sees the same "changed" outcome
+    //    again and retries the rescan+diff from scratch instead of silently giving up.
     private suspend fun checkOneNovel(
         db: AppDatabase,
         scanner: ScannerImpl,
@@ -111,56 +146,90 @@ class NewChapterCheckWorker(
         val sourceUrl = novel.syncSourceUrl ?: return
         val knownFiles = db.syncedFileDao().forNovel(novel.id)
         val beforeChapterIds = db.chapterDao().forNovel(novel.id).map { it.id }.toSet()
+        val now = System.currentTimeMillis()
 
         val outcome = try {
             syncManager.sync(novel, libraryRoot, knownFiles, allowRecreateMissingFolder = false)
         } catch (e: MissingLocalFolderException) {
+            // Not a transient failure - this needs the user's own resolution via
+            // SyncResolutionDialog (see docs/foundational/architecture.md, Sync
+            // invariants S6), same as before. Still recorded as a successful *check*
+            // (no error) since the worker correctly detected and handled this state;
+            // sync_status itself is what surfaces the missing-folder condition.
             db.novelDao().updateSyncStatus(novel.id, SyncStatus.MISSING_LOCALLY.name)
+            db.novelDao().updateNotifyCheckResult(novel.id, now, null)
             return
         } catch (e: SourceGoneException) {
             db.novelDao().updateSyncStatus(novel.id, SyncStatus.SOURCE_GONE.name)
+            db.novelDao().updateNotifyCheckResult(novel.id, now, null)
+            return
+        } catch (e: Exception) {
+            // Transient: network failure, malformed manifest, hash mismatch, etc.
+            // Recorded so the toggle can show *why* the feature looks broken, and
+            // rethrown so doWork()'s caller marks this pass for Result.retry()
+            // instead of silently reporting success.
+            db.novelDao().updateNotifyCheckResult(novel.id, now, e.message ?: "Check failed: ${e::class.simpleName}")
+            throw e
+        }
+        if (!outcome.changed) {
+            db.novelDao().updateNotifyCheckResult(novel.id, now, null)
             return
         }
-        if (!outcome.changed) return
 
-        db.syncedFileDao().deleteForNovel(novel.id)
-        db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novel.id) })
-        db.novelDao().updateSyncState(
-            novel.id, sourceUrl, outcome.newVersion, System.currentTimeMillis(),
-            outcome.folderName ?: novel.syncFolderName ?: SyncManager.slugForUrl(sourceUrl)
-        )
-        db.novelDao().updateSyncStatus(novel.id, SyncStatus.ACTIVE.name)
+        try {
+            val novelFolder = SyncManager.findNovelFolder(libraryRoot, novel.id)
+                ?: throw IllegalStateException("Synced novel folder not found after sync")
+            scanner.scanChaptersForNovel(novelFolder, novel.id, db)
 
-        val novelFolder = SyncManager.findNovelFolder(libraryRoot, novel.id) ?: return
-        scanner.scanChaptersForNovel(novelFolder, novel.id, db)
+            val afterChapters = db.chapterDao().forNovel(novel.id)
+            val newChapters = afterChapters.filterNot { it.id in beforeChapterIds }
 
-        val afterChapters = db.chapterDao().forNovel(novel.id)
-        val newChapters = afterChapters.filterNot { it.id in beforeChapterIds }
-        if (newChapters.isEmpty()) return
-
-        // "Latest" for the notification text - highest chapter `number` among the new
-        // ones, falling back to the last one found if none carry a parsed number (e.g.
-        // a bonus/closing-tier file, see ScannerImpl.parseChapter). Not necessarily
-        // reading order, just whichever single title is most worth naming in the
-        // notification when there's more than one.
-        val latest = newChapters.maxByOrNull { it.number ?: Int.MIN_VALUE } ?: newChapters.last()
-        NewChapterNotifier.notify(applicationContext, novel, newChapters.size, latest.title)
-        // Notice Board's persistent copy of the same "new chapters arrived" moment
-        // (docs/proposal/notice-board.md) - logged right alongside the transient
-        // system notification above, from the same newChapters/latest this function
-        // already computed. Only reached when notify is already reached (this whole
-        // function only runs for `candidates` from notifyEnabledSynced()), so this is
-        // already gated on the per-novel "Notify me" toggle the same way the
-        // notification itself is - no separate check needed here.
-        db.chapterUpdateEventDao().insert(
-            ChapterUpdateEventEntity(
-                id = UUID.randomUUID().toString(),
-                novelId = novel.id,
-                newChapterCount = newChapters.size,
-                latestChapterTitle = latest.title,
-                detectedAt = System.currentTimeMillis()
+            // Only committed once the rescan+diff above have actually succeeded -
+            // see this function's doc comment for why that ordering matters.
+            db.syncedFileDao().deleteForNovel(novel.id)
+            db.syncedFileDao().upsertAll(outcome.files.map { it.copy(novelId = novel.id) })
+            db.novelDao().updateSyncState(
+                novel.id, sourceUrl, outcome.newVersion, now,
+                outcome.folderName ?: novel.syncFolderName ?: SyncManager.slugForUrl(sourceUrl)
             )
-        )
+            db.novelDao().updateSyncStatus(novel.id, SyncStatus.ACTIVE.name)
+            db.novelDao().updateNotifyCheckResult(novel.id, now, null)
+
+            if (newChapters.isEmpty()) return
+
+            // "Latest" for the notification text - highest chapter `number` among the
+            // new ones, falling back to the last one found if none carry a parsed
+            // number (e.g. a bonus/closing-tier file, see ScannerImpl.parseChapter).
+            // Not necessarily reading order, just whichever single title is most
+            // worth naming in the notification when there's more than one.
+            val latest = newChapters.maxByOrNull { it.number ?: Int.MIN_VALUE } ?: newChapters.last()
+            NewChapterNotifier.notify(applicationContext, novel, newChapters.size, latest.title)
+            // Notice Board's persistent copy of the same "new chapters arrived" moment
+            // (docs/proposal/notice-board.md) - logged right alongside the transient
+            // system notification above, from the same newChapters/latest this
+            // function already computed. Only reached when notify is already reached
+            // (this whole function only runs for `candidates` from
+            // notifyEnabledSynced()), so this is already gated on the per-novel
+            // "Notify me" toggle the same way the notification itself is - no
+            // separate check needed here.
+            db.chapterUpdateEventDao().insert(
+                ChapterUpdateEventEntity(
+                    id = UUID.randomUUID().toString(),
+                    novelId = novel.id,
+                    newChapterCount = newChapters.size,
+                    latestChapterTitle = latest.title,
+                    detectedAt = now
+                )
+            )
+        } catch (e: Exception) {
+            // The sync itself succeeded (outcome.changed == true) but the rescan,
+            // diff, or notify/log step failed - record it as this check's error. The
+            // sync-state commit above is still gated behind this same try block, so
+            // nothing has been marked "up to date" yet; the next run's sync will see
+            // the same changed manifest and retry the rescan+diff from scratch.
+            db.novelDao().updateNotifyCheckResult(novel.id, now, e.message ?: "Check failed: ${e::class.simpleName}")
+            throw e
+        }
     }
 
     companion object {

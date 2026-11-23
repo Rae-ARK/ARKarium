@@ -124,7 +124,31 @@ data class NovelEntity(
     // local metadata.json parsing doesn't also expose this, since a purely local
     // novel has no publish-time tooling to have declared a cadence in the first
     // place; nothing stops that from being added later the same way.
-    @ColumnInfo(name = "chapters_per_week") val chaptersPerWeek: Double? = null
+    @ColumnInfo(name = "chapters_per_week") val chaptersPerWeek: Double? = null,
+    // F5 fix (urgent-review.md): records that the *user* deliberately unlinked this
+    // novel from its sync source (NovelDao.unlinkSyncSource), as opposed to
+    // syncSourceUrl simply never having been set. mergeNovelForRescan previously had
+    // no way to tell those two "syncSourceUrl is null" cases apart, so a plain rescan
+    // could silently re-link any title ScannerImpl's FictionLut match still
+    // recognized - exactly the "known gap" NovelDao.unlinkSyncSource's own doc
+    // comment already flagged. Defaults false (nothing unlinked yet); set true only
+    // by unlinkSyncSource, and checked by mergeNovelForRescan before ever filling a
+    // null syncSourceUrl back in from a fresh scan.
+    @ColumnInfo(name = "sync_unlinked") val syncUnlinked: Boolean = false,
+    // F3/R3 fix (urgent-review.md): the background worker used to fail silently - a
+    // hash mismatch, malformed manifest, or network blip left no notification, no
+    // Pigeon Rally entry, no error, and no timestamp, so a hand-edited manifest (or
+    // any transient relay hiccup) looked indistinguishable from "nothing new" from
+    // the UI. Written by both NewChapterCheckWorker's periodic pass and
+    // SyncViewModel's manual "Check for updates", after every attempt (success or
+    // failure) to check this novel for new chapters - surfaced under the "Notify me"
+    // toggle on NovelDetailScreen so a reader can actually tell the feature is
+    // working, and see why it isn't when it's not. Null means never checked yet.
+    @ColumnInfo(name = "last_notify_check_at") val lastNotifyCheckAt: Long? = null,
+    // Null = the last check (if any) succeeded. Non-null = what went wrong on the
+    // last attempt; cleared back to null on the next successful check, same
+    // fill-in-or-clear convention as publicationStatus/chaptersPerWeek above.
+    @ColumnInfo(name = "last_notify_check_error") val lastNotifyCheckError: String? = null
 )
 
 enum class SyncStatus {
