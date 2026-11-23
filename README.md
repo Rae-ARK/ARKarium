@@ -100,6 +100,10 @@ Alternatively, download the latest release directly from [GitHub Releases](https
 >
 > The current release app itself works fine, and it can be used for reading.
 > The V1 isn't done yet. Bugs are normal.
+>
+> Both the app and the Novels are English today. 
+> For More, Languages? Maybe Sometime in future. 
+> Depends on Reader demands.
 
 ## License
 
