@@ -103,7 +103,9 @@ Alternatively, download the latest release directly from [GitHub Releases](https
 >
 > Both the app and the Novels are English today. 
 > For More, Languages? Maybe Sometime in future. 
-> Depends on Reader demands.
+> Depends on Reader demands. 
+>
+> One or maybe Two proper translations. With other may ending up as MTL. 
 
 ## License
 
