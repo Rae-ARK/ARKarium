@@ -242,6 +242,13 @@ class NewChapterCheckWorker(
 
         private const val UNIQUE_WORK_NAME = "new_chapter_check"
 
+        // F4/R4 fix (urgent-review.md): a one-off pass has its own unique name so it
+        // never collides with (or gets silently deduped against) the periodic work
+        // above - WorkManager's ExistingWorkPolicy is keyed per unique-work-name, not
+        // globally, so running both under the same name would make one replace the
+        // other instead of both existing independently.
+        private const val ONE_TIME_WORK_NAME = "new_chapter_check_one_time"
+
         // Called once from MainActivity.onCreate with the current value of
         // PreferencesManager.wifiOnlySync (LibrarySettingsScreen's "Wi-Fi-only sync"
         // toggle), and again every time that toggle changes - MainActivity passes a
@@ -251,19 +258,51 @@ class NewChapterCheckWorker(
         // in effect then) doesn't get a duplicate or reset one just because onCreate
         // ran again. ExistingPeriodicWorkPolicy.UPDATE for the latter: a toggle flip
         // should actually take effect on the already-queued request's constraints
-        // rather than no-op against it the way KEEP would. Runs at most every 6 hours
-        // (WorkManager periodic work is inexact - the real interval can run longer
-        // depending on Doze/battery optimization, never shorter) either way.
+        // rather than no-op against it the way KEEP would.
+        //
+        // F4/R4 fix (urgent-review.md): lowered from 6 hours to 2 - the proposal's
+        // suggested interval. WorkManager periodic work is still inexact (the real
+        // interval can run longer depending on Doze/battery optimization, never
+        // shorter), and this alone still can't notify "within minutes" of a chapter
+        // going up - see enqueueOneTimeCheck below and MainActivity's toggle-on/
+        // foreground callers, which cover the two cases where a reader is actually
+        // watching for it to happen right now.
         fun schedule(context: Context, wifiOnly: Boolean, replaceExisting: Boolean = false) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
                 .build()
-            val request = PeriodicWorkRequestBuilder<NewChapterCheckWorker>(6, TimeUnit.HOURS)
+            val request = PeriodicWorkRequestBuilder<NewChapterCheckWorker>(2, TimeUnit.HOURS)
                 .setConstraints(constraints)
                 .build()
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 UNIQUE_WORK_NAME,
                 if (replaceExisting) ExistingPeriodicWorkPolicy.UPDATE else ExistingPeriodicWorkPolicy.KEEP,
+                request
+            )
+        }
+
+        // F4/R4 fix (urgent-review.md): "the check runs about every 6 (now 2) hours
+        // at best, never when the reader turns the feature on, and never when the
+        // app is opened." Fires one immediate, one-shot pass against every
+        // notify-enabled novel - called from MainActivity right after a "Notify me"
+        // toggle flips on (NovelDetailScreen's onToggleNotify) and every time the app
+        // comes to the foreground (onStart). ExistingWorkPolicy.REPLACE: if one of
+        // these is already pending/running (e.g. the reader backgrounds and
+        // foregrounds the app twice in quick succession), the newer request simply
+        // supersedes it rather than queuing up a second redundant pass - there's
+        // nothing about an in-flight check that a brand new one needs to wait for.
+        // Same network constraint (wifiOnly) as the periodic request, so a one-time
+        // nudge can't bypass the user's Wi-Fi-only sync choice.
+        fun enqueueOneTimeCheck(context: Context, wifiOnly: Boolean) {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
+                .build()
+            val request = androidx.work.OneTimeWorkRequestBuilder<NewChapterCheckWorker>()
+                .setConstraints(constraints)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                ONE_TIME_WORK_NAME,
+                androidx.work.ExistingWorkPolicy.REPLACE,
                 request
             )
         }

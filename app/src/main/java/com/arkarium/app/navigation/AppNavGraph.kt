@@ -27,6 +27,7 @@ import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.ReaderPosition
 import com.arkarium.app.data.ReadingProgressSaveWorker
 import com.arkarium.app.data.StorageBreakdown
+import com.arkarium.app.data.SyncStatus
 import com.arkarium.app.data.Theme
 import com.arkarium.app.data.clearImageCaches
 import com.arkarium.app.data.computeStorageBreakdown
@@ -391,7 +392,43 @@ fun AppNavGraph(
                                     // libraryViewModel.setNotifyEnabled's own doc comment
                                     // and AppScope.kt.
                                     AppScope.io.launch { activity.libraryViewModel.setNotifyEnabled(novel.id, enabled) }
+                                    // F4/R4 fix (urgent-review.md): "turning the switch on
+                                    // triggers no check" - fire one immediate background
+                                    // pass the moment the toggle flips on (permission was
+                                    // already granted on this branch), rather than making
+                                    // the reader wait out the periodic interval to find out
+                                    // whether the feature is even working.
+                                    if (enabled) {
+                                        com.arkarium.app.data.NewChapterCheckWorker.enqueueOneTimeCheck(
+                                            activity, activity.wifiOnlySync
+                                        )
+                                    }
                                 }
+                            }
+                        } else null,
+                        // F3/R3 and F6/F7 fixes (urgent-review.md) - see
+                        // NovelDetailScreen's own doc comments on these three params.
+                        lastCheckedAt = novel.lastNotifyCheckAt,
+                        lastCheckError = novel.lastNotifyCheckError,
+                        notifyBlockedReason = if (novel.notifyNewChapters) {
+                            when {
+                                // F6: the permission was denied (or revoked later from
+                                // system settings) - the toggle shows ON but nothing will
+                                // ever actually notify until it's re-granted.
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                    ContextCompat.checkSelfPermission(
+                                        activity, Manifest.permission.POST_NOTIFICATIONS
+                                    ) != PackageManager.PERMISSION_GRANTED ->
+                                    "Notifications are turned off for ARKarium in system settings - " +
+                                        "turn them on to actually get notified."
+                                // F7: the toggle is on but this novel's sync itself needs
+                                // the reader's attention first (MISSING_LOCALLY/
+                                // SOURCE_GONE) - NewChapterCheckWorker's
+                                // notifyEnabledSynced() query already skips a non-ACTIVE
+                                // novel entirely, so nothing is being checked right now.
+                                novel.syncStatus != SyncStatus.ACTIVE.name ->
+                                    "This fiction's sync needs attention before updates can be checked again."
+                                else -> null
                             }
                         } else null,
                         hasSeenCoverEnlargeHint = hasSeenCoverEnlargeHint.value ?: true, // null = still loading, show nothing

@@ -248,6 +248,16 @@ class MainActivity : ComponentActivity() {
     // collector to decide whether a toggle flipped on mid-foreground should start it
     // immediately rather than waiting for the next onStart.
     private var scanOnFileChangeEnabled = false
+
+    // F4/R4 fix (urgent-review.md): mirrors scanOnFileChangeEnabled's own pattern
+    // just above - the live value of PreferencesManager.wifiOnlySync, kept in sync
+    // by the collectIndexed loop below that also (re)schedules
+    // NewChapterCheckWorker's periodic work. Exists so a one-time check fired
+    // on-demand (toggling "Notify me" on, or the app coming to the foreground - see
+    // internal/AppNavGraph's onToggleNotify and onStart below) can honor the same
+    // Wi-Fi-only constraint as the periodic pass, without needing to re-collect the
+    // DataStore flow just to read its current value once.
+    internal var wifiOnlySync = false
     // True between onStart and onStop - see LibraryFileWatcher's own "process-lifetime
     // only" doc comment for why the watcher follows this window rather than
     // onCreate/onDestroy. Used alongside scanOnFileChangeEnabled above so the
@@ -305,6 +315,11 @@ class MainActivity : ComponentActivity() {
             // permission request is being torn down for recreation, same race
             // saveReadingProgress/saveChapterEdits were already fixed for.
             AppScope.io.launch { libraryViewModel.setNotifyEnabled(novelId, true) }
+            // F4/R4 fix (urgent-review.md): same immediate on-toggle check as the
+            // permission-already-granted branch in AppNavGraph's onToggleNotify -
+            // this is the other path that turns the toggle on, so it needs the same
+            // "don't make the reader wait out the periodic interval" fix.
+            NewChapterCheckWorker.enqueueOneTimeCheck(this, wifiOnlySync)
         }
     }
 
@@ -440,6 +455,14 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         isActivityStarted = true
         if (scanOnFileChangeEnabled) startLibraryFileWatcher()
+        // F4/R4 fix (urgent-review.md): "opening the app triggers no check" - fire
+        // one immediate background pass against every notify-enabled novel every
+        // time ARKarium comes to the foreground, same wifiOnlySync-kept-current-by-
+        // onCreate's-collector pattern as scanOnFileChangeEnabled just above.
+        // enqueueUniqueWork(..., REPLACE) inside enqueueOneTimeCheck means repeated
+        // onStart calls (background/foreground/background in quick succession)
+        // never pile up redundant passes.
+        NewChapterCheckWorker.enqueueOneTimeCheck(this, wifiOnlySync)
     }
 
     override fun onStop() {
@@ -722,6 +745,7 @@ class MainActivity : ComponentActivity() {
         // UPDATE split.
         lifecycleScope.launch {
             prefsManager.wifiOnlySync.distinctUntilChanged().collectIndexed { index, wifiOnly ->
+                wifiOnlySync = wifiOnly
                 NewChapterCheckWorker.schedule(this@MainActivity, wifiOnly, replaceExisting = index > 0)
             }
         }

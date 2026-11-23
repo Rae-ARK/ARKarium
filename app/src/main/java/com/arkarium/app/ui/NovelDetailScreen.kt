@@ -144,6 +144,23 @@ fun NovelDetailScreen(
     // triggers actually lands. Same non-null-gates-visibility pattern as onSyncClick.
     notifyEnabled: Boolean = false,
     onToggleNotify: ((Boolean) -> Unit)? = null,
+    // F3/R3 fix (urgent-review.md): NewChapterCheckWorker/SyncViewModel now persist
+    // these onto NovelEntity (lastNotifyCheckAt/lastNotifyCheckError) after every
+    // check attempt - surfaced here so the toggle actually shows whether the
+    // feature is working, instead of being silently inert either way. Null means
+    // "never checked yet" (lastCheckedAt) / "last check succeeded" (lastCheckError).
+    lastCheckedAt: Long? = null,
+    lastCheckError: String? = null,
+    // F6/F7 fix (urgent-review.md): a single human-readable reason the toggle can't
+    // actually do anything right now, or null when there's nothing to warn about.
+    // Two distinct callers feed this: F6 wants the user told *why* turning the
+    // toggle on didn't do anything (the system notification permission was denied),
+    // and F7 wants a warning when the toggle shows ON but nothing will actually be
+    // checked (sync_status isn't ACTIVE, or the permission was revoked later from
+    // system settings after being granted here). Rendered identically either way -
+    // the reader doesn't need to know which case produced it, just that something
+    // needs their attention.
+    notifyBlockedReason: String? = null,
     // uiux.md's "Arc cover enlarger is undiscoverable" - true means the
     // one-time ripple-plus-tooltip hint has already played, false plays it
     // on the "All Chapters" cover below. The caller owns persistence
@@ -447,6 +464,35 @@ fun NovelDetailScreen(
                         if (!notifyAvailable) {
                             Text(
                                 "Only available for fictions synced from a source",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (notifyEnabled && notifyBlockedReason != null) {
+                            // F6/F7 fix (urgent-review.md): a warning takes priority over
+                            // the plain last-checked line below - if nothing is actually
+                            // going to be checked, saying when it was last checked (which
+                            // may be from before whatever's now blocking it) would be
+                            // misleading.
+                            Text(
+                                notifyBlockedReason,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else if (notifyEnabled && lastCheckError != null) {
+                            Text(
+                                "Last check failed: $lastCheckError",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        } else if (notifyEnabled && lastCheckedAt != null) {
+                            Text(
+                                "Last checked ${formatRelativeCheckTime(lastCheckedAt)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else if (notifyEnabled) {
+                            Text(
+                                "Not checked yet",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1079,3 +1125,21 @@ private fun EnlargedCoverDialog(coverUrl: String, onDismiss: () -> Unit) {
     }
 }
 
+
+// F3/R3 fix (urgent-review.md): plain "X minutes/hours/days ago" rendering for
+// NovelEntity.lastNotifyCheckAt under the "Notify me" toggle - kept intentionally
+// coarse (minutes/hours/days only, no live-ticking seconds) since this is a
+// once-per-check timestamp, not a countdown; a reader opening the page just wants
+// a rough sense of "recently" vs "a while back", not second-level precision.
+private fun formatRelativeCheckTime(epochMillis: Long): String {
+    val deltaMs = (System.currentTimeMillis() - epochMillis).coerceAtLeast(0L)
+    val minutes = deltaMs / 60_000L
+    val hours = minutes / 60L
+    val days = hours / 24L
+    return when {
+        minutes < 1L -> "just now"
+        minutes < 60L -> "$minutes min${if (minutes == 1L) "" else "s"} ago"
+        hours < 24L -> "$hours hour${if (hours == 1L) "" else "s"} ago"
+        else -> "$days day${if (days == 1L) "" else "s"} ago"
+    }
+}
