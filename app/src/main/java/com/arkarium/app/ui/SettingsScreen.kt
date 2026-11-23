@@ -15,12 +15,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoStories
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Gavel
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.LibraryBooks
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PrivacyTip
 import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -37,15 +35,20 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.arkarium.app.BuildConfig
 
 // Small uppercase, letter-spaced label used above each grouped card
 // (PREFERENCES / LEGAL / ABOUT) so the index page reads as sections instead
 // of one long undifferentiated list - the same "group related settings"
 // idea most platform settings apps use, just without pulling in a whole new
 // library for it.
+//
+// No longer file-private: AboutScreen.kt (same package, so no import needed)
+// reuses this and the three composables below it so the new About page's
+// info/legal cards look and behave identically to every other settings
+// card instead of a hand-duplicated near-copy drifting out of sync with this
+// file's own styling over time.
 @Composable
-private fun SettingsSectionLabel(text: String) {
+fun SettingsSectionLabel(text: String) {
     Text(
         text.uppercase(),
         style = MaterialTheme.typography.labelMedium.copy(letterSpacing = 1.2.sp),
@@ -62,7 +65,7 @@ private fun SettingsSectionLabel(text: String) {
 // primary color instead of a flat monochrome glyph sitting directly on the
 // row background.
 @Composable
-private fun SettingsIconBadge(icon: ImageVector) {
+fun SettingsIconBadge(icon: ImageVector) {
     Box(
         modifier = Modifier
             .size(38.dp)
@@ -87,7 +90,7 @@ private fun SettingsIconBadge(icon: ImageVector) {
 // after the last row in a card so the card's own rounded bottom edge is the
 // visual stop instead of a divider running right up against it.
 @Composable
-private fun SettingsCardRow(
+fun SettingsCardRow(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
@@ -137,7 +140,7 @@ private fun SettingsCardRow(
 // elsewhere in the app, reused here so grouped settings feel consistent with
 // the rest of ARKarium's visual language rather than inventing a new style.
 @Composable
-private fun SettingsCard(content: @Composable () -> Unit) {
+fun SettingsCard(content: @Composable () -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -169,6 +172,15 @@ private fun SettingsCard(content: @Composable () -> Unit) {
 // is just a dumb WebView wrapper and doesn't need styling) - it was never
 // about leaving this index row looking inconsistent with the rows around
 // it, so About Me now matches Theme/Library/Splash/TTS/Privacy/Terms here.
+//
+// About-page rework: Privacy Policy, Terms & Conditions, and About Me used to
+// each get their own row (and their own two section cards, "Legal" and
+// "About") directly on this index. All three - plus version/build info that
+// used to just be a bare line of text below everything - now live inside one
+// dedicated About screen (see AboutScreen.kt), the same "logo + name up top,
+// then grouped info/legal cards below" shape Android's own About Phone screen
+// uses. This index keeps exactly one row pointing at it, same as every other
+// drill-down destination here.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -180,9 +192,7 @@ fun SettingsScreen(
     // opening settings/reader - same row shape as every other entry here,
     // just one more navigation target.
     onReaderClick: () -> Unit,
-    onPrivacyPolicy: () -> Unit,
-    onTermsAndConditions: () -> Unit,
-    onAboutMe: () -> Unit
+    onAboutClick: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         // Bug 6 fix (docs/proposal/bugs/other/uiux-bugs.md): Settings is one of
@@ -239,52 +249,21 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            SettingsSectionLabel("Legal")
-            SettingsCard {
-                SettingsCardRow(
-                    icon = Icons.Filled.PrivacyTip,
-                    title = "Privacy Policy",
-                    onClick = onPrivacyPolicy,
-                    showDivider = true
-                )
-                SettingsCardRow(
-                    icon = Icons.Filled.Gavel,
-                    title = "Terms & Conditions",
-                    onClick = onTermsAndConditions,
-                    showDivider = false
-                )
-            }
-
-            Spacer(modifier = Modifier.height(20.dp))
-
+            // Privacy Policy, Terms & Conditions, and the author's "About Me" link
+            // (now "About Rae ARK" - see AboutScreen.kt) all used to be separate
+            // rows/cards right here. One row into the dedicated About screen now
+            // covers all three, plus version/build info that used to be a bare
+            // line of text below everything on this index.
             SettingsSectionLabel("About")
             SettingsCard {
-                // Opens the author's site in-app via WebViewScreen (see MainActivity's
-                // Screen.AboutMe case) rather than sending the reader out to a browser.
-                // That destination page is left as a plain WebView wrapper - no reason
-                // to style it, it just displays the portfolio site - but the row here
-                // on the index now matches every other row's card/icon-badge look.
                 SettingsCardRow(
-                    icon = Icons.Filled.Person,
-                    title = "About Me",
-                    onClick = onAboutMe,
+                    icon = Icons.Filled.Info,
+                    title = "About",
+                    subtitle = "Version, legal info, and more",
+                    onClick = onAboutClick,
                     showDivider = false
                 )
             }
-
-            Divider(modifier = Modifier.padding(top = 12.dp, bottom = 12.dp))
-
-            // BuildConfig.VERSION_NAME is generated from app/build.gradle.kts'
-            // defaultConfig.versionName - the single source of truth for the app's
-            // version. This is the only place in the running app's normal UI that
-            // shows it; the crash screens in MainActivity read the same field. Stays
-            // on the index page per docs/foundational/design-notes.md (Settings is an index) - it's not really "a
-            // setting," so it doesn't get promoted to its own sub-page.
-            Text(
-                "ARKarium v${BuildConfig.VERSION_NAME}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-            )
         }
     }
 }

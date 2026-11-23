@@ -38,6 +38,8 @@ import com.arkarium.app.data.clearImageCaches
 import com.arkarium.app.data.computeStorageBreakdown
 import com.arkarium.app.data.resolveLibraryRoot
 import com.arkarium.app.data.sync.relayBaseUrlForSlug
+import com.arkarium.app.ui.AboutScreen
+import com.arkarium.app.ui.AcknowledgementsScreen
 import com.arkarium.app.ui.AuthorPageScreen
 import com.arkarium.app.ui.ChapterEditorScreen
 import com.arkarium.app.ui.ChapterLoadErrorScreen
@@ -843,9 +845,11 @@ fun AppNavGraph(
                     onSplashClick = { navController.navigate("settings/splash") },
                     onTtsClick = { navController.navigate("settings/tts") },
                     onReaderClick = { navController.navigate("settings/reader") },
-                    onPrivacyPolicy = { navController.navigate("privacy_policy") },
-                    onTermsAndConditions = { navController.navigate("terms") },
-                    onAboutMe = { navController.navigate("about_me") }
+                    // Privacy Policy/Terms/About Me are no longer reached directly
+                    // from this index - see SettingsScreen.kt's own "About-page
+                    // rework" comment - they're one level deeper now, inside the
+                    // "about" destination below.
+                    onAboutClick = { navController.navigate("about") }
                 )
             }
         }
@@ -1185,6 +1189,24 @@ fun AppNavGraph(
             }
         }
 
+        composable("about") {
+            Column(modifier = Modifier.fillMaxSize()) {
+                AboutScreen(
+                    onBack = { navController.popBackStack() },
+                    onMaintainerClick = { navController.navigate("about_me") },
+                    onPrivacyPolicyClick = { navController.navigate("privacy_policy") },
+                    onTermsClick = { navController.navigate("terms") },
+                    onAcknowledgementsClick = { navController.navigate("acknowledgements") }
+                )
+            }
+        }
+
+        composable("acknowledgements") {
+            Column(modifier = Modifier.fillMaxSize()) {
+                AcknowledgementsScreen(onBack = { navController.popBackStack() })
+            }
+        }
+
         composable("privacy_policy") {
             Column(modifier = Modifier.fillMaxSize()) {
                 LegalDocumentScreen(
@@ -1207,10 +1229,16 @@ fun AppNavGraph(
             }
         }
 
+        // Route key left as "about_me" (not worth renaming - nothing outside this
+        // file references it by name, and it's an internal nav-graph key, never
+        // user-visible) - only the displayed title and its entry point changed:
+        // see AboutScreen.kt's "About Rae ARK" row, now reached one level deeper
+        // than before (Settings -> About -> About Rae ARK, not Settings -> About
+        // Me directly).
         composable("about_me") {
             Column(modifier = Modifier.fillMaxSize()) {
                 WebViewScreen(
-                    title = "About Me",
+                    title = "About Rae ARK",
                     url = "https://rae-ark.horizonarkstudio.workers.dev/",
                     onBack = { navController.popBackStack() }
                 )
