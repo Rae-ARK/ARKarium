@@ -1,5 +1,6 @@
 package com.arkarium.app.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.LocalOverscrollConfiguration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -104,7 +105,11 @@ import com.arkarium.app.R
 //    is Nougat, 14 is Upside Down Cake) under the version number - omitting
 //    those when both versions happen to be ones Android actually gave a
 //    public codename to was leaving an easy, on-brand detail on the table.
-@OptIn(ExperimentalMaterial3Api::class)
+// LocalOverscrollConfiguration (used below to turn off the stretch overscroll
+// on this screen's scroll container) is gated behind ExperimentalFoundationApi -
+// opted into here alongside the existing Material3 opt-in rather than suppressed
+// at the module level, since it's the one API on this screen that needs it.
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun AboutScreen(
     onBack: () -> Unit,
