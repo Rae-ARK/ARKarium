@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -226,11 +227,18 @@ fun FictionBrowseScreen(
         }
 
         // Novel grid
+        //
+        // contentPadding, not a plain Modifier.padding(12.dp) - the same fix
+        // HomeScreen.kt's own LazyColumn already applies (see its F9 fix comment): a
+        // .padding() on the grid's own modifier shrinks its viewport by 12dp on every
+        // side rather than just padding the scrollable content, so the bottom row's
+        // last pixels sat under an invisible dead zone the grid could never scroll
+        // into. contentPadding adds that same 12dp of breathing room inside the full
+        // viewport instead, so the last row stays fully reachable.
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
