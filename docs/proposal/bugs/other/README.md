@@ -32,3 +32,13 @@ Fixed and deleted per the rule in `../README.md`:
   completion haptic stopped updating once position became a character offset.
   Fixed by splitting resume position from completion fraction; confirmed on a
   device. See `ReaderPosition.kt` and `ReadingStats.kt`.
+- Home screen scrolling (urgent-review.md's F9; the doc itself was never
+  committed here, only ever cited from source comments) — no stable `key`s on
+  Home's top-level `LazyColumn` sections, so the conditionally-loaded Continue
+  Reading section shifted content under the reader's finger once it loaded in
+  after the first frame; Featured/Trending/New Releases reshuffled on any
+  novel field change instead of only when library membership changed; bottom
+  spacing used `Modifier.padding()` on the `LazyColumn` itself, shrinking its
+  viewport and clipping the last row instead of using `contentPadding`; and
+  the search query wasn't `rememberSaveable`, so it was lost on rotation or
+  process death. All four fixed — see `HomeScreen.kt`.

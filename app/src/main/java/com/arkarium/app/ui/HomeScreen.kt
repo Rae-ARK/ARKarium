@@ -100,10 +100,9 @@ fun HomeScreen(
     // fiction by typed name.
     onSyncAllClick: () -> Unit = {}
 ) {
-    // F9 fix (urgent-review.md): rememberSaveable instead of plain remember - a
-    // plain remember loses whatever the reader typed the moment this composable
-    // leaves composition (process death, or Android recreating the Activity on
-    // rotation/config change), which is the "unsaved state" half of F9. The typed
+    // rememberSaveable, not plain remember: plain remember loses whatever the
+    // reader typed the moment this composable leaves composition (process death,
+    // or Android recreating the Activity on rotation/config change). The typed
     // query itself (a String) is directly Bundle-savable, no custom Saver needed.
     val searchQuery = rememberSaveable { mutableStateOf("") }
     // Snapshot `novels` (a SnapshotStateList) into a plain List before using it as a
@@ -120,13 +119,13 @@ fun HomeScreen(
     // remember() correctly recomputes only when the actual contents change - while
     // still not reshuffling on every unrelated recomposition (e.g. typing in search).
     val novelsSnapshot = novels.toList()
-    // F9 fix (urgent-review.md): keying the shuffle on novelsSnapshot itself (a
-    // List<NovelEntity>) means NovelEntity's own structural equals() - covering
+    // Keying the shuffle on novelsSnapshot itself (a
+    // List<NovelEntity>) would mean NovelEntity's own structural equals() - covering
     // every field, not just id - decides whether to reshuffle. Reading progress,
     // last-notify-check timestamps, cover URLs, anything on any novel changing
-    // reshuffles Featured/Trending/New Releases out from under the reader, even
-    // though none of that touched which novels exist. The set of ids is the only
-    // thing a "did the library's membership change" check actually needs -
+    // would reshuffle Featured/Trending/New Releases out from under the reader,
+    // even though none of that touched which novels exist. The set of ids is the
+    // only thing a "did the library's membership change" check actually needs -
     // keying on that instead means a field update on an existing novel no longer
     // recomputes the shuffle at all, while a novel being added/removed still does.
     val novelIds = novelsSnapshot.map { it.id }
@@ -192,31 +191,31 @@ fun HomeScreen(
             EmptyLibraryPrompt(onSyncAllClick = onSyncAllClick)
         } else {
         LazyColumn(
-            // F9 fix (urgent-review.md): this used to be Modifier.padding(bottom =
-            // 16.dp), which shrinks the LazyColumn's own viewport by 16dp rather than
-            // just padding its scrolling content - the last pixels of the New
-            // Releases row sat under an invisible dead zone the list itself could
-            // never scroll into. contentPadding adds that space around the content
-            // instead, inside the full-size viewport, the same way a
-            // ScrollView/RecyclerView's clipToPadding="false" + padding would.
+            // contentPadding, not Modifier.padding(bottom = 16.dp): a plain .padding()
+            // would shrink the LazyColumn's own viewport by 16dp rather than just
+            // padding its scrolling content, leaving the last pixels of the New
+            // Releases row under an invisible dead zone the list itself could never
+            // scroll into. contentPadding adds that space around the content instead,
+            // inside the full-size viewport, the same way a ScrollView/RecyclerView's
+            // clipToPadding="false" + padding would.
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp)
         ) {
-            // F9 fix (urgent-review.md): every top-level section below now gets an
-            // explicit, stable `key` - previously these were plain `item { ... }`
-            // calls with no key, so LazyColumn could only identify them by their
-            // position in the list. Continue Reading is conditional on
-            // continueReadingNovels, which (see its own param doc comment above)
-            // loads asynchronously from reading_progress and so can go from absent
-            // to present *after* HomeScreen's first frame - every item below it then
-            // shifts down one slot. Without a key, Compose has no way to tell that
-            // shift apart from "the item that used to be at this position changed
-            // its content," so it reuses (and visually relocates) compositions by
-            // position rather than identity: exactly the "content shifts under the
-            // reader's finger" jank. A literal string key per section is enough -
-            // these are fixed, named sections, not a dynamic data-driven list - and
-            // keeps each section's own composition (and any internal scroll/animation
-            // state) tied to what it actually is rather than where it happens to sit.
+            // Every top-level section below gets an explicit, stable `key` rather
+            // than a bare `item { ... }`, since otherwise LazyColumn could only
+            // identify them by their position in the list. Continue Reading is
+            // conditional on continueReadingNovels, which (see its own param doc
+            // comment above) loads asynchronously from reading_progress and so can
+            // go from absent to present *after* HomeScreen's first frame - every
+            // item below it then shifts down one slot. Without a key, Compose has
+            // no way to tell that shift apart from "the item that used to be at
+            // this position changed its content," so it would reuse (and visually
+            // relocate) compositions by position rather than identity: exactly the
+            // "content shifts under the reader's finger" jank. A literal string key
+            // per section is enough - these are fixed, named sections, not a
+            // dynamic data-driven list - and keeps each section's own composition
+            // (and any internal scroll/animation state) tied to what it actually is
+            // rather than where it happens to sit.
             item(key = "search_bar") {
                 SearchBar(
                     query = searchQuery.value,
