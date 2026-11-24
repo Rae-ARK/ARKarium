@@ -13,6 +13,7 @@ because it still matters).
 | [`multi-lang-readme/`](multi-lang-readme/README.md)| past, permanent | Contains the Repo Readme in multiple languages. |
 
 Start with [`foundational/what-is-arkarium.md`](foundational/what-is-arkarium.md).
+Before editing code, read [`foundational/commenting.md`](foundational/commenting.md).
 
 ## Lifecycle rule
 

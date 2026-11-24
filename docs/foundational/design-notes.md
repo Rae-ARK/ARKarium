@@ -3,7 +3,9 @@
 > **Kind:** foundational · **Verified:** 2026-11-07 @ a621542 · **Truth lives in:** code structure, `app/src/test/`
 
 The rules the code is held to, and the decisions that are settled. Each entry
-is a *why*; the *what* is in [`architecture.md`](architecture.md).
+is a *why*; the *what* is in [`architecture.md`](architecture.md). For how
+this codebase comments itself specifically, see
+[`commenting.md`](commenting.md).
 
 ## Code philosophy
 

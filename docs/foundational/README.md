@@ -8,6 +8,7 @@ This is the **past, kept because it still matters**. Nothing here is a plan.
 | [`what-is-arkarium.md`](what-is-arkarium.md) | Purpose, principles, clients, sibling projects. |
 | [`architecture.md`](architecture.md) | What is built: layers, content format, scan, sync (+ invariants S1–S9), reading, TTS as built. |
 | [`design-notes.md`](design-notes.md) | Code philosophy, settled decisions, refactor outcomes, testing strategy. |
+| [`commenting.md`](commenting.md) | **Read before editing code.** When a comment is warranted vs. when to fix the code instead. |
 | [`pitch.md`](pitch.md) | Stub. Outward-facing pitch, to be written. |
 
 **Rules for this folder**
