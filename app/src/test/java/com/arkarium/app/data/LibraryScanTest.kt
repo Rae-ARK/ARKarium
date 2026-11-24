@@ -30,7 +30,9 @@ class LibraryScanTest {
         lastSyncedAt: Long? = null,
         syncStatus: String = SyncStatus.ACTIVE.name,
         notifyNewChapters: Boolean = false,
-        syncFolderName: String? = null
+        syncFolderName: String? = null,
+        publicationStatus: String? = null,
+        chaptersPerWeek: Double? = null
     ) = NovelEntity(
         id = id,
         title = title,
@@ -50,7 +52,9 @@ class LibraryScanTest {
         lastSyncedAt = lastSyncedAt,
         syncStatus = syncStatus,
         notifyNewChapters = notifyNewChapters,
-        syncFolderName = syncFolderName
+        syncFolderName = syncFolderName,
+        publicationStatus = publicationStatus,
+        chaptersPerWeek = chaptersPerWeek
     )
 
     @Test
@@ -217,5 +221,32 @@ class LibraryScanTest {
         val result = mergeNovelForRescan(scanned, existing)
 
         assertEquals("Summoned By Mistake", result.syncFolderName)
+    }
+
+    // metadata.json is the author's own source for cadence, so a value it declares
+    // wins over whatever the last sync wrote.
+    @Test
+    fun `cadence declared in metadata json replaces the synced one`() {
+        val scanned = novel(chaptersPerWeek = 2.0)
+        val existing = novel(chaptersPerWeek = 1.0)
+
+        assertEquals(2.0, mergeNovelForRescan(scanned, existing).chaptersPerWeek!!, 0.0)
+    }
+
+    // A rescan that finds no cadence in metadata.json must not wipe what a sync set.
+    @Test
+    fun `a scan without a declared cadence keeps the existing one`() {
+        val scanned = novel(chaptersPerWeek = null)
+        val existing = novel(chaptersPerWeek = 1.0)
+
+        assertEquals(1.0, mergeNovelForRescan(scanned, existing).chaptersPerWeek!!, 0.0)
+    }
+
+    @Test
+    fun `a scan without a declared status keeps the existing one`() {
+        val scanned = novel(publicationStatus = null)
+        val existing = novel(publicationStatus = "ONGOING")
+
+        assertEquals("ONGOING", mergeNovelForRescan(scanned, existing).publicationStatus)
     }
 }

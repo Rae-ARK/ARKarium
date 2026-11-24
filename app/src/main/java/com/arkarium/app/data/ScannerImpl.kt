@@ -281,7 +281,8 @@ class ScannerImpl(private val context: Context) {
             genres = localMetadata?.genres,
             publishedDate = localMetadata?.publishedDate,
             syncSourceUrl = recognizedSyncUrl,
-            publicationStatus = localMetadata?.status
+            publicationStatus = localMetadata?.status,
+            chaptersPerWeek = localMetadata?.chaptersPerWeek
         )
     }
 
@@ -457,18 +458,20 @@ class ScannerImpl(private val context: Context) {
         files.forEachIndexed { idx, file ->
             val parsed = parseChapter(file.name ?: "Chapter ${idx + 1}")
             val chapterId = UUID.nameUUIDFromBytes("${novelId}:${file.uri}".toByteArray()).toString()
-            // Mirrors architecture.md's Content format exactly ("arcs/<Arc>/NNN.txt"
-            // under an arc, a bare filename at novel root) - this is also precisely
-            // the shape a synced novel's on-disk folder already has, since
-            // downloadManifestFiles wrote each file at exactly its manifest relative
-            // path. `folder` is the arc folder itself when arcId != null (see this
-            // function's two call sites in scanChaptersForNovel), so folder.name here
-            // is the arc segment, not the novel folder. See ChapterEntity.relativePath's
-            // doc comment for what this is matched against.
+            // The path of the file relative to the novel folder ("<Arc>/NNN.txt" under an
+            // arc, a bare filename at novel root) - exactly where a synced novel's
+            // files sit on disk, since downloadManifestFiles wrote each file at its
+            // manifest relative path. Arc folders are direct children of the novel
+            // folder (isArcFolder has never required an "arcs/" parent), so adding
+            // an "arcs/" prefix here made every arc chapter's path miss its manifest
+            // key and silently lose its word count and read time. `folder` is the arc
+            // folder itself when arcId != null (see this function's two call sites in
+            // scanChaptersForNovel), so folder.name is the arc segment. See
+            // ChapterEntity.relativePath's doc comment for what this is matched against.
             val relativePath = if (arcId == null) {
                 file.name ?: ""
             } else {
-                "arcs/${folder.name ?: ""}/${file.name ?: ""}"
+                "${folder.name ?: ""}/${file.name ?: ""}"
             }
             val chapter = ChapterEntity(
                 id = chapterId,
@@ -647,7 +650,11 @@ class ScannerImpl(private val context: Context) {
         // 1) - already normalized/validated (PublicationStatus.fromRaw) by the time
         // this class exists, same contract as Manifest.status in SyncManager.kt: an
         // unrecognized value is null here, never the raw publisher string.
-        val status: String?
+        val status: String?,
+        // Author-declared release cadence (chapters/week), same trust level as status.
+        // Null when absent, non-numeric, negative or non-finite - the manifest parser
+        // rejects the same values.
+        val chaptersPerWeek: Double?
     )
 
     // Reads an optional `metadata.json` sitting directly in the novel's folder, e.g.:
@@ -658,7 +665,8 @@ class ScannerImpl(private val context: Context) {
     //   "description": "A short synopsis...",
     //   "genres": ["Fantasy", "Isekai"],
     //   "publishedDate": "2023",
-    //   "status": "ongoing"
+    //   "status": "ongoing",
+    //   "chaptersPerWeek": 2
     // }
     // All fields are optional and applied only where present - a missing/unparseable
     // file just means no local metadata, never a scan failure (this is loaded once per
@@ -669,6 +677,8 @@ class ScannerImpl(private val context: Context) {
     // "status" is one of ongoing/hiatus/dropped/complete (case-insensitive) - see
     // PublicationStatus; anything else parses as if the field were absent, same
     // forgiving-field philosophy as every other optional key here.
+    // "chaptersPerWeek" is a number (a numeric string is tolerated) >= 0; the key is
+    // case-sensitive, like every other key here.
     // Same change as findCoverUri above - takes the folder's already-listed children
     // instead of listing it again itself (F26, performance.md).
     private fun readLocalMetadata(children: List<DocumentFile>): LocalMetadata? {
@@ -693,7 +703,9 @@ class ScannerImpl(private val context: Context) {
                 description = json.optString("description").takeIf { it.isNotBlank() },
                 genres = genres,
                 publishedDate = json.optString("publishedDate").takeIf { it.isNotBlank() },
-                status = PublicationStatus.fromRaw(json.optString("status").takeIf { it.isNotBlank() })
+                status = PublicationStatus.fromRaw(json.optString("status").takeIf { it.isNotBlank() }),
+                chaptersPerWeek = json.optDouble("chaptersPerWeek", Double.NaN)
+                    .takeIf { it.isFinite() && it >= 0.0 }
             )
         } catch (e: Exception) {
             // Malformed metadata.json shouldn't take down the scan for this novel - it

@@ -32,12 +32,21 @@ about.
 ## Content format
 
 A fiction is a folder; the scanner understands it whether it was dropped in
-by hand or written by sync.
+by hand or written by sync. Arc folders are direct children of the fiction
+folder (no `arcs/` parent), and a chapter's stored `relativePath` is
+`<Arc>/NNN.txt`, the same key the manifest uses.
+
+`metadata.json` is what the author declares: `title`, `author`, `authorId`,
+`description`, `genres`, `publishedDate`, `status` and `chaptersPerWeek` (a
+number). The manifest lists files and their measured facts (`size`, `sha256`,
+`wordCount`, `readTimeMinutes`). A null `status` or `chaptersPerWeek` in the
+manifest never clears a value; it stays only as a fallback, so declare each in
+one place.
 
 ```text
 Fiction Name/
 ├── metadata.json   cover.*   author.json (optional)
-└── arcs/<Arc>/ metadata.json, cover.*, NNN.txt ...
+└── <Arc>/      metadata.json, cover.*, NNN.txt ...
 authors/<id>.json   (shared, at library root, not per fiction)
 ```
 
@@ -213,6 +222,14 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
   Pigeon Rally taps, the notification tap, and a manual "Check for updates".
   It replaces the lists wholesale, so batch paths (`syncAllRaeArkNovels`) must
   not call it for novels the reader isn't viewing.
+
+- **S13. Apply manifest metadata after the rescan, from every sync path.**
+  `applyManifestMetadata` (`data/sync/ManifestMetadataWriter.kt`) attaches word
+  count and read time by matching manifest keys to chapter `relativePath`, so
+  it needs chapter rows that exist: call it after the rescan, never before.
+  `SyncViewModel` and `NewChapterCheckWorker` both call it. A chapter whose
+  path does not equal its manifest key silently gets no counts and shows
+  `---`, so the scanner records the real on-disk path.
 
 ## Reading and local state
 

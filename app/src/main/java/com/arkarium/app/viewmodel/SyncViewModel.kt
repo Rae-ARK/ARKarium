@@ -11,10 +11,8 @@ import com.arkarium.app.data.AppDatabase
 import com.arkarium.app.data.AuthorEntity
 import com.arkarium.app.data.CatalogueEntryEntity
 import com.arkarium.app.data.CatalogueStorage
-import com.arkarium.app.data.ChapterManifestMetaEntity
 import com.arkarium.app.data.ChapterUpdateEventEntity
 import com.arkarium.app.data.FictionLut
-import com.arkarium.app.data.NovelAnnouncementEntity
 import com.arkarium.app.data.NovelEntity
 import com.arkarium.app.data.ScannerImpl
 import com.arkarium.app.data.SyncStatus
@@ -217,78 +215,11 @@ class SyncViewModel(
     // (UUID.nameUUIDFromBytes(root.uri + ":" + folder.uri)) rather than guessing, and
     // only attaches the sync bookkeeping (SyncedFileEntity rows, NovelDao.updateSyncState)
     // once the scan has actually run and that id is confirmed to exist.
-    // Persists SyncOutcome's manifest-metadata fields ("Serial-fiction manifest
-    // metadata", ideas.md/peer-app-survey.md Suggestion 1) - shared by all three sync
-    // call sites below (addFictionByName, the "sync all" per-item path, and
-    // checkForUpdates) so the three can't drift into writing this three different
-    // ways. Always called after the scan that (re)creates/updates this novel's chapter
-    // rows has already finished - findByNovelAndRelativePath below needs those rows to
-    // exist with a current relative_path to match against (see ChapterEntity.
-    // relativePath's doc comment).
-    //
-    // publicationStatus is written unconditionally, including null - see
-    // NovelDao.updatePublicationStatus's doc comment: a manifest that stops declaring
-    // a status it used to have is a real, meaningful change, not something to ignore.
-    // announcements is the opposite: null (the field was simply absent from this
-    // manifest, as every manifest predating this feature will be) leaves whatever
-    // novel_announcements already has untouched, rather than wiping a real,
-    // previously-synced announcement list just because an old manifest doesn't know
-    // about the field yet. An explicit empty array, which parses to an empty (non-null)
-    // list, does still wholesale-replace down to zero rows - that's the publisher
-    // actually clearing their announcements, a different thing from the field not
-    // existing.
-    private suspend fun applyManifestMetadata(novelId: String, outcome: SyncOutcome) {
-        db.novelDao().updatePublicationStatus(novelId, outcome.publicationStatus)
-        // Same unconditional-write contract as publicationStatus just above, not
-        // announcements' "null means leave alone" one - chaptersPerWeek has no
-        // "explicit empty means clear, absent means don't touch" distinction to make
-        // (it's a single nullable value, not a list), so a manifest that stops
-        // declaring a cadence really does clear it, same as publicationStatus would.
-        db.novelDao().updateChaptersPerWeek(novelId, outcome.chaptersPerWeek)
-
-        outcome.announcements?.let { announcements ->
-            val fetchedAt = System.currentTimeMillis()
-            db.novelAnnouncementDao().replaceForNovel(
-                novelId,
-                announcements.map { announcement ->
-                    NovelAnnouncementEntity(
-                        // Deterministic, not a random UUID, so re-syncing the same
-                        // manifest twice in a row (nothing actually changed) produces
-                        // the same ids rather than new rows each time - harmless either
-                        // way given replaceForNovel deletes first, but keeps the id
-                        // meaningful rather than throwaway.
-                        id = UUID.nameUUIDFromBytes(
-                            "$novelId:${announcement.text}:${announcement.publishedAt}".toByteArray()
-                        ).toString(),
-                        novelId = novelId,
-                        text = announcement.text,
-                        publishedAt = announcement.publishedAt,
-                        fetchedAt = fetchedAt
-                    )
-                }
-            )
-        }
-
-        outcome.chapterManifestMeta.forEach { (relativePath, meta) ->
-            val (wordCount, readTimeMinutes) = meta
-            val chapter = db.chapterDao().findByNovelAndRelativePath(novelId, relativePath)
-            // A manifest entry with no matching local chapter row isn't an error worth
-            // surfacing - same "one missing thing doesn't abort the batch" posture as
-            // SourceGoneException handling elsewhere in this file. It just means this
-            // particular file hasn't been scanned as a chapter yet (wrong extension,
-            // sits outside arcs/, scan hasn't run for some other reason) - nothing to
-            // attach the word count/read time to until it has.
-            if (chapter != null) {
-                db.chapterManifestMetaDao().upsert(
-                    ChapterManifestMetaEntity(
-                        chapterId = chapter.id,
-                        wordCount = wordCount,
-                        readTimeMinutes = readTimeMinutes
-                    )
-                )
-            }
-        }
-    }
+    // Persists SyncOutcome's manifest-metadata fields. The logic and its ordering rules
+    // live in data/sync/ManifestMetadataWriter.kt, shared with NewChapterCheckWorker.
+    // Always call after the scan that (re)creates this novel's chapter rows.
+    private suspend fun applyManifestMetadata(novelId: String, outcome: SyncOutcome) =
+        com.arkarium.app.data.sync.applyManifestMetadata(db, novelId, outcome)
 
     // Rung 4 of docs/implementation/catalogue-browse-redesign.md - C2: a catalogue entry
     // disappears the moment its fiction is followed. Called only after the real
@@ -673,21 +604,19 @@ class SyncViewModel(
                         syncCheckState.value = SyncCheckState.InProgress(novel, message)
                     }
                 }
-                // Pre-existing gap fixed here: checkForUpdates never called
-                // applyManifestMetadata at all - the one call site this is most load-
-                // bearing for, since SyncOutcome's own doc comment explains status/
-                // announcements/chaptersPerWeek are populated even when outcome.changed
-                // is false specifically so "check for updates" notices a publisher
-                // flipping ongoing->hiatus without a version bump. Unconditional - not
-                // inside `if (outcome.changed)` below - for exactly that reason.
-                applyManifestMetadata(novel.id, outcome)
+                // Unchanged-version branch: no rescan follows, so apply now. This must
+                // still run when outcome.changed is false - SyncOutcome carries
+                // status/announcements/cadence even then, so a publisher flipping
+                // ongoing->hiatus without a version bump is noticed. The changed branch
+                // applies after its rescan instead (below), because chapter rows for
+                // newly downloaded files don't exist before it.
+                if (!outcome.changed) applyManifestMetadata(novel.id, outcome)
                 // Hoisted out of the `if (outcome.changed)` block below so the Done state
                 // can use it too - see the bug this fixes just below.
                 var refreshedNovel: NovelEntity? = null
                 if (!outcome.changed) {
                     // applyManifestMetadata just above can still have written a new
-                    // publicationStatus/chaptersPerWeek even on this branch (that's the
-                    // whole point - see the comment above) - re-read and patch
+                    // publicationStatus/chaptersPerWeek even on this branch - re-read and patch
                     // libraryViewModel.novels the same way the `outcome.changed` branch
                     // does below, so e.g. a status flip to "Hiatus" actually shows up
                     // without the novel's files having changed at all.
@@ -714,6 +643,10 @@ class SyncViewModel(
                     // applies - clear it back to ACTIVE rather than leaving a stale status.
                     db.novelDao().updateSyncStatus(novel.id, SyncStatus.ACTIVE.name)
                     libraryViewModel.startScan(libraryRoot)
+                    // After the rescan so new chapters have rows to attach counts to.
+                    // Before the novel is re-read below so the refreshed entity already
+                    // carries status/cadence and the detail screen never sees a blank.
+                    applyManifestMetadata(novel.id, outcome)
                     val updated = db.novelDao().findById(novel.id)
                     if (updated != null) {
                         val idx = libraryViewModel.novels.indexOfFirst { it.id == updated.id }

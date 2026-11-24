@@ -505,7 +505,7 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         val coverEntry = manifest.files.firstOrNull { isRootCoverPath(it.relativePath) }
         val coverBytes = coverEntry?.let { client.downloadFile(baseUrl, it.relativePath) }
 
-        // "Chapter count - count manifest entries matching arcs/*/*.txt at the top
+        // "Chapter count - count manifest entries matching <arc>/*.txt at the top
         // level of their arc folder" - exactly the doc's own wording, deliberately
         // narrower than ScannerImpl's real chapter detection (which also accepts
         // root-level .txt files and per-file bonus/closing markers): a catalogue
@@ -599,8 +599,11 @@ private fun parseCatalogueMetadata(bytes: ByteArray): CatalogueMetadata? = try {
 private fun isRootCoverPath(relativePath: String): Boolean =
     Regex("(?i)^cover\\.(jpg|jpeg|png|webp)$").matches(relativePath)
 
-// "Count manifest entries matching arcs/*/*.txt at the top level of their arc folder" -
+// "Count manifest entries matching <arc>/*.txt at the top level of their arc folder" -
 // see fetchCatalogueEntry's own comment on why this is deliberately narrower than
-// ScannerImpl's real chapter detection.
+// ScannerImpl's real chapter detection. Arc folders sit directly under the fiction
+// folder (the layout ScannerImpl and the publish script use); an optional legacy
+// "arcs/" parent is still accepted. authors/ files are never chapters.
 private fun isChapterFilePath(relativePath: String): Boolean =
-    Regex("(?i)^arcs/[^/]+/[^/]+\\.txt$").matches(relativePath)
+    !relativePath.startsWith("authors/", ignoreCase = true) &&
+        Regex("(?i)^(arcs/)?[^/]+/[^/]+\\.txt$").matches(relativePath)

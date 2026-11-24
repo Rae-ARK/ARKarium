@@ -12,6 +12,7 @@ import androidx.work.WorkerParameters
 import com.arkarium.app.data.sync.MissingLocalFolderException
 import com.arkarium.app.data.sync.SourceGoneException
 import com.arkarium.app.data.sync.SyncManager
+import com.arkarium.app.data.sync.applyManifestMetadata
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -173,7 +174,24 @@ class NewChapterCheckWorker(
         try {
             val novelFolder = SyncManager.findNovelFolder(libraryRoot, novel.id)
                 ?: throw IllegalStateException("Synced novel folder not found after sync")
+            // Manifest status/cadence first, then a single-novel scan so a status or
+            // cadence declared in metadata.json (the author's own source) wins via
+            // mergeNovelForRescan. authorsFolderFound = false keeps the existing
+            // author link and never touches the authors table from the background.
+            // Without this the worker only rescanned chapters, so metadata.json
+            // changes waited for the next cold-start scan.
+            outcome.publicationStatus?.let { db.novelDao().updatePublicationStatus(novel.id, it) }
+            outcome.chaptersPerWeek?.let { db.novelDao().updateChaptersPerWeek(novel.id, it) }
+            val scanned = scanner.scanSingleNovel(libraryRoot, novelFolder)
+            val existing = db.novelDao().findById(novel.id)
+            if (existing != null && scanned.id == novel.id) {
+                db.novelDao().upsert(mergeNovelForRescan(scanned, existing, authorsFolderFound = false))
+            }
             scanner.scanChaptersForNovel(novelFolder, novel.id, db)
+            // After the rescan so chapters that were just downloaded have rows to
+            // attach word count / read time to. This used to be missing entirely, so a
+            // background check recorded the new version but dropped the counts.
+            applyManifestMetadata(db, novel.id, outcome)
 
             val afterChapters = db.chapterDao().forNovel(novel.id)
             val newChapters = afterChapters.filterNot { it.id in beforeChapterIds }

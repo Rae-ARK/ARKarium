@@ -119,11 +119,10 @@ data class NovelEntity(
     // from real publish timestamps (the manifest format has none). Null renders as
     // "---", same convention as publicationStatus and everything else in this
     // "Serial-fiction manifest metadata" group - see peer-app-survey.md Suggestion 1.
-    // Sourced only from a sync manifest today (SyncViewModel's
-    // NovelDao.updateChaptersPerWeek call) - unlike publicationStatus, ScannerImpl's
-    // local metadata.json parsing doesn't also expose this, since a purely local
-    // novel has no publish-time tooling to have declared a cadence in the first
-    // place; nothing stops that from being added later the same way.
+    // Sourced from metadata.json's "chaptersPerWeek" (ScannerImpl.readLocalMetadata,
+    // the author's own source) or, as a fallback, the sync manifest (written by
+    // applyManifestMetadata); mergeNovelForRescan keeps the existing value when a
+    // scan finds none.
     @ColumnInfo(name = "chapters_per_week") val chaptersPerWeek: Double? = null,
     // Records that the *user* deliberately unlinked this novel from its sync source
     // (NovelDao.unlinkSyncSource), as opposed to syncSourceUrl simply never having
@@ -222,7 +221,7 @@ data class ChapterEntity(
     // within tier 0 exactly as before; see ScannerImpl.parseChapter and bugs.md Bug 2.
     @ColumnInfo(name = "sort_tier") val sortTier: Int = 0,
     @ColumnInfo(name = "source_path") val sourcePath: String,
-    // Manifest-relative path ("NNN.txt" at novel root, "arcs/<Arc>/NNN.txt" under an
+    // Manifest-relative path ("NNN.txt" at novel root, "<Arc>/NNN.txt" under an
     // arc - see architecture.md's Content format and ScannerImpl.parseChaptersInFolder)
     // rather than the SAF content:// URI `sourcePath` above holds. This is what lets a
     // sync pass's ManifestFileEntry (keyed by that same relative path, per
@@ -388,7 +387,7 @@ data class ScanFingerprintEntity(
 )
 data class SyncedFileEntity(
     @ColumnInfo(name = "novel_id") val novelId: String,
-    // Sanitized, manifest-relative path (e.g. "arcs/arc-1/001.txt", "cover.png") -
+    // Sanitized, manifest-relative path (e.g. "arc-1/001.txt", "cover.png") -
     // never trusted as-is from a manifest without validation first (see
     // docs/foundational/architecture.md, Sync invariants S2); validation happens in the sync
     // client before a row like this is ever created, not here.
@@ -504,7 +503,7 @@ data class CatalogueEntryEntity(
     // so a not-yet-followed fiction's cached cover can never be misread as a real,
     // locally-added novel.
     @ColumnInfo(name = "cover_path") val coverPath: String?,
-    // Count of manifest entries matching arcs/*/*.txt - a count, not a table of
+    // Count of manifest entries matching <arc>/*.txt - a count, not a table of
     // contents; the manifest carries no per-chapter titles for an unfollowed fiction.
     @ColumnInfo(name = "chapter_count") val chapterCount: Int,
     @ColumnInfo(name = "published_date") val publishedDate: String?,
