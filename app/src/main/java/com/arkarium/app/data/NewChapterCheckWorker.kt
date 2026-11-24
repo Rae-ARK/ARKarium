@@ -56,16 +56,14 @@ class NewChapterCheckWorker(
         val candidates = db.novelDao().notifyEnabledSynced()
         if (candidates.isEmpty()) return Result.success()
 
-        // F3/R3 fix (urgent-review.md): a novel whose checkOneNovel attempt throws a
-        // genuine (non-cancellation) exception used to be silently swallowed here -
-        // no notification, no Pigeon Rally entry, no error, no timestamp, and the
-        // worker still reported Result.success() regardless. checkOneNovel itself now
-        // always records last_notify_check_at/last_notify_check_error before
-        // returning or rethrowing (see its own doc comment), so the UI can already
-        // show *that* something failed and why; this flag additionally tells
-        // WorkManager to actually retry the pass (with backoff) instead of waiting
-        // out the full periodic interval again, same as any other transient
-        // failure (network blip, relay hiccup) deserves.
+        // A novel whose checkOneNovel attempt throws a genuine (non-cancellation)
+        // exception must not be swallowed into Result.success(): that would leave no
+        // notification, no Pigeon Rally entry and no error. checkOneNovel always
+        // records last_notify_check_at/last_notify_check_error before returning or
+        // rethrowing (see its own doc comment), so the UI can show *that* something
+        // failed and why; this flag additionally tells WorkManager to retry the pass
+        // (with backoff) instead of waiting out the full periodic interval, same as
+        // any other transient failure (network blip, relay hiccup) deserves.
         val anyTransientFailure = java.util.concurrent.atomic.AtomicBoolean(false)
 
         // Bounded fan-out instead of one novel at a time - same bottleneck
@@ -117,25 +115,21 @@ class NewChapterCheckWorker(
     // touches its row again. A manifest version bump with no net-new chapter (e.g. a
     // metadata.json tweak or a chapter edit) correctly produces zero notifications.
     //
-    // F3/R3 fix (urgent-review.md), two changes from the original version:
+    // Two properties worth keeping:
     //
-    // 1. Observability: every exit path now calls
-    //    db.novelDao().updateNotifyCheckResult(...) before returning, recording
-    //    `now` and either null (success/no-op) or a message (failure) - surfaced by
-    //    NovelDetailScreen under the "Notify me" toggle so a reader can tell the
-    //    feature is actually running, instead of a silent background pass that
-    //    either works or doesn't with no visible difference.
+    // 1. Observability: every exit path calls db.novelDao().updateNotifyCheckResult(...)
+    //    before returning, recording `now` and either null (success/no-op) or a
+    //    message (failure). NovelDetailScreen shows it under the "Notify me" toggle
+    //    so a reader can tell the feature is actually running.
     //
-    // 2. Lost-notification fix: the sync-state commit (updateSyncState/
-    //    updateSyncStatus/syncedFileDao writes) now happens AFTER the rescan and
-    //    diff succeed, not before. Previously the new sync version was committed as
-    //    soon as the manifest download finished; if the novel-folder lookup then
-    //    returned null, or scanChaptersForNovel threw, the function exited with that
-    //    version already saved - so the next run saw an unchanged version, skipped
-    //    the diff entirely, and the new chapters were never announced or logged,
-    //    permanently. Reordering means a mid-flight failure here leaves the old
-    //    version in place, so the next run's sync sees the same "changed" outcome
-    //    again and retries the rescan+diff from scratch instead of silently giving up.
+    // 2. Commit order (sync invariant S11): the sync-state commit
+    //    (updateSyncState/updateSyncStatus/syncedFileDao writes) happens AFTER the
+    //    rescan and diff succeed, not when the manifest download finishes. If the
+    //    novel-folder lookup returned null or scanChaptersForNovel threw with the new
+    //    version already saved, the next run would see an unchanged version, skip
+    //    the diff, and the new chapters would never be announced or logged. With
+    //    this order a mid-flight failure leaves the old version in place, so the
+    //    next run sees the same "changed" outcome and retries the rescan+diff.
     private suspend fun checkOneNovel(
         db: AppDatabase,
         scanner: ScannerImpl,
@@ -242,11 +236,10 @@ class NewChapterCheckWorker(
 
         private const val UNIQUE_WORK_NAME = "new_chapter_check"
 
-        // F4/R4 fix (urgent-review.md): a one-off pass has its own unique name so it
-        // never collides with (or gets silently deduped against) the periodic work
-        // above - WorkManager's ExistingWorkPolicy is keyed per unique-work-name, not
-        // globally, so running both under the same name would make one replace the
-        // other instead of both existing independently.
+        // A one-off pass has its own unique name so it never collides with (or gets
+        // silently deduped against) the periodic work above - WorkManager's
+        // ExistingWorkPolicy is keyed per unique-work-name, not globally, so running
+        // both under the same name would make one replace the other.
         private const val ONE_TIME_WORK_NAME = "new_chapter_check_one_time"
 
         // Called once from MainActivity.onCreate with the current value of
@@ -260,13 +253,11 @@ class NewChapterCheckWorker(
         // should actually take effect on the already-queued request's constraints
         // rather than no-op against it the way KEEP would.
         //
-        // F4/R4 fix (urgent-review.md): lowered from 6 hours to 2 - the proposal's
-        // suggested interval. WorkManager periodic work is still inexact (the real
-        // interval can run longer depending on Doze/battery optimization, never
-        // shorter), and this alone still can't notify "within minutes" of a chapter
-        // going up - see enqueueOneTimeCheck below and MainActivity's toggle-on/
-        // foreground callers, which cover the two cases where a reader is actually
-        // watching for it to happen right now.
+        // Every 2 hours. WorkManager periodic work is inexact (the real interval can
+        // run longer depending on Doze/battery optimization, never shorter), so this
+        // alone can't notify "within minutes" of a chapter going up - see
+        // enqueueOneTimeCheck below and MainActivity's toggle-on/foreground callers,
+        // which cover the two cases where a reader is actually watching for it.
         fun schedule(context: Context, wifiOnly: Boolean, replaceExisting: Boolean = false) {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED)
@@ -281,12 +272,11 @@ class NewChapterCheckWorker(
             )
         }
 
-        // F4/R4 fix (urgent-review.md): "the check runs about every 6 (now 2) hours
-        // at best, never when the reader turns the feature on, and never when the
-        // app is opened." Fires one immediate, one-shot pass against every
-        // notify-enabled novel - called from MainActivity right after a "Notify me"
-        // toggle flips on (NovelDetailScreen's onToggleNotify) and every time the app
-        // comes to the foreground (onStart). ExistingWorkPolicy.REPLACE: if one of
+        // Fires one immediate, one-shot pass against every notify-enabled novel, so
+        // the periodic interval isn't the only trigger - called from MainActivity
+        // right after a "Notify me" toggle flips on (NovelDetailScreen's
+        // onToggleNotify) and every time the app comes to the foreground
+        // (onStart). ExistingWorkPolicy.REPLACE: if one of
         // these is already pending/running (e.g. the reader backgrounds and
         // foregrounds the app twice in quick succession), the newer request simply
         // supersedes it rather than queuing up a second redundant pass - there's

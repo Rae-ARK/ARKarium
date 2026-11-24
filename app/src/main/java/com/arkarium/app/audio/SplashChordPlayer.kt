@@ -57,9 +57,8 @@ class SplashChordPlayer {
         audioTrack = track
     }
 
-    // R8 fix (urgent-review.md, F8): "the chord ... is stopped hard when the
-    // splash ends" - an audible click/cutoff mid-note. Used for
-    // SplashMusicMode.SHORT instead of a plain release(): ramps the track's
+    // A plain release() stops the chord hard when the splash ends - an audible
+    // click/cutoff mid-note. Used for SplashMusicMode.SHORT instead: ramps the track's
     // volume down to 0 over `durationMs` in a handful of steps before actually
     // stopping it, so the note dies away instead of cutting off. Safe to call
     // from any coroutine (SplashScreen calls it from a DisposableEffect's

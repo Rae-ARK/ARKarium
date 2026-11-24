@@ -40,11 +40,11 @@ import com.arkarium.app.data.SplashMusicMode
 // with a divider between them instead of floating loose against the plain
 // background.
 //
-// R8 fix (urgent-review.md, F8): both switches replaced with a three-option
-// radio group each (ThemeSettingsScreen/TtsVoicePickerScreen's existing radio
-// idiom, not a new pattern) - a plain on/off toggle couldn't express "play
-// every launch" vs "play once per update", and conflated "skip the chord
-// entirely" with "don't let it outlive the splash". See
+// Each setting is a three-option radio group (ThemeSettingsScreen/
+// TtsVoicePickerScreen's existing radio idiom, not a new pattern) - a plain
+// on/off toggle couldn't express "play every launch" vs "play once per
+// update", and conflated "skip the chord entirely" with "don't let it outlive
+// the splash". See
 // PreferencesManager.SplashAnimationMode/SplashMusicMode for what each option
 // actually does.
 @OptIn(ExperimentalMaterial3Api::class)

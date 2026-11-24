@@ -229,7 +229,8 @@ fun FictionBrowseScreen(
         // Novel grid
         //
         // contentPadding, not a plain Modifier.padding(12.dp) - the same fix
-        // HomeScreen.kt's own LazyColumn already applies (see its F9 fix comment): a
+        // HomeScreen.kt's own LazyColumn already applies (see its contentPadding
+        // comment): a
         // .padding() on the grid's own modifier shrinks its viewport by 12dp on every
         // side rather than just padding the scrollable content, so the bottom row's
         // last pixels sat under an invisible dead zone the grid could never scroll

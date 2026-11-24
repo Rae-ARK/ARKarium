@@ -175,9 +175,9 @@ implemented — `PreferencesManager.shouldShowFullSplash`/`markFullSplashShown`
 store and compare the last `VERSION_CODE` the full sequence played for,
 `SplashScreen` takes a `fullSequence` flag driven by that comparison and
 collapses to the ~300ms `SIMPLE_FADE_IN_MS` path whenever it's false
-(independent of the animation toggle), a tap anywhere on the splash now races
-the timed animation to completion via `skipRequested`, `splashMusicEnabled`
-defaults to `true`, and chord synthesis
+(unless the animation setting is "every launch"), a tap anywhere on the splash
+now races the timed animation to completion via `skipRequested`, the chord's
+music setting defaults to a short fade-out, and chord synthesis
 (`GuitarChordSynth.buildCMajorStrumPcm16`) runs on `Dispatchers.Default` via
 `SplashChordPlayer.playPcm` instead of inline on the main thread. The
 `elapsedMs`/`playtime.value` reads that used to sit in `SplashScreen`'s

@@ -32,6 +32,32 @@ Fixed and deleted per the rule in `../README.md`:
   completion haptic stopped updating once position became a character offset.
   Fixed by splitting resume position from completion fraction; confirmed on a
   device. See `ReaderPosition.kt` and `ReadingStats.kt`.
+- Notification and sync reliability, from `urgent-review.md` (never committed
+  here, only cited from source comments; F1-F8 and the F4 cadence item, all
+  fixed in code; only F1 was reproduced on a device, the rest are confirmed in
+  code and still need a device pass):
+  - the fiction page kept its old chapter list after a successful "Check for
+    updates", and a notification tap opened it empty or stale, because nothing
+    refreshed the in-memory chapter list - now sync invariant S12;
+  - the background worker swallowed every per-novel failure and could save the
+    new sync version before the rescan, losing a notification permanently -
+    now `Result.retry()`, a persisted last-checked time and error shown under
+    the toggle, and sync invariant S11;
+  - the check ran only about every 6 hours - now about every 2, plus a one-time
+    check when the toggle is switched on and when the app comes to the
+    foreground (see `architecture.md`, Entry points);
+  - unlinking left `notify_new_chapters` set and the next scan re-linked any
+    Rae ARK title - now `sync_unlinked`, see S10;
+  - denying the notification permission gave no feedback, and the toggle could
+    show ON while nothing was checked - now an inline warning, with an "Open
+    settings" link for the permission case;
+  - the splash Animation switch did nothing after the first launch and the
+    chord was cut off hard - now three-way animation and music settings, see
+    `architecture.md`, Metadata and extras.
+  Minor items from the same review (launcher icon used as the notification
+  small icon, "fiction you follow" wording, a manual check and the worker
+  double-reporting if they overlap) were not part of the fix list and are not
+  tracked here.
 - Home screen scrolling (urgent-review.md's F9; the doc itself was never
   committed here, only ever cited from source comments) — no stable `key`s on
   Home's top-level `LazyColumn` sections, so the conditionally-loaded Continue

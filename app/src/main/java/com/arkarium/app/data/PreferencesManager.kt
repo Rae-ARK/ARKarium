@@ -170,12 +170,12 @@ enum class Theme {
     SYSTEM_DEFAULT
 }
 
-// R8 fix (urgent-review.md, F8) - see SPLASH_ANIMATION_MODE_KEY's doc comment.
+// See SPLASH_ANIMATION_MODE_KEY's doc comment.
 enum class SplashAnimationMode {
     ONCE_PER_UPDATE, EVERY_LAUNCH, OFF
 }
 
-// R8 fix (urgent-review.md, F8) - see SPLASH_MUSIC_MODE_KEY's doc comment.
+// See SPLASH_MUSIC_MODE_KEY's doc comment.
 enum class SplashMusicMode {
     OFF, SHORT, FULL
 }
@@ -275,22 +275,19 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         // setting.
         private val SPLASH_ANIMATION_ENABLED_KEY = booleanPreferencesKey("splash_animation_enabled")
         private val SPLASH_MUSIC_ENABLED_KEY = booleanPreferencesKey("splash_music_enabled")
-        // R8 fix (urgent-review.md, F8): "the Animation switch has no visible effect
+        // Replaces the boolean above. A plain on/off switch had no visible effect
         // after the first launch, because the full sequence is gated on a flag
-        // that's false from the second launch on" - a plain on/off toggle for
-        // something that, once off, visibly does nothing past the one launch it
-        // applied to. Replaces the boolean above with a three-way choice the reader
-        // can actually observe the effect of on every launch: ONCE_PER_UPDATE keeps
-        // the old behavior (full sequence once per install/update, short fade
+        // that's false from the second launch on. The three-way choice lets the
+        // reader observe its effect on every launch: ONCE_PER_UPDATE is the
+        // default (full sequence once per install/update, short fade
         // otherwise), EVERY_LAUNCH always plays the full sequence, OFF always
         // collapses to the short fade. The old boolean key is still read once, as a
         // migration fallback, by splashAnimationMode below, so an existing "off"
         // choice survives the upgrade as OFF rather than silently reverting to the
         // new default.
         private val SPLASH_ANIMATION_MODE_KEY = stringPreferencesKey("splash_animation_mode")
-        // R8 fix (urgent-review.md, F8): "the chord starts on every launch but is
-        // stopped hard when the splash ends" - replaces the boolean above with
-        // OFF/SHORT/FULL. SHORT keeps the chord scoped to roughly the splash's own
+        // Replaces the boolean above with OFF/SHORT/FULL (the chord used to be
+        // stopped hard when the splash ended). SHORT keeps the chord scoped to roughly the splash's own
         // runtime, but fades it out instead of cutting it off mid-note; FULL lets it
         // ring out to its natural end even after the splash itself has finished and
         // handed off to the real app content. Same migration-fallback relationship
@@ -396,9 +393,9 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         prefs[DEFAULT_PAGE_SIZE_KEY] ?: 10
     }
 
-    // R8 fix (urgent-review.md, F8): reads the new three-way key when present;
-    // otherwise falls back to the old boolean (false -> OFF, true/absent ->
-    // ONCE_PER_UPDATE, matching the pre-R8 default) so an upgrading install keeps
+    // Reads the three-way key when present; otherwise falls back to the legacy
+    // boolean (false -> OFF, true/absent -> ONCE_PER_UPDATE, the default) so an
+    // upgrading install keeps
     // whatever it had instead of resetting to ONCE_PER_UPDATE out from under a
     // reader who'd turned the old switch off.
     val splashAnimationMode: Flow<SplashAnimationMode> = safePrefs.map { prefs ->
@@ -414,7 +411,7 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         }
     }
 
-    // R8 fix (urgent-review.md, F8): independent of splashAnimationMode - a reader
+    // Independent of splashAnimationMode - a reader
     // can keep the visual reconstruction but turn off/trim sound, or vice versa.
     // Same migration fallback shape as splashAnimationMode above (false -> OFF,
     // true/absent -> SHORT - the closest match to the old "plays, but doesn't
@@ -558,8 +555,7 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         }
     }
 
-    // R8 fix (urgent-review.md, F8): replaces setSplashAnimationEnabled. Also
-    // clears the legacy boolean key so a downgrade-then-upgrade round trip can't
+    // Also clears the legacy boolean key so a downgrade-then-upgrade round trip can't
     // resurrect a stale value out from under an explicit new-key choice.
     suspend fun setSplashAnimationMode(mode: SplashAnimationMode) {
         context.dataStore.edit { prefs ->
@@ -568,7 +564,7 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         }
     }
 
-    // R8 fix (urgent-review.md, F8): replaces setSplashMusicEnabled.
+    // Also clears the legacy boolean key, same as setSplashAnimationMode above.
     suspend fun setSplashMusicMode(mode: SplashMusicMode) {
         context.dataStore.edit { prefs ->
             prefs[SPLASH_MUSIC_MODE_KEY] = mode.name

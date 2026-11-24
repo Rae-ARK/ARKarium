@@ -184,13 +184,12 @@ fun mergeNovelForRescan(
         // chance to earn this column the normal way - see that function's comment).
         // `existing.syncSourceUrl` still wins whenever it's already set.
         //
-        // F5 fix (urgent-review.md): this previously had no way to distinguish "never
-        // synced" from "the user explicitly unlinked this" - both look identical as a
-        // null syncSourceUrl - so a FictionLut match could silently re-link a novel
-        // right after NovelDao.unlinkSyncSource cleared it. existing.syncUnlinked is
-        // exactly that missing fact (set by unlinkSyncSource, see its own comment):
-        // when true, the fill-in is skipped entirely and syncSourceUrl stays null,
-        // same as any other sync bookkeeping column a scan must never clobber.
+        // "Never synced" and "the user explicitly unlinked this" both look like a null
+        // syncSourceUrl, so a FictionLut match could re-link a novel right after
+        // NovelDao.unlinkSyncSource cleared it. existing.syncUnlinked is the fact that
+        // tells them apart (see unlinkSyncSource's comment): when true, the fill-in is
+        // skipped entirely and syncSourceUrl stays null, same as any other sync
+        // bookkeeping column a scan must never clobber.
         syncSourceUrl = if (existing.syncUnlinked) null else (existing.syncSourceUrl ?: scanned.syncSourceUrl),
         syncSourceVersion = existing.syncSourceVersion,
         lastSyncedAt = existing.lastSyncedAt,

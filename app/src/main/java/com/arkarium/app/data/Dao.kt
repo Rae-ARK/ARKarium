@@ -141,18 +141,13 @@ interface NovelDao {
     // leaving them behind is harmless (they just become inert once sync_source_url is
     // null, since nothing reads them for a non-synced novel).
     //
-    // F5 fix (urgent-review.md): this used to leave sync_unlinked unset and
-    // notify_new_chapters untouched, which caused two separate bugs. First,
-    // ScannerImpl.buildNovelEntity re-recognizes a FictionLut title match on every
-    // rescan, and mergeNovelForRescan only ever kept an existing non-null
-    // syncSourceUrl, with no way to tell "never synced" apart from "deliberately
-    // unlinked" - so the very next rescan could silently re-link a novel the reader
-    // just unlinked here, if the bundled fiction_lut.dat still listed this exact
-    // title. sync_unlinked = 1 now gives mergeNovelForRescan that fact explicitly to
-    // check before ever filling syncSourceUrl back in (see its own comment). Second,
-    // the row was left with a checked-but-now-disabled "Notify me" switch (nothing
-    // left to check for updates against) - notify_new_chapters = 0 here turns the
-    // toggle off along with the unlink itself.
+    // Two things beyond clearing the source columns. sync_unlinked = 1 records that
+    // the *user* did this: ScannerImpl.buildNovelEntity re-recognizes a FictionLut
+    // title match on every rescan, and without that marker mergeNovelForRescan
+    // couldn't tell "never synced" from "deliberately unlinked" and would silently
+    // re-link the novel (see its own comment). notify_new_chapters = 0 turns the
+    // "Notify me" toggle off too, since there is nothing left to check against and
+    // it would otherwise show checked-but-disabled.
     @Query("""
         UPDATE novels SET
             sync_source_url = NULL,
@@ -174,11 +169,11 @@ interface NovelDao {
     @Query("UPDATE novels SET notify_new_chapters = :enabled WHERE id = :novelId")
     suspend fun updateNotifyNewChapters(novelId: String, enabled: Boolean)
 
-    // F3/R3 fix (urgent-review.md): written after every attempt (success or failure)
-    // to check a novel for new chapters, by both NewChapterCheckWorker's periodic
-    // pass and SyncViewModel's manual "Check for updates" - see NovelEntity's own doc
-    // comments on these two columns. `error` null clears any previously-recorded
-    // failure; non-null records what went wrong this time.
+    // Written after every attempt (success or failure) to check a novel for new
+    // chapters, by both NewChapterCheckWorker's periodic pass and SyncViewModel's
+    // manual "Check for updates" - see NovelEntity's own doc comments on these two
+    // columns. `error` null clears any previously-recorded failure; non-null
+    // records what went wrong this time.
     @Query("""
         UPDATE novels SET
             last_notify_check_at = :checkedAt,

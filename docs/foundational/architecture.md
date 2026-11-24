@@ -106,10 +106,20 @@ the novel's folder, because that is the only place the scanner looks.
 - **Sync all Rae ARK's novels**: first-run action on the empty library; loops
   the same download → scan → persist flow over every LUT entry.
 - **Check for updates**: per-novel, on the novel detail screen, shown once a novel has a `syncSourceUrl`.
+  On success it reloads that novel's page state (S12).
 - **Background check**: `NewChapterCheckWorker` (WorkManager, periodic; interval
   in the worker) re-syncs novels whose "notify me" toggle is on and posts a
   notification via `NewChapterNotifier` if chapters were added. It never
-  silently resolves a missing folder or gone source.
+  silently resolves a missing folder or gone source. A one-time pass
+  (`enqueueOneTimeCheck`) also runs when the toggle is switched on and every time
+  `MainActivity` comes to the foreground; both honor Wi-Fi-only sync. Every
+  attempt records `last_notify_check_at` / `last_notify_check_error` on the novel
+  (shown under the toggle), a transient failure returns `Result.retry()`, and
+  the commit order is S11. Under the toggle, `NovelDetailScreen` warns when the
+  notification permission is denied (with an "Open settings" link) or the
+  novel's `sync_status` is not `ACTIVE`; the worker skips a non-`ACTIVE` novel.
+- **Notification tap**: opens the novel's page after `loadNovelDetails` (S12), so
+  the table of contents is present on a cold start.
 - **"Continue Reading" app shortcut**: static shortcut (`res/xml/shortcuts.xml`,
   manifest `<meta-data>` on `MainActivity`), long-press the launcher icon.
   Carries no novel id - unlike the notification tap above, which already knows
@@ -182,11 +192,27 @@ Each is a decision that cost something to learn; code comments cite them as `S<n
   forever, even when it really was one of Rae ARK's own — hiding "Notify me"
   and "Check for updates". `ScannerImpl.buildNovelEntity` now runs the same
   `FictionLut` lookup (S7) "Add fiction" uses; a match only ever fills in a
-  row whose `syncSourceUrl` is still null, never overriding an already-set or
-  deliberately-unlinked one. One known gap: a `SOURCE_GONE` unlink can in
-  theory be re-recognized if the bundled `FictionLut` data hasn't caught up
-  with the relay yet — flagged in `NovelDao.unlinkSyncSource`'s comment,
-  accepted as rare and self-correcting rather than fixed with a new column.
+  row whose `syncSourceUrl` is still null, never overriding an already-set one.
+  An unlink is remembered: `NovelDao.unlinkSyncSource` sets `sync_unlinked` (and
+  clears `notify_new_chapters`), `mergeNovelForRescan` skips the fill-in while
+  it is set, and it clears itself once something else re-establishes a real
+  `syncSourceUrl`. Null `syncSourceUrl` alone cannot tell "never synced" from
+  "user unlinked".
+- **S11. Commit sync state after the diff, not before.** In
+  `NewChapterCheckWorker.checkOneNovel` the new `sync_source_version` is
+  written only after the rescan and chapter-id diff succeed. Committing it
+  first loses notifications: a failure after the write leaves a version the
+  next run sees as unchanged, so it never diffs and the new chapters are never
+  announced or logged. Leaving the old version in place makes the next run
+  retry from scratch, which stays idempotent because chapter ids are
+  deterministic and only ids absent before the rescan are announced.
+- **S12. The fiction page draws from in-memory lists.** `NovelDetailScreen`
+  reads `LibraryViewModel.chapters`/`arcs`, which only `loadNovelDetails`
+  refreshes; a DB write or a patched `novels` entry does not. Every path into
+  or refreshing that page must call it for the novel on screen: Home and
+  Pigeon Rally taps, the notification tap, and a manual "Check for updates".
+  It replaces the lists wholesale, so batch paths (`syncAllRaeArkNovels`) must
+  not call it for novels the reader isn't viewing.
 
 ## Reading and local state
 
@@ -379,4 +405,9 @@ already just returns past that.
 - `GoogleBooksMetadataProvider` suggests metadata the user can apply; once
   applied, rescans keep it per the rules in `mergeNovelForRescan` (`data/LibraryScan.kt`).
 - Splash screen with a synthesized guitar chord (`audio/`); logo geometry from `tools/gen_logo_points.py`.
+  `settings/splash` holds two three-way settings (`PreferencesManager`):
+  `SplashAnimationMode` (once per update, every launch, off) and
+  `SplashMusicMode` (off, short with a fade-out, full where the chord outlives
+  the splash). A legacy boolean key is read as a fallback so an old "off"
+  survives the upgrade.
 - Legal screens (privacy, terms, about) are static.

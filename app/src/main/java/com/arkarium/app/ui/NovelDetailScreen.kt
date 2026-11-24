@@ -144,29 +144,24 @@ fun NovelDetailScreen(
     // triggers actually lands. Same non-null-gates-visibility pattern as onSyncClick.
     notifyEnabled: Boolean = false,
     onToggleNotify: ((Boolean) -> Unit)? = null,
-    // F3/R3 fix (urgent-review.md): NewChapterCheckWorker/SyncViewModel now persist
-    // these onto NovelEntity (lastNotifyCheckAt/lastNotifyCheckError) after every
-    // check attempt - surfaced here so the toggle actually shows whether the
-    // feature is working, instead of being silently inert either way. Null means
-    // "never checked yet" (lastCheckedAt) / "last check succeeded" (lastCheckError).
+    // NewChapterCheckWorker/SyncViewModel persist these onto NovelEntity
+    // (lastNotifyCheckAt/lastNotifyCheckError) after every check attempt - surfaced
+    // here so the toggle shows whether the feature is working. Null means "never
+    // checked yet" (lastCheckedAt) / "last check succeeded" (lastCheckError).
     lastCheckedAt: Long? = null,
     lastCheckError: String? = null,
-    // F6/F7 fix (urgent-review.md): a single human-readable reason the toggle can't
-    // actually do anything right now, or null when there's nothing to warn about.
-    // Two distinct callers feed this: F6 wants the user told *why* turning the
-    // toggle on didn't do anything (the system notification permission was denied),
-    // and F7 wants a warning when the toggle shows ON but nothing will actually be
-    // checked (sync_status isn't ACTIVE, or the permission was revoked later from
-    // system settings after being granted here). Rendered identically either way -
-    // the reader doesn't need to know which case produced it, just that something
-    // needs their attention.
+    // A single human-readable reason the toggle can't actually do anything right
+    // now, or null when there's nothing to warn about. Two cases feed this: the
+    // system notification permission was denied (or revoked later from system
+    // settings), and the toggle shows ON but nothing will be checked because
+    // sync_status isn't ACTIVE. Rendered identically either way - the reader just
+    // needs to know something needs their attention.
     notifyBlockedReason: String? = null,
-    // R6 fix (urgent-review.md): "explain the denial and offer a shortcut to system
-    // settings." True only for the permission-denied flavor of notifyBlockedReason
-    // (not the sync-status one from F7, which a settings shortcut can't fix) - lets
-    // this composable show an actionable "Open settings" link instead of a dead-end
-    // warning. onOpenNotificationSettings is null whenever this is false, following
-    // the same non-null-gates-visibility pattern as onToggleNotify/onSyncClick.
+    // True only for the permission-denied flavor of notifyBlockedReason (not the
+    // sync-status one, which a settings shortcut can't fix) - lets this composable
+    // show an actionable "Open settings" link instead of a dead-end warning.
+    // onOpenNotificationSettings is null whenever this is false, following the same
+    // non-null-gates-visibility pattern as onToggleNotify/onSyncClick.
     notifyPermissionBlocked: Boolean = false,
     onOpenNotificationSettings: (() -> Unit)? = null,
     // uiux.md's "Arc cover enlarger is undiscoverable" - true means the
@@ -476,22 +471,19 @@ fun NovelDetailScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         } else if (notifyEnabled && notifyBlockedReason != null) {
-                            // F6/F7 fix (urgent-review.md): a warning takes priority over
-                            // the plain last-checked line below - if nothing is actually
-                            // going to be checked, saying when it was last checked (which
-                            // may be from before whatever's now blocking it) would be
-                            // misleading.
+                            // A warning takes priority over the plain last-checked line
+                            // below - if nothing is actually going to be checked, saying
+                            // when it was last checked (which may be from before whatever's
+                            // now blocking it) would be misleading.
                             Text(
                                 notifyBlockedReason,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error
                             )
-                            // R6 fix (urgent-review.md): the permission-denial flavor of
-                            // this warning is otherwise a dead end - the reader is told
-                            // what's wrong but has no way to act on it from here, since
-                            // the in-app permission dialog won't be shown again after two
-                            // denials. A direct link to this app's system notification
-                            // settings closes that loop.
+                            // The permission-denial flavor of this warning would otherwise
+                            // be a dead end: Android stops showing the in-app permission
+                            // dialog after two denials, so a direct link to this app's
+                            // system notification settings is the only way to act on it.
                             if (notifyPermissionBlocked && onOpenNotificationSettings != null) {
                                 Text(
                                     "Open settings",
@@ -1151,7 +1143,7 @@ private fun EnlargedCoverDialog(coverUrl: String, onDismiss: () -> Unit) {
 }
 
 
-// F3/R3 fix (urgent-review.md): plain "X minutes/hours/days ago" rendering for
+// Plain "X minutes/hours/days ago" rendering for
 // NovelEntity.lastNotifyCheckAt under the "Notify me" toggle - kept intentionally
 // coarse (minutes/hours/days only, no live-ticking seconds) since this is a
 // once-per-check timestamp, not a countdown; a reader opening the page just wants

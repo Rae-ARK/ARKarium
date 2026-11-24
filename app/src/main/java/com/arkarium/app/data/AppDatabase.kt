@@ -447,9 +447,9 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        // Migration from v19 to v20: backs the urgent-review.md fixes for F3/F5 - three
-        // purely additive columns on novels, same shape as MIGRATION_16_17 (one
-        // nullable/defaulted column, no backfill possible/needed).
+        // Migration from v19 to v20: three purely additive columns on novels (the
+        // unlink marker and the notify-check result), same shape as MIGRATION_16_17
+        // (one nullable/defaulted column, no backfill possible/needed).
         // - sync_unlinked: defaults to 0 (false) for every existing row. A previously
         //   unlinked novel simply isn't marked as such retroactively - it can re-link
         //   on its very next rescan same as before, exactly once, which is no worse

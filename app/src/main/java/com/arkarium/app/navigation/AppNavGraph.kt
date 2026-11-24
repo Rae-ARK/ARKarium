@@ -320,9 +320,8 @@ fun AppNavGraph(
                     androidx.compose.material3.CircularProgressIndicator()
                 }
             } else {
-                // F6/F7 fix (urgent-review.md): shared by both the warning text and the
-                // "Open settings" shortcut below - computed once per recomposition
-                // rather than twice.
+                // Shared by both the warning text and the "Open settings" shortcut
+                // below - computed once per recomposition rather than twice.
                 val notifyPermissionDenied = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
                     ContextCompat.checkSelfPermission(
                         activity, Manifest.permission.POST_NOTIFICATIONS
@@ -406,12 +405,11 @@ fun AppNavGraph(
                                     // libraryViewModel.setNotifyEnabled's own doc comment
                                     // and AppScope.kt.
                                     AppScope.io.launch { activity.libraryViewModel.setNotifyEnabled(novel.id, enabled) }
-                                    // F4/R4 fix (urgent-review.md): "turning the switch on
-                                    // triggers no check" - fire one immediate background
-                                    // pass the moment the toggle flips on (permission was
-                                    // already granted on this branch), rather than making
-                                    // the reader wait out the periodic interval to find out
-                                    // whether the feature is even working.
+                                    // Fire one immediate background pass the moment the
+                                    // toggle flips on (permission was already granted on this
+                                    // branch), rather than making the reader wait out the
+                                    // periodic interval to find out whether the feature is
+                                    // even working.
                                     if (enabled) {
                                         com.arkarium.app.data.NewChapterCheckWorker.enqueueOneTimeCheck(
                                             activity, activity.wifiOnlySync
@@ -420,19 +418,18 @@ fun AppNavGraph(
                                 }
                             }
                         } else null,
-                        // F3/R3 and F6/F7 fixes (urgent-review.md) - see
-                        // NovelDetailScreen's own doc comments on these params.
+                        // See NovelDetailScreen's own doc comments on these params.
                         lastCheckedAt = novel.lastNotifyCheckAt,
                         lastCheckError = novel.lastNotifyCheckError,
                         notifyBlockedReason = if (novel.notifyNewChapters) {
                             when {
-                                // F6: the permission was denied (or revoked later from
-                                // system settings) - the toggle shows ON but nothing will
-                                // ever actually notify until it's re-granted.
+                                // The permission was denied (or revoked later from system
+                                // settings) - the toggle shows ON but nothing will ever
+                                // actually notify until it's re-granted.
                                 notifyPermissionDenied ->
                                     "Notifications are turned off for ARKarium in system settings - " +
                                         "turn them on to actually get notified."
-                                // F7: the toggle is on but this novel's sync itself needs
+                                // The toggle is on but this novel's sync itself needs
                                 // the reader's attention first (MISSING_LOCALLY/
                                 // SOURCE_GONE) - NewChapterCheckWorker's
                                 // notifyEnabledSynced() query already skips a non-ACTIVE
@@ -442,9 +439,9 @@ fun AppNavGraph(
                                 else -> null
                             }
                         } else null,
-                        // R6 fix (urgent-review.md): only the permission-denied branch
-                        // above gets an "Open settings" shortcut - the sync-status
-                        // branch has nothing a settings screen can fix.
+                        // Only the permission-denied branch above gets an "Open settings"
+                        // shortcut - the sync-status branch has nothing a settings screen
+                        // can fix.
                         notifyPermissionBlocked = novel.notifyNewChapters && notifyPermissionDenied,
                         onOpenNotificationSettings = {
                             try {
@@ -890,17 +887,11 @@ fun AppNavGraph(
                         // chapter itself is one more tap in via Continue Reading/the
                         // chapter list.
                         //
-                        // Bug fix: this used to navigate straight away without ever
-                        // calling loadNovelDetails() first - the same "page reads from
-                        // chapters/arcs, nothing refreshed them" defect as F2 (see
-                        // MainActivity's pendingNotificationNovelId effect) and F1
-                        // (SyncViewModel.checkForUpdates), just reached from a Pigeon
-                        // Rally tap instead. NovelDetailScreen rendered whatever
-                        // chapters/arcs happened to already be loaded for some other
-                        // novel - empty on a cold board visit, since nothing had loaded
-                        // detail for *any* novel yet. Matches the loadNovelDetails()
-                        // -before-navigating sequencing every other novel-tap entry
-                        // point already follows (see Home's onNovelClick above).
+                        // loadNovelDetails() must run before navigating (sync invariant
+                        // S12): NovelDetailScreen renders whatever chapters/arcs are
+                        // already loaded, which would be another novel's - or empty on a
+                        // cold board visit. Same sequencing as every other novel-tap
+                        // entry point (see Home's onNovelClick above).
                         val novel = activity.libraryViewModel.novels.firstOrNull { it.id == event.novelId }
                         if (novel != null) {
                             activity.lifecycleScope.launch {

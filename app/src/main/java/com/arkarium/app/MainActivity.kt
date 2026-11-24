@@ -251,10 +251,10 @@ class MainActivity : ComponentActivity() {
     // immediately rather than waiting for the next onStart.
     private var scanOnFileChangeEnabled = false
 
-    // F4/R4 fix (urgent-review.md): mirrors scanOnFileChangeEnabled's own pattern
-    // just above - the live value of PreferencesManager.wifiOnlySync, kept in sync
-    // by the collectIndexed loop below that also (re)schedules
-    // NewChapterCheckWorker's periodic work. Exists so a one-time check fired
+    // Mirrors scanOnFileChangeEnabled's own pattern just above - the live value of
+    // PreferencesManager.wifiOnlySync, kept in sync by the collectIndexed loop
+    // below that also (re)schedules NewChapterCheckWorker's periodic work. Exists
+    // so a one-time check fired
     // on-demand (toggling "Notify me" on, or the app coming to the foreground - see
     // internal/AppNavGraph's onToggleNotify and onStart below) can honor the same
     // Wi-Fi-only constraint as the periodic pass, without needing to re-collect the
@@ -317,10 +317,10 @@ class MainActivity : ComponentActivity() {
             // permission request is being torn down for recreation, same race
             // saveReadingProgress/saveChapterEdits were already fixed for.
             AppScope.io.launch { libraryViewModel.setNotifyEnabled(novelId, true) }
-            // F4/R4 fix (urgent-review.md): same immediate on-toggle check as the
-            // permission-already-granted branch in AppNavGraph's onToggleNotify -
-            // this is the other path that turns the toggle on, so it needs the same
-            // "don't make the reader wait out the periodic interval" fix.
+            // Same immediate on-toggle check as the permission-already-granted branch
+            // in AppNavGraph's onToggleNotify - this is the other path that turns the
+            // toggle on, so the reader doesn't wait out the periodic interval here
+            // either.
             NewChapterCheckWorker.enqueueOneTimeCheck(this, wifiOnlySync)
         }
     }
@@ -457,8 +457,7 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         isActivityStarted = true
         if (scanOnFileChangeEnabled) startLibraryFileWatcher()
-        // F4/R4 fix (urgent-review.md): "opening the app triggers no check" - fire
-        // one immediate background pass against every notify-enabled novel every
+        // Fire one immediate background pass against every notify-enabled novel every
         // time ARKarium comes to the foreground, same wifiOnlySync-kept-current-by-
         // onCreate's-collector pattern as scanOnFileChangeEnabled just above.
         // enqueueUniqueWork(..., REPLACE) inside enqueueOneTimeCheck means repeated
@@ -879,8 +878,8 @@ class MainActivity : ComponentActivity() {
                 // this comment used to describe.
                 val navController = rememberNavController()
                 // Splash-screen behavior (see SplashSettingsScreen / PreferencesManager) -
-                // R8 fix (urgent-review.md, F8): now a three-way mode each, rather than a
-                // plain on/off. Initial values match PreferencesManager's own defaults.
+                // a three-way mode each. Initial values match PreferencesManager's own
+                // defaults.
                 val splashAnimationMode = prefsManager.splashAnimationMode.collectAsState(
                     initial = SplashAnimationMode.ONCE_PER_UPDATE
                 )
@@ -955,16 +954,13 @@ class MainActivity : ComponentActivity() {
                     if (showSplash.value) return@LaunchedEffect
                     val novelId = pendingNotificationNovelId.value ?: return@LaunchedEffect
                     val target = libraryViewModel.novels.firstOrNull { it.id == novelId } ?: return@LaunchedEffect
-                    // F2 fix (urgent-review.md): this used to navigate straight away
-                    // without ever populating libraryViewModel.chapters/arcs for `target` -
-                    // the exact same "page reads from chapters/arcs, nothing refreshed
-                    // them" defect class as F1 (see SyncViewModel.checkForUpdates), just
-                    // reached from a notification tap instead of a manual sync. On a cold
-                    // start the list was simply empty (table of contents and Start Reading
-                    // button both missing); with the app alive in the background it showed
-                    // whatever was last loaded for some other novel. Matches the
-                    // loadNovelDetails()-before-navigating sequencing every other entry
-                    // point into this page already follows (see AppNavGraph's onNovelClick).
+                    // The fiction page reads libraryViewModel.chapters/arcs, which only
+                    // loadNovelDetails populates (sync invariant S12). Navigating without
+                    // it leaves the list empty on a cold start (no table of contents, no
+                    // Start Reading button) or showing whatever was last loaded for some
+                    // other novel while the app was alive in the background. Same
+                    // loadNovelDetails()-before-navigating sequencing as every other entry
+                    // point into this page (see AppNavGraph's onNovelClick).
                     libraryViewModel.loadNovelDetails(target)
                     // Stage 3.3 (see docs/foundational/design-notes.md): NovelDetail is now
                     // its own "novelDetail/{novelId}" route rather than "legacy" - a cold
