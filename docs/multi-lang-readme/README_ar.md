@@ -15,7 +15,8 @@
 <p align="center">
   <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85"><img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat"></a>
   <a href="https://github.com/Rae-ARK/ARKarium/releases"><img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat"></a>
-  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Recommended SDK Version" src="https://img.shields.io/badge/Recommended%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-24%2B-1450A8?style=flat">
 </p>
 
 <h4 align="center">
@@ -106,6 +107,12 @@
 >
 > يعمل التطبيق في إصداره الحالي بشكل جيد، ويمكن استخدامه للقراءة.
 > لم يكتمل الإصدار V1 بعد. ظهور الأخطاء أمر طبيعي.
+>
+> التطبيق والروايات كلاهما بالإنجليزية حاليًا. 
+> لغات أكثر؟ ربما في المستقبل. 
+> يعتمد الأمر على طلب القراء. 
+>
+> ربما ترجمة أو ترجمتان رسميتان. البقية قد تنتهي كترجمة آلية (MTL). 
 
 ## الترخيص
 

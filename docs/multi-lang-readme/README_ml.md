@@ -15,7 +15,8 @@
 <p align="center">
   <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85"><img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat"></a>
   <a href="https://github.com/Rae-ARK/ARKarium/releases"><img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat"></a>
-  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Recommended SDK Version" src="https://img.shields.io/badge/Recommended%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-24%2B-1450A8?style=flat">
 </p>
 
 <h4 align="center">
@@ -104,6 +105,12 @@ Rae ARK-ൽ നിന്ന് വായനക്കാരനിലേക്ക�
 >
 > നിലവിലെ റിലീസ് ആപ്പ് നന്നായി പ്രവർത്തിക്കുന്നു, ഇത് വായനയ്ക്കായി ഉപയോഗിക്കാം.
 > V1 ഇതുവരെ പൂർത്തിയായിട്ടില്ല. ബഗുകൾ സാധാരണമാണ്.
+>
+> ആപ്പും നോവലുകളും ഇപ്പോൾ ഇംഗ്ലീഷിൽ മാത്രമാണ്. 
+> കൂടുതൽ ഭാഷകളോ? ഒരുപക്ഷേ ഭാവിയിൽ എപ്പോഴെങ്കിലും. 
+> വായനക്കാരുടെ ആവശ്യത്തെ ആശ്രയിച്ചിരിക്കും. 
+>
+> ഒന്നോ രണ്ടോ ശരിയായ വിവർത്തനങ്ങൾ ഉണ്ടായേക്കാം. ബാക്കിയുള്ളവ യന്ത്ര വിവർത്തനമായി (MTL) അവസാനിച്ചേക്കാം. 
 
 ## ലൈസൻസ്
 

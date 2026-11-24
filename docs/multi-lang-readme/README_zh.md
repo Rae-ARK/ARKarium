@@ -15,7 +15,8 @@
 <p align="center">
   <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85"><img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat"></a>
   <a href="https://github.com/Rae-ARK/ARKarium/releases"><img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat"></a>
-  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Recommended SDK Version" src="https://img.shields.io/badge/Recommended%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-24%2B-1450A8?style=flat">
 </p>
 
 <h4 align="center">
@@ -104,6 +105,12 @@ Obtainium 允许用户直接从源代码仓库安装和追踪 Android 应用，�
 >
 > 当前发布的应用本身运行良好，可以正常用于阅读。
 > V1 版本尚未完成，出现问题属于正常现象。
+>
+> 目前应用和小说都只有英文版。 
+> 更多语言?也许未来会有。 
+> 取决于读者的需求。 
+>
+> 也许会有一两个认真翻译的版本，其余的可能会变成机器翻译(MTL)。 
 
 ## 许可
 

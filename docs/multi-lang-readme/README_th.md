@@ -15,7 +15,8 @@
 <p align="center">
   <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85"><img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat"></a>
   <a href="https://github.com/Rae-ARK/ARKarium/releases"><img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat"></a>
-  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Recommended SDK Version" src="https://img.shields.io/badge/Recommended%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-24%2B-1450A8?style=flat">
 </p>
 
 <h4 align="center">
@@ -104,6 +105,12 @@ Obtainium ช่วยให้ผู้ใช้สามารถติดต�
 >
 > แอปรุ่นปัจจุบันทำงานได้ดีและสามารถใช้อ่านได้ตามปกติ
 > เวอร์ชัน V1 ยังไม่เสร็จสมบูรณ์ การพบข้อผิดพลาดถือเป็นเรื่องปกติ
+>
+> ตอนนี้ทั้งแอปและนิยายยังเป็นภาษาอังกฤษ 
+> ภาษาอื่นเพิ่มเติมไหม? บางทีอาจจะในอนาคต 
+> ขึ้นอยู่กับความต้องการของผู้อ่าน 
+>
+> อาจมีการแปลอย่างจริงจังสักหนึ่งหรือสองภาษา ส่วนที่เหลืออาจจบลงด้วยการแปลด้วยเครื่อง (MTL) 
 
 ## สัญญาอนุญาต
 

@@ -35,4 +35,9 @@
     <string name="about_os_minimum_label">Minimum</string>
     <string name="about_os_recommended_version">Android 14+</string>
     <string name="about_os_minimum_version">Android 7.0+</string>
+    <!-- Codenames shown alongside the version numbers above - Android dropped
+         public codenames after 10, but 7.0 and 14 both still have one and
+         leaving them off read as a missed chance to use them. -->
+    <string name="about_os_recommended_codename">Upside Down Cake</string>
+    <string name="about_os_minimum_codename">Nougat</string>
 </resources>

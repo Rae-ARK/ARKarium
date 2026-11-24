@@ -15,7 +15,8 @@
 <p align="center">
   <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85"><img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat"></a>
   <a href="https://github.com/Rae-ARK/ARKarium/releases"><img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat"></a>
-  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Recommended SDK Version" src="https://img.shields.io/badge/Recommended%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-24%2B-1450A8?style=flat">
 </p>
 
 <h4 align="center">
@@ -104,6 +105,12 @@ Ngoài ra, bạn có thể tải xuống bản phát hành mới nhất trực t
 >
 > Bản phát hành hiện tại của ứng dụng hoạt động tốt và có thể sử dụng để đọc.
 > Phiên bản V1 vẫn chưa hoàn thiện. Lỗi là điều bình thường.
+>
+> Hiện tại cả ứng dụng và truyện đều bằng tiếng Anh. 
+> Thêm ngôn ngữ khác? Có thể trong tương lai. 
+> Tùy thuộc vào nhu cầu của độc giả. 
+>
+> Có thể sẽ có một hoặc hai bản dịch tử tế. Phần còn lại có thể sẽ là dịch máy (MTL). 
 
 ## Giấy phép
 

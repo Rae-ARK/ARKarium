@@ -15,7 +15,8 @@
 <p align="center">
   <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85"><img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat"></a>
   <a href="https://github.com/Rae-ARK/ARKarium/releases"><img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat"></a>
-  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Recommended SDK Version" src="https://img.shields.io/badge/Recommended%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-24%2B-1450A8?style=flat">
 </p>
 
 <h4 align="center">
@@ -104,6 +105,12 @@ Obtainiumを使うと、中央集権的なアプリストアに頼ることな�
 >
 > 現行リリース版のアプリ自体は問題なく動作し、読書に利用できます。
 > V1はまだ完成していません。不具合が発生するのは通常のことです。
+>
+> アプリも小説も、今のところ英語のみです。 
+> 他の言語は? もしかしたらそのうち。 
+> 読者の需要次第です。 
+>
+> ちゃんとした翻訳は一つか二つくらいになるかもしれません。それ以外は機械翻訳(MTL)になる可能性があります。 
 
 ## ライセンス
 

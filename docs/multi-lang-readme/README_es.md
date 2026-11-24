@@ -15,7 +15,8 @@
 <p align="center">
   <a href="https://github.com/Rae-ARK/ARKarium/releases/tag/v0.85"><img alt="Latest Version" src="https://img.shields.io/static/v1?label=tag&message=v0.85&color=64B5F6&style=flat"></a>
   <a href="https://github.com/Rae-ARK/ARKarium/releases"><img alt="Releases" src="https://img.shields.io/github/downloads/Rae-ARK/ARKarium/total.svg?color=4B95DE&style=flat"></a>
-  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Recommended SDK Version" src="https://img.shields.io/badge/Recommended%20SDK-34%2B-1450A8?style=flat">
+  <img alt="Minimum SDK Version" src="https://img.shields.io/badge/Min%20SDK-24%2B-1450A8?style=flat">
 </p>
 
 <h4 align="center">
@@ -104,6 +105,12 @@ Alternativamente, descarga la última versión directamente desde [GitHub Releas
 >
 > La aplicación de la versión actual funciona bien y puede utilizarse para leer.
 > La V1 todavía no está terminada. Es normal encontrar errores.
+>
+> La app y las novelas son en inglés por ahora. 
+> ¿Más idiomas? Tal vez en el futuro. 
+> Depende de la demanda de los lectores. 
+>
+> Quizás una o dos traducciones apropiadas. El resto podría terminar siendo MTL (traducción automática). 
 
 ## Licencia
 
