@@ -14,10 +14,10 @@ bottom.
 | Category | Lines | % | Meaning | Status |
 |---|---:|---:|---:|---|
 | **PURGE** | 212 | 2.5% | Pure process/changelog noise. Safe to delete outright. | **Done** |
-| **MIXED** | 4,121 | 47.8% | A changelog/provenance clause **wrapped around** a real fact. Needs surgical editing, not deletion. |
-| **KEEP** | 4,195 | 48.6% | Genuine invariant/contract/"why". Keep; candidate to absorb into names/types where possible, otherwise stays as prose (verbose is fine). |
-| **LABEL** | 68 | 0.8% | Short, information-free section label. Absorb by naming (extract a function/val), comment disappears. |
-| **KDOC** | 34 | 0.4% | Public API doc comment. Out of scope here. |
+| **MIXED** | 4,121 | 47.8% | A changelog/provenance clause **wrapped around** a real fact. Needs surgical editing, not deletion. | **In Progress** |
+| **KEEP** | 4,195 | 48.6% | Genuine invariant/contract/"why". Keep; candidate to absorb into names/types where possible, otherwise stays as prose (verbose is fine). | Not Started |
+| **LABEL** | 68 | 0.8% | Short, information-free section label. Absorb by naming (extract a function/val), comment disappears. | Not Started |
+| **KDOC** | 34 | 0.4% | Public API doc comment. Out of scope here. | Not Started |
 
 ## The actual finding
 
@@ -78,18 +78,18 @@ blanket delete; flagged `PURGE` in the CSV either way for that skim.)
 
 Ranked by volume — these files carry nearly all of it:
 
-| File | MIXED lines |
-|---|---:|
-| `ui/reader/ReaderScreen.kt` | 469 |
-| `playback/TtsPlaybackService.kt` | 303 |
-| `MainActivity.kt` | 402 |
-| `viewmodel/SyncViewModel.kt` | 246 |
-| `navigation/AppNavGraph.kt` | 175 |
-| `ui/reader/ReaderContent.kt` | 176 |
-| `data/ScannerImpl.kt` | 182 |
-| `viewmodel/LibraryViewModel.kt` | 160 |
-| `data/sync/SyncManager.kt` | 134 |
-| `data/PreferencesManager.kt` | 121 |
+| File | MIXED lines | Status |
+|---|---:|---:|
+| `ui/reader/ReaderScreen.kt` | 469 | **Done** |
+| `playback/TtsPlaybackService.kt` | 303 | Not Started |
+| `MainActivity.kt` | 402 | Not Started |
+| `viewmodel/SyncViewModel.kt` | 246 | Not Started |
+| `navigation/AppNavGraph.kt` | 175 | Not Started |
+| `ui/reader/ReaderContent.kt` | 176 | Not Started |
+| `data/ScannerImpl.kt` | 182 | Not Started |
+| `viewmodel/LibraryViewModel.kt` | 160 | Not Started |
+| `data/sync/SyncManager.kt` | 134 | Not Started |
+| `data/PreferencesManager.kt` | 121 | Not Started |
 
 This mostly confirms the original hunch (sync/scanner/reader/TTS — the
 heavily-patched, order-dependent subsystems carry the worst tangles) but
