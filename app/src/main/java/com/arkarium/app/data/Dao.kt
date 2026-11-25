@@ -78,7 +78,6 @@ interface NovelDao {
     @Query("SELECT * FROM novels WHERE sync_status = :status ORDER BY title")
     suspend fun bySyncStatus(status: String): List<NovelEntity>
 
-    // Backs the Stage 2 author page's fiction list.
     @Query("SELECT * FROM novels WHERE author_id = :authorId ORDER BY title")
     suspend fun byAuthor(authorId: String): List<NovelEntity>
 
@@ -320,8 +319,6 @@ interface ChapterOverrideDao {
     @Query("SELECT * FROM chapter_overrides WHERE chapter_id = :chapterId")
     suspend fun forChapter(chapterId: String): ChapterOverrideEntity?
 
-    // Joins through chapters so we can fetch every override for a novel in one query,
-    // used to apply overrides on top of the scanned chapter list at read time.
     @Query("""
         SELECT chapter_overrides.* FROM chapter_overrides
         INNER JOIN chapters ON chapter_overrides.chapter_id = chapters.id
@@ -436,9 +433,6 @@ interface CatalogueEntryDao {
     @Query("SELECT * FROM catalogue_entries WHERE slug = :slug")
     suspend fun findBySlug(slug: String): CatalogueEntryEntity?
 
-    // C2: a catalogue entry disappears the moment its fiction is followed - called by
-    // SyncViewModel.dropCatalogueEntry (Rung 4) on the addFictionByName / Sync-all
-    // success paths.
     @Query("DELETE FROM catalogue_entries WHERE slug = :slug")
     suspend fun delete(slug: String)
 }

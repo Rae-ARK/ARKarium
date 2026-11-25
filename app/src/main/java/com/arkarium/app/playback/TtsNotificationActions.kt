@@ -1,10 +1,5 @@
 package com.arkarium.app.playback
 
-// Rung 4 of docs/implementation/tts-playback-controls.md: the transport buttons
-// on the read-aloud notification. Kept free of android.* types (the icons and
-// PendingIntents are attached in TtsPlaybackService) so the "which buttons, in what
-// order, and what does a tap mean" decisions are plain-Kotlin and unit-tested, same
-// shape as TtsAudioFocusPolicy.kt.
 
 internal enum class TtsTransportAction(val intentAction: String) {
     PREVIOUS("com.arkarium.app.tts.PREVIOUS"),

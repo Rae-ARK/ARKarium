@@ -50,8 +50,6 @@ class CatalogueStorage(private val root: File) {
         return "file://" + coverFile.toURI().rawPath
     }
 
-    // For Rung 4's C2 hook (a followed fiction's cache must not linger), but harmless
-    // and idempotent on its own - a slug with nothing cached is a no-op.
     fun delete(slug: String) {
         dirFor(slug).deleteRecursively()
     }
@@ -69,9 +67,6 @@ class CatalogueStorage(private val root: File) {
         return dir
     }
 
-    // The manifest-relative name ("cover.jpg", any case) is only used for its extension;
-    // the cached file gets a fixed, lowercase name so nothing from the manifest ever
-    // chooses a filename on disk.
     private fun coverCacheName(manifestPath: String): String {
         val ext = SyncPaths.sanitize(manifestPath).substringAfterLast('.', "").lowercase()
         if (ext !in COVER_EXTENSIONS) throw UnsafePathException(manifestPath)

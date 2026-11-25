@@ -5,9 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-// Rung 5 of docs/implementation/catalogue-browse-redesign.md - the catalogue half of
-// Browse's merged grid: search, the status-filter rule, and the NEWEST / alphabetical
-// sort rule.
 class CatalogueBrowseFilterTest {
 
     private fun entry(slug: String, title: String, author: String? = null, published: String? = null) =

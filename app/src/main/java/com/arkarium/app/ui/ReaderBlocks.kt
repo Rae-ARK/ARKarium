@@ -21,11 +21,6 @@ import com.arkarium.app.data.splitBlankLines
 // expressed in, so mapping either to a place in the list is an index lookup here instead
 // of a measured pixel position - which is what lets the list stay lazy.
 sealed class ReaderBlock {
-    // One prose paragraph. `rawStart` is where `text` begins in the raw chapter body, so
-    // content.substring(rawStart, rawStart + text.length) == text. `blankLinesBefore` is
-    // how many empty lines the chapter had between this paragraph and the previous one in
-    // the same stretch of running text (0 for the first), so the reader can leave the
-    // same gap the single big Text used to show for "\n\n".
     data class Prose(val rawStart: Int, val text: String, val blankLinesBefore: Int) : ReaderBlock() {
         val rawEnd: Int get() = rawStart + text.length
     }

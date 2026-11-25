@@ -59,9 +59,6 @@ class ScannerImpl(private val context: Context) {
         private const val TIER_BONUS = 1
         private const val TIER_CLOSING = 2
 
-        // Marker prefixes an author can put directly on a filename to control tier,
-        // independent of whatever word they use ("Interlude", "SS", "Omake", "番外",
-        // ...) - see bugs.md Bug 2 for the full rationale.
         private const val BONUS_MARKER = '~'
         private const val CLOSING_MARKER = '!'
 
@@ -408,8 +405,6 @@ class ScannerImpl(private val context: Context) {
                 arcs[arcFolder.uri.toString()] = arc
                 seenArcIds.add(arcId)
             }
-            // Remove arcs whose folder no longer exists (chapters under it fall back to
-            // novel-level via the ON DELETE SET NULL foreign key rather than being deleted).
             val existingArcs = db.arcDao().forNovel(novelId)
             existingArcs.filter { it.id !in seenArcIds }.forEach { stale ->
                 db.arcDao().delete(stale.id)

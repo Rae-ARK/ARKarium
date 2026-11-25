@@ -168,8 +168,6 @@ sealed interface JournalLoadResult {
     // Just fetched and parsed.
     data class Fresh(val feed: JournalFeed) : JournalLoadResult
 
-    // The fetch failed but a previously saved copy parsed: show it, say when it's from
-    // (C3-style - staleness is visible, not silently trusted).
     data class Offline(val feed: JournalFeed, val savedAtMillis: Long, val reason: String) : JournalLoadResult
 
     data class Failed(val reason: String) : JournalLoadResult

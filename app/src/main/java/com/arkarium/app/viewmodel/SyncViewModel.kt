@@ -99,8 +99,6 @@ class SyncViewModel(
     private val syncManager: SyncManager,
     private val libraryViewModel: LibraryViewModel,
     private val metadataViewModel: MetadataViewModel,
-    // Rung 3 of docs/implementation/catalogue-browse-redesign.md - defaulted so the
-    // Factory below (and any test) doesn't have to know about it.
     private val catalogueStorage: CatalogueStorage = CatalogueStorage(application)
 ) : AndroidViewModel(application) {
 
@@ -611,8 +609,6 @@ class SyncViewModel(
                 // applies after its rescan instead (below), because chapter rows for
                 // newly downloaded files don't exist before it.
                 if (!outcome.changed) applyManifestMetadata(novel.id, outcome)
-                // Hoisted out of the `if (outcome.changed)` block below so the Done state
-                // can use it too - see the bug this fixes just below.
                 var refreshedNovel: NovelEntity? = null
                 if (!outcome.changed) {
                     // applyManifestMetadata just above can still have written a new

@@ -964,9 +964,6 @@ private fun ArcTabCard(
                 placeholderEmoji = "📚",
                 placeholderFontSize = 32.sp
             )
-            // Replaces the old magnifier badge: a one-time ripple instead of a
-            // permanent overlay on every cover. Only drawn when there's a cover to
-            // enlarge, matching the guard on the double-tap handler above.
             if (showDiscoveryRipple && coverUrl != null) {
                 CoverEnlargeRipple(modifier = Modifier.matchParentSize())
             }

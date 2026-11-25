@@ -125,7 +125,6 @@ fun FictionBrowseScreen(
     // not a fix for an observed bug.
     initialQuery: String = "",
     onNovelSelected: (NovelEntity) -> Unit = {},
-    // Not-yet-followed fictions, merged after the library novels (Rung 5).
     catalogue: List<CatalogueEntryEntity> = emptyList(),
     onCatalogueSelected: (CatalogueEntryEntity) -> Unit = {}
 ) {
@@ -311,7 +310,6 @@ fun FictionBrowseScreen(
             onDismissRequest = { showFilterSheet.value = false },
             sheetState = filterSheetState
         ) {
-            // Bug 7 fix - same reasoning as the sort sheet above.
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -412,9 +410,6 @@ private fun BrowseCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // 2:3 full-size cover aspect ratio - matches the sync dialog and
-                    // novel detail header instead of the old fixed 200dp crop, so the
-                    // grid card's cover shape stays consistent across grid-cell widths.
                     .aspectRatio(2f / 3f)
                     .background(
                         brush = Brush.verticalGradient(

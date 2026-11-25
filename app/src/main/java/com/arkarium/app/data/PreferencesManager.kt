@@ -85,10 +85,6 @@ internal val READER_BREAK_LINES_KEY = booleanPreferencesKey("reader_break_lines"
 // here. Off by default, same "no behavior change until opted into" posture
 // as every other switch in this file.
 internal val READER_BRIGHTNESS_SLIDER_ENABLED_KEY = booleanPreferencesKey("reader_brightness_slider_enabled")
-// The level that override applies while the reader is open. The in-reader pill panel
-// that used to hold a session-only brightness slider was removed (every reader setting
-// now lives on the Reader settings page), so the level has to be stored somewhere: here.
-// Meaningful only while the switch above is on; -1f = "follow the system".
 internal val READER_BRIGHTNESS_KEY = floatPreferencesKey("reader_brightness")
 
 internal fun readerFontSizeOf(prefs: Preferences): Float =
@@ -454,9 +450,6 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
     // navigation call).
     val ttsAutoContinue: Flow<Boolean> = safePrefs.map(::ttsAutoContinueOf)
 
-    // Off by default, same reasoning as ttsAutoContinue above - keeping the screen
-    // on while TTS speaks (Stage 3.5) is a battery-life tradeoff a reader should opt
-    // into rather than get silently.
     val ttsKeepScreenOn: Flow<Boolean> = safePrefs.map(::ttsKeepScreenOnOf)
 
     // null means "engine/system default" - same "unset means default" posture as
@@ -555,8 +548,6 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         }
     }
 
-    // Also clears the legacy boolean key so a downgrade-then-upgrade round trip can't
-    // resurrect a stale value out from under an explicit new-key choice.
     suspend fun setSplashAnimationMode(mode: SplashAnimationMode) {
         context.dataStore.edit { prefs ->
             prefs[SPLASH_ANIMATION_MODE_KEY] = mode.name
@@ -564,7 +555,6 @@ class PreferencesManager(private val context: Context) : SettingsPreferences {
         }
     }
 
-    // Also clears the legacy boolean key, same as setSplashAnimationMode above.
     suspend fun setSplashMusicMode(mode: SplashMusicMode) {
         context.dataStore.edit { prefs ->
             prefs[SPLASH_MUSIC_MODE_KEY] = mode.name

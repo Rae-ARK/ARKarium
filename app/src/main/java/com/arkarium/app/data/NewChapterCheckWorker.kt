@@ -188,9 +188,6 @@ class NewChapterCheckWorker(
                 db.novelDao().upsert(mergeNovelForRescan(scanned, existing, authorsFolderFound = false))
             }
             scanner.scanChaptersForNovel(novelFolder, novel.id, db)
-            // After the rescan so chapters that were just downloaded have rows to
-            // attach word count / read time to. This used to be missing entirely, so a
-            // background check recorded the new version but dropped the counts.
             applyManifestMetadata(db, novel.id, outcome)
 
             val afterChapters = db.chapterDao().forNovel(novel.id)

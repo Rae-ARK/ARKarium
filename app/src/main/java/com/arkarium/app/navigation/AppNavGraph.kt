@@ -124,8 +124,6 @@ fun AppNavGraph(
     // destination that wrapped it, were removed in Stage 3.5.
     NavHost(
         navController = navController,
-        // Stage 3.2 (see docs/foundational/design-notes.md): Home is the NavHost's own
-        // startDestination - the thing that actually decides what's on screen first.
         startDestination = "home",
         modifier = Modifier.fillMaxSize(),
         // Without these NavHost falls back to its stock 700ms full-screen crossfade. See
@@ -149,10 +147,6 @@ fun AppNavGraph(
                     onNovelClick = { novel ->
                         activity.lifecycleScope.launch {
                             activity.libraryViewModel.loadNovelDetails(novel)
-                            // Stage 3.3: NovelDetail is now its own route, keyed by
-                            // novelId - launchSingleTop avoids piling up a new
-                            // back-stack entry every time Home is revisited and a
-                            // novel is tapped again.
                             navController.navigate("novelDetail/${novel.id}") { launchSingleTop = true }
                         }
                     },
@@ -201,8 +195,6 @@ fun AppNavGraph(
                 defaultValue = ""
             })
         ) { backStackEntry ->
-            // Rung 5: show cached catalogue rows right away, re-fetch only when they've
-            // gone stale (see SyncViewModel.refreshCatalogueIfStale).
             LaunchedEffect(Unit) { activity.syncViewModel.refreshCatalogueIfStale() }
             // C2 at the UI level too: whatever the row/cache cleanup is doing, a fiction
             // that's already in the library never shows as a catalogue card.
@@ -213,8 +205,6 @@ fun AppNavGraph(
                     novels = activity.libraryViewModel.novels,
                     catalogue = catalogue,
                     onCatalogueSelected = { entry ->
-                        // Rung 7: the route's {novelId} carries the slug for an
-                        // unfollowed fiction (encoded - slugs can contain spaces).
                         navController.navigate("novelDetail/${Uri.encode(entry.slug)}") { launchSingleTop = true }
                     },
                     initialQuery = backStackEntry.arguments?.getString("initialQuery") ?: "",
@@ -370,10 +360,6 @@ fun AppNavGraph(
                         onAuthorClick = {
                             val authorId = novel.authorId
                             if (authorId != null) {
-                                // Stage 3.4: Author is now its own "author/{authorId}"
-                                // route - no more `from` payload to carry, since
-                                // NavController's own back stack already knows to pop
-                                // back to "novelDetail/${novel.id}" from here.
                                 navController.navigate("author/$authorId")
                             }
                         },
@@ -439,9 +425,6 @@ fun AppNavGraph(
                                 else -> null
                             }
                         } else null,
-                        // Only the permission-denied branch above gets an "Open settings"
-                        // shortcut - the sync-status branch has nothing a settings screen
-                        // can fix.
                         notifyPermissionBlocked = novel.notifyNewChapters && notifyPermissionDenied,
                         onOpenNotificationSettings = {
                             try {
@@ -558,9 +541,6 @@ fun AppNavGraph(
                 }
                 val loadResult = chapterContentState.value
                 val content = (loadResult as? ChapterLoadResult.Ok)?.content?.body
-                // Rung 14 (F9) - resolved once per chapter, same "remember +
-                // LaunchedEffect" pattern as readerAuthor above. Only restorable when
-                // the saved row is actually for *this* chapter.
                 val initialReaderPosition = remember(chapterId) { mutableStateOf<ReaderPosition?>(null) }
                 // "No saved position" (null above) and "haven't looked yet" used to be
                 // the same value, and ReaderScreen was composed the moment the chapter
@@ -570,13 +550,7 @@ fun AppNavGraph(
                 // all.
                 val initialPositionResolved = remember(chapterId) { mutableStateOf(false) }
                 LaunchedEffect(novelId, chapterId, content) {
-                    // Both the CHAR_OFFSET row and the legacy PERCENTAGE conversion are
-                    // settled against the loaded text, and ReaderScreen can't show
-                    // without it anyway - so wait for it rather than answering early.
                     if (content == null) {
-                        // A retry reload: forget the old answer so the reader isn't
-                        // shown again until the position is re-read against the new
-                        // text.
                         initialPositionResolved.value = false
                         return@LaunchedEffect
                     }
@@ -1038,9 +1012,6 @@ fun AppNavGraph(
 
         composable("settings/splash") {
             Column(modifier = Modifier.fillMaxSize()) {
-                // Stage 2 (see docs/foundational/design-notes.md): the Splash switches'
-                // callback wiring, unchanged from the old "settings" composable - just
-                // terminating on this screen instead of the index.
                 SplashSettingsScreen(
                     splashAnimationMode = splashAnimationMode.value,
                     splashMusicMode = splashMusicMode.value,
@@ -1156,9 +1127,6 @@ fun AppNavGraph(
                             activity.prefsManager.setTtsKeepScreenOn(enabled)
                         }
                     },
-                    // Rung 4: the Voice card now opens the full settings/tts/voice page
-                    // (below) instead of an in-place dialog; selection itself (and the
-                    // "push live" + persist split) now happens there.
                     onOpenVoicePicker = { navController.navigate("settings/tts/voice") },
                     onBack = { navController.popBackStack() }
                 )
@@ -1181,8 +1149,6 @@ fun AppNavGraph(
                     currentVoiceName = voicePickerState.currentVoiceName ?: ttsVoiceName.value,
                     favoriteVoiceNames = ttsFavoriteVoiceNames.value,
                     onVoiceSelected = { name ->
-                        // Same "push live" + persist split the old settings/tts
-                        // onVoiceChange used.
                         voicePickerState.setVoice(name)
                         activity.lifecycleScope.launch {
                             activity.prefsManager.setTtsVoiceName(name)

@@ -330,8 +330,6 @@ internal fun applyWindowLayout(window: android.view.Window, edgeToEdge: Boolean,
             WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT
         window.attributes = params
     }
-    // See bug 1 above: without this, a mode change made here can sit unseen by
-    // Compose's own insets reads until something unrelated forces a relayout.
     ViewCompat.requestApplyInsets(window.decorView)
 }
 
@@ -516,12 +514,6 @@ fun ReaderScreen(
     // Whether bare "***"-style lines are chapter breaks; both parses below key on it.
     val breakLinesEnabled by prefsManager.readerBreakLines.collectAsStateWithLifecycle(initialValue = true)
 
-    // reader-settings.md's Brightness section, as amended by the owner: a
-    // window-level screenBrightness override for the reader's lifetime, restoring
-    // "follow the system" (-1f, BRIGHTNESS_OVERRIDE_NONE) on dispose. Both the
-    // opt-in and the level are set on the Reader settings page now (the in-reader
-    // pill panel that used to hold a session-only slider is gone), so this just
-    // applies whatever's stored while the reader is open and clears it on exit.
     val brightnessOverrideEnabled by prefsManager.readerBrightnessSliderEnabled.collectAsStateWithLifecycle(initialValue = false)
     val brightnessLevel by prefsManager.readerBrightness.collectAsStateWithLifecycle(initialValue = -1f)
     DisposableEffect(Unit) {

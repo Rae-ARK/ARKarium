@@ -66,8 +66,6 @@ import java.util.Locale
 fun TtsVoicePickerScreen(
     availableVoices: List<Voice>,
     currentVoiceName: String?,
-    // Rung 5: Voice.getName() values with a star. Empty for an install that
-    // has never favorited anything - see PreferencesManager.ttsFavoriteVoiceNames.
     favoriteVoiceNames: Set<String>,
     // Pushed live to the attached service and persisted by the caller (same
     // split TtsSettingsScreen's old onVoiceChange used) - this screen only

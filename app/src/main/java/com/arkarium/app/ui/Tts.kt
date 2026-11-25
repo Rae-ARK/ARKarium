@@ -154,14 +154,10 @@ class ChapterTtsState internal constructor() {
             this@ChapterTtsState.onChapterFinished?.invoke()
         }
 
-        // Rung 1 (D1): mirrors a voice list that arrives (or changes) after attach(),
-        // not just the one-time snapshot attach() itself copies - see attach() below.
         override fun onVoicesChanged(voices: List<Voice>) {
             this@ChapterTtsState.availableVoices = voices
         }
 
-        // Rung 2 (D4): surfaced as lastErrorMessage for whatever UI is attached to
-        // show once and clear.
         override fun onError(errorCode: Int) {
             this@ChapterTtsState.lastErrorMessage = ttsErrorMessage(errorCode)
         }
@@ -174,9 +170,6 @@ class ChapterTtsState internal constructor() {
             this@ChapterTtsState.currentChunkEnd = span?.end ?: -1
         }
 
-        // Rung 6 (paragraph-highlight variant): straight mirror, same shape as
-        // onChunkProgressChanged above - the service already resolved start/end (or
-        // -1/-1), nothing left to look up here.
         override fun onParagraphProgressChanged(start: Int, end: Int) {
             this@ChapterTtsState.currentParagraphStart = start
             this@ChapterTtsState.currentParagraphEnd = end
@@ -201,9 +194,6 @@ class ChapterTtsState internal constructor() {
         val span = svc.chunkSpan(svc.currentChunkIndex)
         currentChunkStart = span?.start ?: -1
         currentChunkEnd = span?.end ?: -1
-        // Rung 6 (paragraph-highlight variant): same re-sync as currentChunkStart/End
-        // above, for whatever the service had already narrowed the highlight to before
-        // this attach (rotation, returning from settings/tts, reopening the chapter).
         currentParagraphStart = svc.currentParagraphStart
         currentParagraphEnd = svc.currentParagraphEnd
         svc.autoContinueEnabled = autoContinueEnabled
@@ -247,8 +237,6 @@ class ChapterTtsState internal constructor() {
         chapterTitle: String,
         text: String,
         sessionKey: String? = null,
-        // Rung 7: passed straight through to TtsPlaybackService.start() - see its own
-        // doc comment on this same parameter for where it ends up.
         coverUri: String? = null
     ) {
         service?.start(context, chapterTitle, text, sessionKey, coverUri)

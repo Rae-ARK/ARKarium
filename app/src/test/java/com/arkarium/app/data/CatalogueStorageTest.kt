@@ -12,8 +12,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 
-// Rung 3 of docs/implementation/catalogue-browse-redesign.md - C1 (slug is untrusted
-// before it's a folder name) and the replace-not-accumulate behavior of write().
 class CatalogueStorageTest {
 
     @get:Rule val tmp = TemporaryFolder()

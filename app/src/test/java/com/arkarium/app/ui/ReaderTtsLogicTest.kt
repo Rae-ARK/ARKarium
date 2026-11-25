@@ -128,7 +128,6 @@ class ReaderTtsLogicTest {
         assertEquals("chunk 1 of 11", ttsChunkProgressLabel(currentChunkIndex = -1, totalChunks = 11))
     }
 
-    // --- ttsHighlightWithin (rung 5) --------------------------------------------
 
     @Test
     fun highlight_chunkInsideBlock_isLocalToTheBlock() {
@@ -156,7 +155,6 @@ class ReaderTtsLogicTest {
         assertNull(ttsHighlightWithin(0, 0, 0, 10))
     }
 
-    // --- ttsHighlightRange (rung 6) ----------------------------------------------
 
     @Test
     fun highlightRange_prefersTheParagraphRangeWhenThereIsOne() {
@@ -165,9 +163,6 @@ class ReaderTtsLogicTest {
 
     @Test
     fun highlightRange_fallsBackToTheChunkRange_midCallout() {
-        // The current position isn't inside any paragraph (an <author>/<news>
-        // callout, a break line) - currentParagraphStart is -1, so rung 5's
-        // whole-chunk range is used instead.
         assertEquals(0 to 100, ttsHighlightRange(-1, -1, 0, 100))
     }
 
@@ -178,13 +173,9 @@ class ReaderTtsLogicTest {
 
     @Test
     fun highlightRange_neverNarrowerThanTheChunkWouldGiveAlone() {
-        // A reader should never see *less* highlight than rung 5 already gave them -
-        // whenever a paragraph range exists it's reported outright, not clipped
-        // further against the chunk range.
         assertEquals(25 to 35, ttsHighlightRange(25, 35, 10, 50))
     }
 
-    // --- ttsBlockForChunkStart (rung 5) -----------------------------------------
 
     @Test
     fun blockForChunkStart_findsTheBlockContainingIt() {
@@ -204,7 +195,6 @@ class ReaderTtsLogicTest {
         assertNull(ttsBlockForChunkStart(emptyList(), 0))
     }
 
-    // --- ttsAutoScrollTarget (rung 5) -------------------------------------------
 
     @Test
     fun autoScroll_chunkFarBelow_scrollsToLeaveAMarginAboveIt() {

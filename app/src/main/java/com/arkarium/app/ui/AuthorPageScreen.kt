@@ -184,8 +184,6 @@ fun AuthorPageScreen(
                 }
             }
 
-            // About / bio - shown in full here, unlike the truncated excerpt the Stage 3
-            // chapter-page "About the author" card will use.
             if (!author.bio.isNullOrBlank()) {
                 item {
                     AuthorInfoCard(title = "About") {

@@ -36,9 +36,6 @@ fun AppDialogHost(
 ) {
     when (val state = metadataViewModel.metadataSearchState.value) {
         is MetadataSearchState.Loading -> {
-            // Loading has no novel.id to compare against the active route yet
-            // (the search just started), and no apply action to misattribute -
-            // safe to always show, same as before this fix.
             MetadataSearchDialog(
                 novelTitle = state.novel.title,
                 isLoading = true,
@@ -79,9 +76,6 @@ fun AppDialogHost(
             }
         }
         is MetadataSearchState.Error -> {
-            // Bug 4 fix: same reasoning as Results above - a stale "couldn't
-            // reach metadata source" dialog shouldn't surface long after the
-            // user has moved on to a different novel.
             if (state.novel.id == currentNovelDetailId) {
                 MetadataSearchDialog(
                     novelTitle = state.novel.title,

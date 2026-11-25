@@ -433,8 +433,6 @@ class SyncManager(private val context: Context, private val client: SyncClient =
         val segments = relativePath.split("/")
         val dir = dirCache.resolve(folder, segments.dropLast(1))
         val fileName = segments.last()
-        // Replace-on-write, matching docs/foundational/architecture.md, Sync: client flow ("no delta/binary patching,
-        // whole-file replace on any mismatch") rather than trying to patch in place.
         dir.findFile(fileName)?.delete()
         // Deliberately NOT guessMimeType(fileName) (e.g. "application/json" for a .json
         // file) and NOT "application/octet-stream" either - DocumentFile.createFile

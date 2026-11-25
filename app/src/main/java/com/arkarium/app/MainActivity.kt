@@ -287,9 +287,6 @@ class MainActivity : ComponentActivity() {
     // metadataViewModel (one of its dependencies, alongside db/scanner/syncManager/
     // libraryViewModel), same pattern as the other three.
     internal lateinit var syncViewModel: SyncViewModel
-    // Finishes the extraction: owns the reader route's own data access (author lookup,
-    // chapter text load, saved-position resolve/migrate) so the NavHost destination no
-    // longer touches db/contentRepo. Constructed in onCreate after db/contentRepo.
     internal lateinit var readerViewModel: ReaderViewModel
     // Rae's Journal (Notice Board) - see JournalViewModel.
     internal lateinit var journalViewModel: JournalViewModel
@@ -563,9 +560,6 @@ class MainActivity : ComponentActivity() {
                         .padding(24.dp)
                 ) {
                     Text(title, style = MaterialTheme.typography.titleLarge)
-                    // Same BuildConfig.VERSION_NAME used in Settings' About line -
-                    // worth having on a crash report screen specifically, since "what
-                    // version were they on" is the first thing a bug report needs.
                     Text(
                         "ARKarium v${BuildConfig.VERSION_NAME}",
                         style = MaterialTheme.typography.bodySmall,

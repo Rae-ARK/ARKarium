@@ -278,8 +278,6 @@ fun SplashScreen(
     ) {
         if (playFullSequence) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                // Phase 1/2 progress, read here (draw phase) rather than in
-                // the composable body - see the playtime doc comment above.
                 val elapsedMs = playtime.value * totalMs
                 val crossfadeProgress =
                     ((elapsedMs - whooshDurationMs) / crossfadeDurationMs).coerceIn(0f, 1f)
@@ -301,9 +299,6 @@ fun SplashScreen(
             modifier = Modifier
                 .padding(32.dp)
                 .graphicsLayer {
-                    // The real logo+text crossfades in starting once the
-                    // whoosh phase ends and stays fully visible through the
-                    // hold; phase 4's fade-out is handled by the Box above.
                     val elapsedMs = playtime.value * totalMs
                     alpha = ((elapsedMs - whooshDurationMs) / crossfadeDurationMs).coerceIn(0f, 1f)
                 }

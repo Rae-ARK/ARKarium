@@ -34,10 +34,6 @@ class TextChapterContentRepository(private val context: Context) : ChapterConten
         } catch (e: kotlinx.coroutines.CancellationException) {
             throw e
         } catch (e: Exception) {
-            // Swallowing read failures (lost SAF permission, provider hiccup, file
-            // moved/deleted underneath us) here used to render as a silent empty
-            // chapter, indistinguishable from a genuinely empty file. Return Failed
-            // instead so the reader can show a real error with a retry button.
             return@withContext ChapterLoadResult.Failed("Couldn't read chapter content from $sourcePath", e)
         }
         

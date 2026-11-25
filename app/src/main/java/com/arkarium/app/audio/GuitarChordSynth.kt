@@ -26,10 +26,6 @@ object GuitarChordSynth {
     // downward strum isn't a single simultaneous attack, it's a fast cascade.
     private const val STRUM_OFFSET_MS = 14.0
 
-    // How long each individual string rings out before its Karplus-Strong
-    // buffer is truncated. The natural decay usually falls well below
-    // audible before this, so the exact value mostly just bounds the array
-    // size.
     private const val NOTE_DURATION_SEC = 2.3
 
     // Per-sample decay factor in the Karplus-Strong feedback loop. Closer to
@@ -68,9 +64,6 @@ object GuitarChordSynth {
     fun buildCMajorStrumPcm16(): ShortArray {
         val strumOffsetSamples = ((STRUM_OFFSET_MS / 1000.0) * SAMPLE_RATE).toInt()
         val noteSamples = CHORD_FREQUENCIES_HZ.mapIndexed { stringIndex, freq ->
-            // Fixed per-string seeds so the chord's exact texture is
-            // deterministic and repeatable across launches, not re-rolled
-            // every time.
             karplusStrongPluck(freq, NOTE_DURATION_SEC, seed = 1000L + stringIndex)
         }
 

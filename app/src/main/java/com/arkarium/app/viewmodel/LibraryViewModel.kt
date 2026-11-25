@@ -271,13 +271,8 @@ class LibraryViewModel(
             val staleLocal = stale.filter { it.syncSourceUrl == null }
             val staleSynced = stale.filter { it.syncSourceUrl != null && it.syncStatus != SyncStatus.MISSING_LOCALLY.name }
 
-            // Bug 3 fix: a local novel only gets cascade-deleted once it's been
-            // missing on two *consecutive* scans - see missingLocalOnce's doc
-            // comment. First time it's missing, just remember it and move on.
             val confirmedMissingLocal = staleLocal.filter { it.id in missingLocalOnce }
             val firstTimeMissingLocal = staleLocal.filter { it.id !in missingLocalOnce }
-            // Anything seen this pass that was previously flagged was a false
-            // alarm (the earlier miss was transient) - clear it.
             missingLocalOnce.removeAll { it in seenNovelIds }
             missingLocalOnce.addAll(firstTimeMissingLocal.map { it.id })
             missingLocalOnce.removeAll(confirmedMissingLocal.map { it.id })
@@ -406,8 +401,6 @@ class LibraryViewModel(
         )
     }
 
-    // Moved from MainActivity alongside recentlyRead/inProgressNovels themselves.
-    // Reads `novels` (this class's own field now) to resolve ids to entities.
     suspend fun refreshRecentlyRead() {
         val ids = db.readingProgressDao().recentNovelIds()
         val byId = novels.associateBy { it.id }
@@ -577,18 +570,13 @@ class LibraryViewModel(
         }
     }
 
-    // Moved from MainActivity's Continue Reading shortcut effect: the id of the novel
-    // the reader was last in, or null if there's no reading history at all.
     suspend fun lastReadNovelId(): String? = db.readingProgressDao().recentNovelIds(1).firstOrNull()
 
-    // Moved from NovelDetail's onChapterSelected in MainActivity: starting a chapter
-    // marks the novel IN_PROGRESS and refreshes Home's recently-read row.
     suspend fun markNovelInProgress(novelId: String) {
         db.novelDao().updateReadingStatus(novelId, NovelStatus.IN_PROGRESS.name)
         refreshRecentlyRead()
     }
 
-    // Moved from NovelDetail's onResizePages in MainActivity.
     suspend fun setPageSize(novelId: String, pageSize: Int) {
         db.novelDao().updatePageSize(novelId, pageSize)
     }

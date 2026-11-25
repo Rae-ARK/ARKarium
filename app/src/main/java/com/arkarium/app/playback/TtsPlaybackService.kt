@@ -236,8 +236,6 @@ class TtsPlaybackService : Service() {
         // its own instead of staying stuck on "System default" until the page reopens.
         fun onVoicesChanged(voices: List<Voice>)
 
-        // Rung 2 (D4): reported instead of silently advancing when a chunk fails - see
-        // onChunkError below. errorCode is one of TextToSpeech.ERROR_*.
         fun onError(errorCode: Int)
 
         // Rung 3 (docs/implementation/tts-playback-controls.md): pushed
@@ -361,9 +359,6 @@ class TtsPlaybackService : Service() {
     private var engine: TextToSpeech? = null
     private var pendingChunks: List<String> = emptyList()
 
-    // Rung 5: where each of pendingChunks sits in the text start() was given, index for
-    // index. Always the same size as pendingChunks (both set together, both cleared
-    // together).
     private var pendingSpans: List<TtsChunkSpan> = emptyList()
 
     // Rung 6 (paragraph-highlight variant): the prose paragraphs of the text start()
@@ -406,9 +401,6 @@ class TtsPlaybackService : Service() {
     private var albumArtBitmap: Bitmap? = null
     private var albumArtJob: Job? = null
 
-    // Rung 7: this service's own scope, used only for the album-art fetch above -
-    // cancelled wholesale in onDestroy() rather than tracked any other way, since
-    // nothing else this class does needs a coroutine.
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     private var pendingIndex: Int = 0
@@ -584,8 +576,6 @@ class TtsPlaybackService : Service() {
             MediaMetadata.Builder()
                 .putString(MediaMetadata.METADATA_KEY_TITLE, currentChapterTitle.ifBlank { "ARKarium" })
                 .putString(MediaMetadata.METADATA_KEY_ARTIST, "Reading aloud")
-                // Rung 7: without this the seek bar shows no progress at all, even with
-                // a real position set above - see Android's own media-controls guidance.
                 .putLong(MediaMetadata.METADATA_KEY_DURATION, sessionDurationMs)
                 .apply {
                     // Rung 7: the fiction/arc cover, once loadAlbumArt resolves it -
@@ -692,9 +682,6 @@ class TtsPlaybackService : Service() {
             // null-check it too.
             availableVoices = engine?.voices?.toList().orEmpty()
             listener?.onAvailabilityChanged(isAvailable)
-            // Rung 1 (D1): pushed every time this callback runs (today, that's once),
-            // so a picker already open and bound before init finished sees the real
-            // list land instead of staying stuck on an empty snapshot.
             listener?.onVoicesChanged(availableVoices)
             // Rung 1 (D2): apply whatever setInitialRateAndPitch was given before the
             // engine was ready, now that it is. No-op if nothing was ever seeded, or
@@ -711,8 +698,6 @@ class TtsPlaybackService : Service() {
 
             @Deprecated("Deprecated in Java, but still the callback older API levels invoke")
             override fun onError(utteranceId: String?) {
-                // No errorCode available on this overload - TextToSpeech.ERROR is the
-                // generic code, same fallback rung 2's onChunkError uses it for.
                 onChunkError(utteranceId, TextToSpeech.ERROR)
             }
 
@@ -781,8 +766,6 @@ class TtsPlaybackService : Service() {
         engine?.stop()
         engine?.shutdown()
         engine = null
-        // Rung 7: stops the album-art fetch dead rather than letting it finish into a
-        // service instance nothing will ever read updateMediaSession's result from again.
         serviceScope.cancel()
         super.onDestroy()
     }
@@ -898,11 +881,7 @@ class TtsPlaybackService : Service() {
         ContextCompat.startForegroundService(context, Intent(context, TtsPlaybackService::class.java))
         pendingChunks = chunks
         pendingSpans = spans
-        // Rung 6: the same paragraphs list the chunk split above was just given as
-        // hardBoundaries - see paragraphOffsetsForSession's own doc comment.
         paragraphOffsetsForSession = paragraphs
-        // Rung 7: fresh session, fresh estimate and fresh clock - see
-        // sessionDurationMs/accumulatedPlayedMs's own doc comments.
         sessionDurationMs = (spans.sumOf { it.end - it.start } / ESTIMATED_SPEECH_CHARS_PER_SECOND * 1000)
             .toLong()
             .coerceAtLeast(1L)
@@ -1089,9 +1068,6 @@ class TtsPlaybackService : Service() {
         listener?.onParagraphProgressChanged(start, end)
     }
 
-    // Rung 6: the no-session shape of updateCurrentParagraph above - called alongside
-    // every place pendingSpans is cleared (stop(), onChunkError()) so a highlight never
-    // outlives the session it belonged to.
     private fun clearCurrentParagraph() {
         paragraphOffsetsForSession = emptyList()
         updateCurrentParagraph(-1)

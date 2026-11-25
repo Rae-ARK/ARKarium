@@ -67,8 +67,6 @@ class SplitForTtsTest {
 
     @Test
     fun singleOverlongSentence_isHardCut_withoutSplittingSurrogatePairs() {
-        // One "sentence" with no terminator at all, made of supplementary-plane emoji
-        // (two UTF-16 chars each) - the old String-index cut could land between halves.
         val text = "\uD83D\uDE00".repeat(500)
         val chunks = splitForTts(text, maxChunk = 101, locale = Locale.US)
         assertTrue(chunks.size > 1)

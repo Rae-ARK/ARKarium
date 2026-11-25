@@ -5,7 +5,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-// Coverage for the notification transport decisions (tts-playback-controls.md rung 4).
 class TtsNotificationActionsTest {
 
     @Test

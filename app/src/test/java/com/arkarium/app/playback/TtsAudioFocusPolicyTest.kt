@@ -5,9 +5,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-// Rung 10 coverage (F22, reader-playback.md) for the decision table behind
-// TtsPlaybackService's audio-focus listener. AudioManager.AUDIOFOCUS_* are compile-time
-// constants, so this runs as a plain JVM test with no Android framework.
 class TtsAudioFocusPolicyTest {
 
     @Test

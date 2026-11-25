@@ -30,8 +30,6 @@ class ReaderViewModel(
     private val contentRepo: ChapterContentRepository
 ) : ViewModel() {
 
-    // Author of the fiction currently open in the reader (moved from MainActivity).
-    // Null covers both "not resolved yet" and "this fiction has no linked author".
     private val _readerAuthor = mutableStateOf<AuthorEntity?>(null)
     val readerAuthor: State<AuthorEntity?> = _readerAuthor
 

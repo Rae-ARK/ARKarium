@@ -491,8 +491,6 @@ data class ChapterUpdateEventEntity(
 // needing a meaningless default for a fiction nobody has followed yet.
 @Entity(tableName = "catalogue_entries")
 data class CatalogueEntryEntity(
-    // FictionLut's own slug - see SyncPaths.sanitize (C1: untrusted input before it's a
-    // folder name) applied before this is ever used to build a cache path, not here.
     @PrimaryKey val slug: String,
     @ColumnInfo val title: String,
     @ColumnInfo val author: String?,

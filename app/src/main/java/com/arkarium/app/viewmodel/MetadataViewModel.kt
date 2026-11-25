@@ -49,9 +49,6 @@ class MetadataViewModel(
     val metadataSearchState = mutableStateOf<MetadataSearchState>(MetadataSearchState.Idle)
     val addFictionState = mutableStateOf<AddFictionState>(AddFictionState.Hidden)
 
-    // Moved verbatim from MainActivity (Stage 2.4). Kicks off a "Fetch info" search for
-    // one novel - user-triggered only (see NovelDetailScreen's info action), never
-    // called automatically during a scan.
     fun fetchMetadataFor(novel: NovelEntity) {
         metadataSearchState.value = MetadataSearchState.Loading(novel)
         viewModelScope.launch {

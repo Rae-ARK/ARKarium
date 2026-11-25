@@ -82,7 +82,6 @@ class ChapterMarkupOffsetsTest {
         assertNull(paragraphForCharOffset(offsets, 0))
     }
 
-    // --- paragraphContaining (rung 6, tts-playback-controls.md) -----------------
 
     @Test
     fun paragraphContaining_findsTheParagraphThatActuallyHoldsTheOffset() {
@@ -109,9 +108,6 @@ class ChapterMarkupOffsetsTest {
 
     @Test
     fun paragraphContaining_nullInAGapBetweenParagraphs() {
-        // The markup-tagged stretch between the two paragraphs isn't covered by
-        // either's range - this is the "mid-callout" case rung 6's highlight falls
-        // back to the chunk range for.
         val raw = "AAAA\n\n<chapter break></chapter break>\n\nBBBB"
         val offsets = paragraphOffsets(raw)
         val gapOffset = raw.indexOf("<chapter break>")
@@ -123,7 +119,6 @@ class ChapterMarkupOffsetsTest {
         assertNull(paragraphContaining(emptyList(), 0))
     }
 
-    // --- proseParagraphOffsets (rung 6, tts-playback-controls.md) ---------------
 
     @Test
     fun proseParagraphOffsets_noBlankLines_matchesParagraphOffsets() {

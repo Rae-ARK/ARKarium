@@ -72,8 +72,6 @@ fun NoticeBoardScreen(
                 .fillMaxSize()
                 .background(cork)
                 .drawBehind {
-                    // Cork grain: a fixed-seed scatter of small dots, so it never shimmers
-                    // between redraws.
                     val rng = Random(7)
                     repeat(220) {
                         drawCircle(
