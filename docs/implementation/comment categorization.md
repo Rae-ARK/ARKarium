@@ -11,9 +11,9 @@ bottom.
 
 ## Totals
 
-| Category | Lines | % | Meaning |
-|---|---:|---:|---|
-| **PURGE** | 212 | 2.5% | Pure process/changelog noise. Safe to delete outright. |
+| Category | Lines | % | Meaning | Status |
+|---|---:|---:|---:|---|
+| **PURGE** | 212 | 2.5% | Pure process/changelog noise. Safe to delete outright. | **Done** |
 | **MIXED** | 4,121 | 47.8% | A changelog/provenance clause **wrapped around** a real fact. Needs surgical editing, not deletion. |
 | **KEEP** | 4,195 | 48.6% | Genuine invariant/contract/"why". Keep; candidate to absorb into names/types where possible, otherwise stays as prose (verbose is fine). |
 | **LABEL** | 68 | 0.8% | Short, information-free section label. Absorb by naming (extract a function/val), comment disappears. |
@@ -143,22 +143,19 @@ of all comment lines) — mentioned for completeness, not urgency.
    Treat every row in `comment_catalog.csv` as a starting guess for
    Stage 2's actual edit, not a final verdict.
 
-## Suggested Stage 2 shape (not started — confirm before I do this)
+## Stage N shape
 
 Given the size (4,100+ `MIXED` lines across ~80 files), I'd suggest
 tackling it in the same tiers `docs/foundational/design-notes.md` already
 uses for code changes — smallest, lowest-risk first, each independently
 shippable:
 
-1. **`PURGE`** — mechanical, low-risk: delete the 212 pure-noise lines,
+Stage 1. **`PURGE`** — mechanical, low-risk: delete the 212 pure-noise lines,
    file by file, nothing else touched.
-2. **One `MIXED`-heavy file at a time**, biggest first (`ReaderScreen.kt`,
+Stage 2. **One `MIXED`-heavy file at a time**, biggest first (`ReaderScreen.kt`,
    `TtsPlaybackService.kt`, `MainActivity.kt`, ...): for each comment,
    extract the durable fact, drop the changelog framing, and where the
    fact is a short invariant, turn it into a name/type per
    `commenting.md` rather than a trimmed-down comment.
-3. **`LABEL`** — batch, mechanical, any time (low value, low risk).
-4. **`KEEP`** — opportunistic naming/type absorption, no urgency.
-
-Let me know if you want to start on (1) now, or go straight at a specific
-file in (2).
+Stage 3. **`LABEL`** — batch, mechanical, any time (low value, low risk).
+Stage 4. **`KEEP`** — opportunistic naming/type absorption, no urgency.
